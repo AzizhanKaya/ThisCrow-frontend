@@ -41,6 +41,7 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
+		font-family: Arial, Helvetica, sans-serif;
 	}
 
 	.header {
