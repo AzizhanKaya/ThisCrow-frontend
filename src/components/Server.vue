@@ -14,7 +14,7 @@
 
 <template>
 	<div class="server">
-		<img :src="server.icon || '/default-server-icon.png'" />
+		<img :src="server.icon || '/default-server-icon.jpeg'" />
 	</div>
 </template>
 

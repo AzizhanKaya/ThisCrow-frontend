@@ -5,7 +5,7 @@ export type Server = {
 	members: User[];
 };
 
-enum State {
+export enum State {
 	Online,
 	Offline,
 	Dnd,
@@ -13,6 +13,7 @@ enum State {
 
 export type User = {
 	id: string;
+	name: string;
 	username: string;
 	avatar?: string | null;
 	state: State;

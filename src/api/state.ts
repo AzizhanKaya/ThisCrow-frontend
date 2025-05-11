@@ -1,5 +1,5 @@
 import { useFetch } from '@vueuse/core';
-import type { Server } from '../types';
+import type { Server, User } from '../types';
 import { ref, watch } from 'vue';
 
 export function getServerList() {
@@ -19,6 +19,28 @@ export function getServerList() {
 
 	return {
 		servers,
+		error,
+		isFetching,
+	};
+}
+
+export function getFriendList() {
+	const friends = ref<User[] | null>(null);
+
+	const { data, error, isFetching } = useFetch('/api/friends').get().json<User[]>();
+
+	watch(
+		data,
+		(newData) => {
+			if (newData) {
+				friends.value = newData;
+			}
+		},
+		{ once: true }
+	);
+
+	return {
+		friends,
 		error,
 		isFetching,
 	};
