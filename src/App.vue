@@ -1,11 +1,52 @@
 <script setup lang="ts">
-	import { RouterView } from 'vue-router';
 	import Chats from './views/Chats.vue';
 	import ServerList from './views/ServersList.vue';
+	import { websocketService } from './services/websocket';
+	import { onMounted, onUnmounted, computed, watch, inject } from 'vue';
+	import Login from './views/Login.vue';
+	import { State, type AppState, type User } from './types';
+	import { me } from './api/state';
+	import UserCard from './components/UserCard.vue';
+
+	const state = inject<AppState>('state')!;
+
+	const isLoggedIn = computed(() => !!state.user);
+
+	watch(
+		isLoggedIn,
+		(isLoggedIn) => {
+			if (isLoggedIn) websocketService.connect();
+		},
+		{ once: true }
+	);
+
+	onMounted(() => {
+		const init = async () => {
+			if (!isLoggedIn.value) {
+				try {
+					const user = await me();
+					user.state = State.Online;
+					state.user = user;
+				} catch (e) {
+					console.warn(e);
+				}
+			}
+		};
+		init();
+	});
+
+	onUnmounted(() => {
+		websocketService.disconnect();
+	});
+
+	function handleLogin(user: User) {
+		user.state = State.Online;
+		state.user = user;
+	}
 </script>
 
 <template>
-	<div class="app-container">
+	<template v-if="isLoggedIn">
 		<header class="header">This Crow</header>
 
 		<div class="main">
@@ -16,7 +57,13 @@
 				<Chats />
 			</section>
 		</div>
-	</div>
+
+		<UserCard />
+	</template>
+
+	<template v-else>
+		<Login @login="handleLogin" />
+	</template>
 </template>
 
 <style>
@@ -33,17 +80,18 @@
 		padding: 0;
 		box-sizing: border-box;
 	}
-</style>
 
-<style scoped>
-	.app-container {
+	#app {
 		position: absolute;
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
 		font-family: Arial, Helvetica, sans-serif;
+		color: white;
 	}
+</style>
 
+<style scoped>
 	.header {
 		height: 2%;
 		width: max-content;
@@ -56,6 +104,7 @@
 		display: grid;
 		grid-template-columns: 100px 1fr;
 		height: 98%;
+		overflow: hidden;
 	}
 
 	.server-side {

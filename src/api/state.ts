@@ -1,47 +1,65 @@
 import { useFetch } from '@vueuse/core';
 import type { Server, User } from '../types';
-import { ref, watch } from 'vue';
 
 export function getServerList() {
-	const servers = ref<Server[] | null>(null);
-
-	const { data, error, isFetching } = useFetch('/api/server_list').get().json<Server[]>();
-
-	watch(
-		data,
-		(newData) => {
-			if (newData) {
-				servers.value = newData;
-			}
-		},
-		{ once: true }
-	);
+	const { data, error, isFetching } = useFetch('http://localhost:8080/api/state/groups', { credentials: 'include' }).get().json<Server[]>();
 
 	return {
-		servers,
+		servers: data,
 		error,
 		isFetching,
 	};
 }
 
 export function getFriendList() {
-	const friends = ref<User[] | null>(null);
-
-	const { data, error, isFetching } = useFetch('/api/friends').get().json<User[]>();
-
-	watch(
-		data,
-		(newData) => {
-			if (newData) {
-				friends.value = newData;
-			}
-		},
-		{ once: true }
-	);
+	const { data, error, isFetching } = useFetch('http://localhost:8080/api/state/friends', { credentials: 'include' }).get().json<User[]>();
 
 	return {
-		friends,
+		friends: data,
 		error,
 		isFetching,
 	};
+}
+
+export async function me() {
+	const response = await fetch('http://localhost:8080/api/state/me', { credentials: 'include' });
+	if (!response.ok) {
+		throw new Error(`Redirecting login page: ${await response.text()}`);
+	}
+
+	const data: User = await response.json();
+	return data;
+}
+
+export async function searchFriends(username: string) {
+	const params = new URLSearchParams();
+	params.append('username', username);
+
+	const response = await fetch(`http://localhost:8080/api/state/search_friends?${params.toString()}`, {
+		credentials: 'include',
+	});
+
+	if (!response.ok) {
+		throw new Error(await response.text());
+	}
+
+	const data = await response.json();
+	return data as User[];
+}
+
+export async function addFriend(userId: string) {
+	const response = await fetch('http://localhost:8080/api/state/add_friend', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		credentials: 'include',
+		body: JSON.stringify({ user_id: userId }),
+	});
+
+	if (!response.ok) {
+		throw new Error(await response.text());
+	}
+
+	return;
 }

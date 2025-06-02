@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import App from './App.vue';
+import { state } from './state';
 
 async function setupMockServiceWorker() {
 	const { worker } = await import('./mocks/browser');
@@ -8,8 +9,6 @@ async function setupMockServiceWorker() {
 	});
 }
 
-setupMockServiceWorker().then(() => {
-	const app = createApp(App);
-
-	app.mount('#app');
-});
+const app = createApp(App);
+app.provide('state', state);
+app.mount('#app');
