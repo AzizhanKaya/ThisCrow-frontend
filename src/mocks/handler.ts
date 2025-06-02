@@ -1,5 +1,6 @@
 import { http, HttpResponse, delay } from 'msw';
-import { type Server, type User, State } from '../types';
+import { type Server, type User, type Message, State, MessageType } from '../types';
+import { v4 } from 'uuid';
 
 const mockServers: Server[] = [
 	{
@@ -27,35 +28,156 @@ const friends: User[] = [
 		id: '1',
 		name: 'aziz',
 		username: '333',
-		avatar: 'https://media-ist1-2.cdn.whatsapp.net/v/t61.24694-24/420628060_1555782538592106_5499609317137260408_n.jpg?ccb=11-4&oh=01_Q5Aa1gGb_NgypHqpxS9_0zHW2Tuenux8zIA7gvozmKF8hqvA9g&oe=682D95B5&_nc_sid=5e03e0&_nc_cat=110',
+		avatar: 'http://localhost:8000/1.jpg',
 		state: State.Online,
 	},
 	{
 		id: '2',
 		name: 'zafer',
 		username: 'zaferbaba',
-		avatar: 'https://media-ist1-2.cdn.whatsapp.net/v/t61.24694-24/368327216_1274662853212234_3850909043399615141_n.jpg?ccb=11-4&oh=01_Q5Aa1gHruSPU-nQSXexjVOYtvKtw4Xeo21SQb-zt5PUflsovFg&oe=682D965B&_nc_sid=5e03e0&_nc_cat=103',
+		avatar: 'http://localhost:8000/2.jpg',
 		state: State.Dnd,
 	},
 	{
 		id: '3',
 		name: 'alp',
 		username: 'alpx',
-		avatar: 'https://media-ist1-2.cdn.whatsapp.net/v/t61.24694-24/471439687_1257728858792209_4336393364134940508_n.jpg?ccb=11-4&oh=01_Q5Aa1gHrdeLdwJgkCLGjivoqeQmOfJxQkLEogrQ-hBJfo7xlQg&oe=682D843B&_nc_sid=5e03e0&_nc_cat=104',
+		avatar: 'http://localhost:8000/3.jpg',
 		state: State.Offline,
 	},
 ];
 
+const messages: Message[] = [
+	{
+		id: v4(),
+		from: friends[0].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'Selam',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[1].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'Selam ya',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[0].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'nbr',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[1].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'iyi abi',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[1].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'senden naber',
+		},
+		time: new Date(),
+	},
+];
+
+const Oldmessages: Message[] = [
+	{
+		id: v4(),
+		from: friends[1].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'Eskiden',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[0].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'gelen mesajlar',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[0].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'bunlar',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[1].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'Eskiden',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[0].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'gelen mesajlar',
+		},
+		time: new Date(),
+	},
+	{
+		id: v4(),
+		from: friends[0].id,
+		type: MessageType.Direct,
+		data: {
+			text: 'bunlar',
+		},
+		time: new Date(),
+	},
+];
+
 export const handlers = [
-	http.get('/api/server_list', async () => {
+	http.get('/state/server_list', async () => {
 		await delay(100);
 
 		return HttpResponse.json(mockServers);
 	}),
 
-	http.get('/api/friends', async () => {
+	http.get('/state/friends', async () => {
 		await delay(100);
 
 		return HttpResponse.json(friends);
+	}),
+
+	http.get('/messages/:to', async (req) => {
+		const to = req.params.to;
+
+		await delay(100);
+
+		return HttpResponse.json(messages);
+	}),
+
+	http.get('/messages/:to/old', async (req) => {
+		const to = req.params.to;
+
+		await delay(100);
+
+		return HttpResponse.json(Oldmessages);
 	}),
 ];
