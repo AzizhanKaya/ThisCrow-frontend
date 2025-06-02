@@ -12,14 +12,16 @@ class WebSocketService {
 	private maxReconnectAttempts = 2;
 	private readonly reconnectDelay = 5000;
 
-	private constructor(url: string) {
-		this.url = url;
+	private constructor() {
+		const loc = window.location;
+		const protocol = loc.protocol === 'https:' ? 'wss' : 'ws';
+		this.url = `${protocol}://${loc.host}/api/ws`;
 		this.initializeMessageHandlers();
 	}
 
-	public static getInstance(url = 'ws://localhost:8080/api/ws'): WebSocketService {
+	public static getInstance(): WebSocketService {
 		if (!WebSocketService.instance) {
-			WebSocketService.instance = new WebSocketService(url);
+			WebSocketService.instance = new WebSocketService();
 		}
 		return WebSocketService.instance;
 	}
