@@ -15,7 +15,7 @@
 
 <template>
 	<div class="message-block">
-		<img class="avatar" :src="block.user.avatar" />
+		<img class="avatar" :src="block.user.avatar || '/default-user-icon.png'" />
 		<div class="message-header">
 			<span class="name">{{ block.user.name }}</span>
 			<span class="time-header">{{ block.messages[0].time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>

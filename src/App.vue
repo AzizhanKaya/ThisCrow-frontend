@@ -28,7 +28,7 @@
 					user.state = State.Online;
 					state.user = user;
 				} catch (e) {
-					console.warn(e);
+					console.error(e);
 				}
 			}
 		};

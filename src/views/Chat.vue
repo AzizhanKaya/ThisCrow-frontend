@@ -88,7 +88,7 @@
 
 <template>
 	<header>
-		<img :src="selectedUser.avatar" alt="" />
+		<img :src="selectedUser.avatar || '/default-user-icon.png'" alt="" />
 		<div class="container">
 			<span class="name">{{ selectedUser.name }}</span>
 			<span class="username">@{{ selectedUser.username }}</span>

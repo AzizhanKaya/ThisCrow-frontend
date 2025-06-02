@@ -42,6 +42,7 @@ export function useMessages(selectedUser: User, currentUser: User) {
 	}
 
 	const handleDirectMessage = (message: Message) => {
+		console.log(message);
 		if (message.from === selectedUser.id) {
 			addMessageToBlocks(message);
 		}
@@ -66,7 +67,7 @@ export function useMessages(selectedUser: User, currentUser: User) {
 			messageBlocks.value.forEach((block) => {
 				if (block.user.id === currentUser.id) {
 					block.messages.forEach((m) => {
-						m.notSent = false;
+						delete m.notSent;
 					});
 				}
 			});
@@ -80,14 +81,13 @@ export function useMessages(selectedUser: User, currentUser: User) {
 			data: messageData,
 			type: MessageType.Direct,
 			time: new Date(),
-			notSent: true,
 		};
 
 		if (websocketService.getConnectionState() === 'OPEN') {
 			websocketService.sendMessage(wsMessage);
-			wsMessage.notSent = false;
 		} else {
 			pendingMessages.push(wsMessage);
+			wsMessage.notSent = true;
 		}
 
 		addMessageToBlocks(wsMessage);
