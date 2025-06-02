@@ -37,10 +37,13 @@
 <style scoped>
 	.user {
 		height: 50px;
-		background-color: #444;
 		border-radius: 25px;
-		color: #e0e0e0;
 		position: relative;
+	}
+
+	.user:hover {
+		background-color: #333;
+		cursor: pointer;
 	}
 
 	.avatar {
@@ -78,7 +81,7 @@
 	}
 
 	.online {
-		background-color: rgb(4, 206, 4);
+		background-color: rgba(4, 206, 4, 0.8);
 	}
 	.dnd {
 		background-color: red;

@@ -9,5 +9,26 @@
 	"editor.tabSize": 4,
 	"editor.detectIndentation": false,
 	"editor.formatOnSave": true,
-	"editor.defaultFormatter": "esbenp.prettier-vscode"
+	"editor.defaultFormatter": "esbenp.prettier-vscode",
+
+	// Vue-specific settings to help with the crashes
+	"vue.server.maxFileSize": 20971520,
+	"vue.server.reverseConfigFilePriority": true,
+	"vue.complete.casing.tags": "kebab",
+	"vue.complete.casing.props": "camel",
+
+	// TypeScript settings that may help
+	"typescript.preferences.includePackageJsonAutoImports": "off",
+	"typescript.suggest.autoImports": false,
+
+	// Format-specific overrides to resolve tab/space conflicts
+	"[vue]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[javascript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	}
 }

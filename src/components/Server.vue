@@ -20,11 +20,26 @@
 
 <style scoped>
 	.server {
+		position: relative;
 		aspect-ratio: 1;
 		border-radius: 10px;
 		width: 100%;
 		overflow: hidden;
-		cursor: grab;
+		cursor: pointer;
+	}
+
+	.server::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: white;
+		opacity: 0;
+		transition: opacity 0.1s;
+		pointer-events: none;
+	}
+
+	.server:hover::after {
+		opacity: 0.2;
 	}
 
 	.server > img {
