@@ -6,11 +6,10 @@ export type Server = {
 };
 
 export enum State {
-	Online,
-	Offline,
-	Dnd,
+	Online = 'Online',
+	Offline = 'Offline',
+	Dnd = 'Dnd',
 }
-
 export type User = {
 	id: string;
 	name: string;

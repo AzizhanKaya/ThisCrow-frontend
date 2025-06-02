@@ -7,6 +7,7 @@ export function useWebSocket() {
 	const pendingMessages = ref<Message[]>([]);
 
 	function sendMessage(message: Message) {
+		console.log(websocketService.getConnectionState());
 		if (websocketService.getConnectionState() === 'open') {
 			websocketService.sendMessage(message);
 		} else {
