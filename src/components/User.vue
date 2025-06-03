@@ -78,6 +78,7 @@
 		border: 2px #333 solid;
 		left: 37px;
 		bottom: 1px;
+		flex-shrink: 0;
 	}
 
 	.online {
