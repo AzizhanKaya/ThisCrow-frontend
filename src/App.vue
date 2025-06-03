@@ -6,7 +6,6 @@
 	import Login from './views/Login.vue';
 	import { State, type AppState, type User } from './types';
 	import { me } from './api/state';
-	import UserCard from './components/UserCard.vue';
 
 	const state = inject<AppState>('state')!;
 
@@ -57,8 +56,6 @@
 				<Chats />
 			</section>
 		</div>
-
-		<UserCard />
 	</template>
 
 	<template v-else>
@@ -93,7 +90,7 @@
 
 <style scoped>
 	.header {
-		height: 2%;
+		height: 2vh;
 		width: max-content;
 		color: white;
 		margin: auto;
@@ -103,8 +100,8 @@
 	.main {
 		display: grid;
 		grid-template-columns: 100px 1fr;
-		height: 98%;
-		overflow: hidden;
+		height: 98vh;
+		overflow: auto;
 	}
 
 	.server-side {

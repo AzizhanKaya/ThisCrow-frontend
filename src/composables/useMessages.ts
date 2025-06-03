@@ -42,7 +42,6 @@ export function useMessages(selectedUser: User, currentUser: User) {
 	}
 
 	const handleDirectMessage = (message: Message) => {
-		console.log(message);
 		if (message.from === selectedUser.id) {
 			addMessageToBlocks(message);
 		}

@@ -2,7 +2,7 @@ import { useFetch } from '@vueuse/core';
 import type { Server, User } from '../types';
 
 export function getServerList() {
-	const { data, error, isFetching } = useFetch('/api/state/groups', { credentials: 'include' }).get().json<Server[]>();
+	const { data, error, isFetching } = useFetch('http://localhost:8080/api/state/groups', { credentials: 'include' }).get().json<Server[]>();
 
 	return {
 		servers: data,
@@ -12,7 +12,7 @@ export function getServerList() {
 }
 
 export function getFriendList() {
-	const { data, error, isFetching } = useFetch('/api/state/friends', { credentials: 'include' }).get().json<User[]>();
+	const { data, error, isFetching } = useFetch('http://localhost:8080/api/state/friends', { credentials: 'include' }).get().json<User[]>();
 
 	return {
 		friends: data,
@@ -22,7 +22,7 @@ export function getFriendList() {
 }
 
 export async function me() {
-	const response = await fetch('/api/state/me', { credentials: 'include' });
+	const response = await fetch('http://localhost:8080/api/state/me', { credentials: 'include' });
 	if (!response.ok) {
 		throw new Error(`Redirecting login page: ${await response.text()}`);
 	}
@@ -35,7 +35,7 @@ export async function searchFriends(username: string) {
 	const params = new URLSearchParams();
 	params.append('username', username);
 
-	const response = await fetch(`/api/state/search_friends?${params.toString()}`, {
+	const response = await fetch(`http://localhost:8080/api/state/search_friends?${params.toString()}`, {
 		credentials: 'include',
 	});
 
@@ -48,7 +48,7 @@ export async function searchFriends(username: string) {
 }
 
 export async function addFriend(userId: string) {
-	const response = await fetch('/api/state/add_friend', {
+	const response = await fetch('http://localhost:8080/api/state/add_friend', {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
