@@ -12,7 +12,7 @@ export async function getMessages({ from, len = 20, end }: { from: string; len?:
 			params.append('end', new Date().toISOString());
 		}
 
-		const url = `http://localhost:8080/api/state/messages?${params.toString()}`;
+		const url = `/api/state/messages?${params.toString()}`;
 
 		const response = await fetch(url, { credentials: 'include' });
 		if (!response.ok) {
