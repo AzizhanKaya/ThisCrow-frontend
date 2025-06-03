@@ -37,8 +37,6 @@ class WebSocketService {
 			const message = JSON.parse(event.data) as Message;
 			message.time = new Date(message.time);
 
-			console.log(`Received ${message.type} message:`, message);
-
 			const handlers = this.messageHandlers.get(message.type);
 			if (handlers && handlers.size > 0) {
 				handlers.forEach((handler) => handler(message));

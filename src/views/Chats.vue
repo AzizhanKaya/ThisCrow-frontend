@@ -6,6 +6,7 @@
 	import type { User as UserType } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import AddFriend from '@/components/AddFriendButton.vue';
+	import UserCard from '@/components/UserCard.vue';
 
 	const selectedUser = ref<UserType | undefined>(undefined);
 
@@ -45,6 +46,8 @@
 					<div v-if="index < friends.length - 1" class="user-separator"></div>
 				</template>
 			</div>
+
+			<UserCard />
 		</aside>
 		<main>
 			<Chat v-if="selectedUser" :key="selectedUser.id" :selectedUser="selectedUser" />
@@ -56,7 +59,7 @@
 	.container {
 		display: grid;
 		grid-template-columns: clamp(200px, 20%, 300px) 1fr;
-		height: 100vh;
+		height: 100%;
 		position: relative;
 	}
 
@@ -64,6 +67,7 @@
 		background-color: #202225;
 		border: 1px solid #303030;
 		border-top-left-radius: 20px;
+		position: relative;
 	}
 
 	.user-list {
@@ -83,7 +87,7 @@
 	main {
 		background-color: #36393f;
 		position: relative;
-		height: 100vh;
+		height: 100%;
 	}
 
 	.selected {

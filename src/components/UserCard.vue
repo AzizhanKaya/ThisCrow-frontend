@@ -34,8 +34,8 @@
 	.user-card {
 		position: absolute;
 		bottom: 20px;
-		left: 110px;
-		width: calc(clamp(220px, 20%, 320px) - 40px);
+		width: 90%;
+		left: 5%;
 		background-color: #303030;
 		padding: 10px;
 		border-radius: 10px;
