@@ -144,10 +144,10 @@
 
 <style scoped>
 	main {
-		height: calc(100% - 80px);
+		height: calc(98vh - 60px);
 		overflow-y: auto;
 		overflow-x: hidden;
-		padding-bottom: 75px;
+		padding-bottom: 80px;
 		margin-top: 55px;
 	}
 
