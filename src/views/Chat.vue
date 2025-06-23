@@ -46,7 +46,7 @@
 		websocketService.offMessage(MessageType.Info, handleInfoMessage);
 	});
 
-	function onSend() {
+	async function onSend() {
 		if (input.value.trim() === '' && !hasSelectedFiles.value) return;
 
 		const messageData = {
