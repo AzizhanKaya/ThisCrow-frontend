@@ -37,7 +37,6 @@
 				}
 
 				case 'register': {
-					console.log(password.value, confirmPassword.value);
 					if (password.value !== confirmPassword.value) {
 						error.value = 'Passwords does not match';
 						isLoading.value = false;
