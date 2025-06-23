@@ -35,7 +35,7 @@ export async function searchFriends(username: string) {
 	const params = new URLSearchParams();
 	params.append('username', username);
 
-	const response = await fetch(`/api/state/search_friends?${params.toString()}`, {
+	const response = await fetch(`/api/event/search_users?${params.toString()}`, {
 		credentials: 'include',
 	});
 
@@ -48,7 +48,7 @@ export async function searchFriends(username: string) {
 }
 
 export async function addFriend(userId: string) {
-	const response = await fetch('/api/state/add_friend', {
+	const response = await fetch('/api/event/add_friend', {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
