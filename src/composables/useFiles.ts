@@ -28,24 +28,25 @@ export function useFiles() {
 		return gb.toFixed(1) + ' GB';
 	}
 
-	function handleFileSelect(event: Event) {
+	async function handleFileSelect(event: Event) {
 		const files = (event.target as HTMLInputElement).files;
 		if (!files) return;
 
-		Array.from(files).forEach((file) => {
-			if (file.type.startsWith('image/')) {
-				selectedFiles.value.images.push({
-					url: URL.createObjectURL(file),
-					file,
-				});
-			} else if (file.type.startsWith('video/')) {
-				selectedFiles.value.videos.push({
-					url: URL.createObjectURL(file),
-					file,
-				});
+		const filesArray = Array.from(files);
+
+		const uploaded = await uploadFiles(filesArray);
+
+		uploaded.forEach((info, index) => {
+			const file = filesArray[index];
+			const url = `/uploads/${info.type}/${info.saved_name}`;
+
+			if (info.type === 'img') {
+				selectedFiles.value.images.push({ url, file });
+			} else if (info.type === 'video') {
+				selectedFiles.value.videos.push({ url, file });
 			} else {
 				selectedFiles.value.files.push({
-					url: URL.createObjectURL(file),
+					url,
 					name: file.name,
 					size: formatFileSize(file.size),
 					file,
@@ -68,6 +69,52 @@ export function useFiles() {
 			videos: [],
 			files: [],
 		};
+	}
+
+	async function uploadFiles(files: File[]) {
+		const uploaded: Array<{
+			file_name: string;
+			saved_name: string;
+			type: string;
+		}> = [];
+
+		const formData = new FormData();
+
+		files.forEach((file) => {
+			const type = getFileType(file);
+			formData.append(type, file);
+		});
+
+		try {
+			const response = await fetch('/upload', {
+				method: 'POST',
+				body: formData,
+			});
+
+			if (!response.ok) throw new Error('Upload failed');
+
+			const result = await response.json();
+
+			result.forEach((uploadInfo: { filename: string; saved_name: string; type: string }) => {
+				uploaded.push({
+					file_name: uploadInfo.filename,
+					saved_name: uploadInfo.saved_name,
+					type: uploadInfo.type,
+				});
+			});
+		} catch (error) {
+			console.error('Upload error:', error);
+		}
+
+		return uploaded;
+	}
+
+	function getFileType(file: File): 'img' | 'video' | 'file' {
+		const mime = file.type;
+
+		if (mime.startsWith('image/')) return 'img';
+		if (mime.startsWith('video/')) return 'video';
+		return 'file';
 	}
 
 	return {

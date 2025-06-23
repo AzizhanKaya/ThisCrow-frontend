@@ -44,13 +44,7 @@
 						return;
 					}
 
-					const data = await register(username.value, name.value, email.value, password.value);
-
-					if (data) {
-						emit('login', data);
-					}
-
-					break;
+					await register(username.value, name.value, email.value, password.value);
 				}
 			}
 		} catch (err: any) {
