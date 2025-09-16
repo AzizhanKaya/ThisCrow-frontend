@@ -1,6 +1,6 @@
 import type { Message } from '@/types';
 import { MessageType } from '@/types';
-
+import { WS_URL } from '@/constants';
 type MessageCallback = (message: Message) => void;
 
 class WebSocketService {
@@ -13,9 +13,7 @@ class WebSocketService {
 	private readonly reconnectDelay = 5000;
 
 	private constructor() {
-		const loc = window.location;
-		const protocol = loc.protocol === 'https:' ? 'wss' : 'ws';
-		this.url = `${protocol}://${loc.host}/api/ws`;
+		this.url = WS_URL;
 		this.initializeMessageHandlers();
 	}
 
@@ -76,20 +74,14 @@ class WebSocketService {
 
 	sendMessage(message: Message) {
 		if (!this.ws) {
-			console.error('WebSocket instance not initialized');
-			return;
+			throw new Error('WebSocket instance not initialized');
 		}
 
-		if (this.ws.readyState !== WebSocket.OPEN) {
-			console.error('WebSocket is not connected. Current state:', this.getConnectionState());
-			return;
+		if (this.ws.readyState != WebSocket.OPEN) {
+			throw new Error('WebSocket is not connected. Current state:' + this.getConnectionState());
 		}
 
-		try {
-			this.ws.send(JSON.stringify(message));
-		} catch (error) {
-			console.error('Error sending message:', error);
-		}
+		this.ws.send(JSON.stringify(message));
 	}
 
 	onMessage(type: MessageType, callback: MessageCallback) {

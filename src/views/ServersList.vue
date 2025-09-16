@@ -1,20 +1,15 @@
 <script setup lang="ts">
-	import { ref } from 'vue';
-	import { getServerList } from '@/api/state';
-	import { Icon } from '@iconify/vue';
-	import Server from '@/components/Server.vue';
+	import Server from '@/components/ServerIcon.vue';
+	import { useServerStore } from '@/stores/servers';
+	import CrowIcon from '@/components/CrowIcon.vue';
 
-	const { servers, error, isFetching } = getServerList();
+	const serverStore = useServerStore();
+	const servers = serverStore.servers;
 </script>
 
 <template>
-	<div v-if="isFetching" class="loading-state">
-		<Icon icon="line-md:loading-loop" />
-	</div>
-	<div v-else-if="error" class="error-state">
-		<Icon icon="icon-park-solid:error" />
-	</div>
-	<div v-else-if="servers" class="server-list">
+	<div class="server-list">
+		<CrowIcon />
 		<Server v-for="server in servers" :key="server.id" :server="server" />
 	</div>
 </template>

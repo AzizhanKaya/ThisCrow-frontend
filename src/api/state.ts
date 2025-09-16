@@ -1,28 +1,38 @@
-import { useFetch } from '@vueuse/core';
 import type { Server, User } from '../types';
+import { API_URL } from '../constants';
 
-export function getServerList() {
-	const { data, error, isFetching } = useFetch('/api/state/groups', { credentials: 'include' }).get().json<Server[]>();
+export async function getServerList(): Promise<Server[]> {
+	const res = await fetch(`${API_URL}/state/groups`, {
+		method: 'GET',
+		credentials: 'include',
+	});
 
-	return {
-		servers: data,
-		error,
-		isFetching,
-	};
+	if (!res.ok) {
+		throw new Error(`error getServerList: ${await res.text()}`);
+	}
+
+	const servers = await res.json();
+
+	return servers as Server[];
 }
 
-export function getFriendList() {
-	const { data, error, isFetching } = useFetch('/api/state/friends', { credentials: 'include' }).get().json<User[]>();
+export async function getFriendList(): Promise<User[]> {
+	const res = await fetch(`${API_URL}/state/friends`, {
+		method: 'GET',
+		credentials: 'include',
+	});
 
-	return {
-		friends: data,
-		error,
-		isFetching,
-	};
+	if (!res.ok) {
+		throw new Error(`error getFriendList: ${await res.text()}`);
+	}
+
+	const friends = await res.json();
+
+	return friends as User[];
 }
 
 export async function me() {
-	const response = await fetch('/api/state/me', { credentials: 'include' });
+	const response = await fetch(API_URL + '/state/me', { credentials: 'include' });
 	if (!response.ok) {
 		throw new Error(`Redirecting login page: ${await response.text()}`);
 	}
@@ -35,7 +45,7 @@ export async function searchFriends(username: string) {
 	const params = new URLSearchParams();
 	params.append('username', username);
 
-	const response = await fetch(`/api/event/search_users?${params.toString()}`, {
+	const response = await fetch(API_URL + `/event/search_users?${params.toString()}`, {
 		credentials: 'include',
 	});
 
@@ -48,7 +58,7 @@ export async function searchFriends(username: string) {
 }
 
 export async function addFriend(userId: string) {
-	const response = await fetch('/api/event/add_friend', {
+	const response = await fetch(API_URL + '/event/add_friend', {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',

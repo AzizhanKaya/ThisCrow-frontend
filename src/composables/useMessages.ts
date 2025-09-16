@@ -1,8 +1,8 @@
-import { ref, watch, type Ref } from 'vue';
+import { ref, watch, type Ref, reactive } from 'vue';
 import type { Message, Messages, User, MessageData } from '@/types';
 import { MessageType } from '@/types';
 import { websocketService } from '@/services/websocket';
-import { getMessages } from '@/api/message';
+import { messageService } from '@/services/message';
 
 export function useMessages(selectedUser: User, currentUser: User) {
 	const messageBlocks = ref<Messages[]>([]) as Ref<Messages[]>;
@@ -44,6 +44,7 @@ export function useMessages(selectedUser: User, currentUser: User) {
 	const handleDirectMessage = (message: Message) => {
 		if (message.from === selectedUser.id) {
 			addMessageToBlocks(message);
+			messageService.storeMessage(message);
 		}
 	};
 
@@ -58,49 +59,55 @@ export function useMessages(selectedUser: User, currentUser: User) {
 	};
 
 	const handleConnectionStateChange = (state: string) => {
+		console.log(state);
 		if (state === 'OPEN') {
-			pendingMessages.forEach((msg) => {
-				websocketService.sendMessage(msg);
-			});
-
-			messageBlocks.value.forEach((block) => {
-				if (block.user.id === currentUser.id) {
-					block.messages.forEach((m) => {
-						delete m.notSent;
-					});
+			try {
+				while (pendingMessages.length > 0) {
+					const msg = pendingMessages.shift()!;
+					try {
+						websocketService.sendMessage(msg);
+						msg.sent = true;
+						messageService.storeMessage(msg);
+					} catch (e) {
+						pendingMessages.unshift(msg);
+						break;
+					}
 				}
-			});
+			} catch (e) {
+				console.error(e);
+			}
 		}
 	};
 
 	function sendMessage(messageData: MessageData) {
-		const wsMessage: Message = {
+		const message: Message = reactive({
 			from: currentUser.id,
 			to: selectedUser.id,
 			data: messageData,
 			type: MessageType.Direct,
 			time: new Date(),
-		};
+			sent: false,
+		});
 
-		if (websocketService.getConnectionState() === 'OPEN') {
-			websocketService.sendMessage(wsMessage);
-		} else {
-			pendingMessages.push(wsMessage);
-			wsMessage.notSent = true;
+		try {
+			websocketService.sendMessage(message);
+			message.sent = true;
+			messageService.storeMessage(message);
+		} catch (e) {
+			message.sent = false;
+			pendingMessages.push(message);
 		}
 
-		addMessageToBlocks(wsMessage);
+		addMessageToBlocks(message);
 	}
 
 	async function loadMessages() {
-		const messages = await getMessages({ from: selectedUser.id });
+		const messages = await messageService.getMessages(selectedUser.id, MessageType.Direct, 50);
 
 		messages.forEach((msg) => {
 			msg.time = new Date(msg.time);
+			addMessageToBlocks(msg);
 		});
-
-		[...messages, ...pendingMessages].forEach((msg) => addMessageToBlocks(msg));
-		pendingMessages.forEach((msg) => websocketService.sendMessage(msg));
 	}
 
 	async function loadOldMessages() {
@@ -110,10 +117,9 @@ export function useMessages(selectedUser: User, currentUser: User) {
 			throw new Error('No message block found.');
 		}
 
-		const oldMessages = await getMessages({ from: selectedUser.id, len: 50, end: firstMessageDate });
+		const oldMessages = await messageService.getMessages(selectedUser.id, MessageType.Direct, 50, firstMessageDate);
 
 		oldMessages.reverse().forEach((msg) => {
-			msg.time = new Date(msg.time);
 			addMessageToBlocks(msg, true);
 		});
 

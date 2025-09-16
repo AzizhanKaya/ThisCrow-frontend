@@ -1,11 +1,14 @@
 <script setup lang="ts">
-	import { State, type AppState } from '@/types';
-	import { computed, inject } from 'vue';
+	import { State } from '@/types';
+	import { computed } from 'vue';
+	import { useUserStore } from '@/stores/user';
 
-	const state = inject<AppState>('state')!;
+	const userStore = useUserStore();
+
+	let user_state = userStore.user!;
 
 	const getState = computed(() => {
-		switch (state.user.state) {
+		switch (user_state.state) {
 			case State.Online:
 				return 'online';
 			case State.Offline:
@@ -20,11 +23,11 @@
 
 <template>
 	<div class="user-card">
-		<img class="avatar" :src="state.user.avatar || '/default-user-icon.png'" />
+		<img class="avatar" :src="user_state.avatar || '/default-user-icon.png'" />
 
 		<div class="names">
-			<span class="name">{{ state.user.name }}</span>
-			<span class="username">@{{ state.user.username }}</span>
+			<span class="name">{{ user_state.name }}</span>
+			<span class="username">@{{ user_state.username }}</span>
 		</div>
 		<div class="state" :class="getState"></div>
 	</div>

@@ -1,28 +1,32 @@
 <script setup lang="ts">
-	import { ref, watch, inject, onMounted, onUnmounted } from 'vue';
+	import { ref, onMounted, onUnmounted, computed } from 'vue';
 	import { Icon } from '@iconify/vue';
 	import MessageBlock from '@/components/MessageBlock.vue';
-	import type { AppState, User } from '@/types';
+	import type { User } from '@/types';
 	import { MessageType } from '@/types';
 	import { useMessages } from '@/composables/useMessages';
 	import { useFiles } from '@/composables/useFiles';
 	import { useScroll } from '@/composables/useScroll';
-	import { WebRTCService, type Channel } from '@/services/webrtc';
+	import { webrtcService, type Channel } from '@/services/webrtc';
 	import { websocketService } from '@/services/websocket';
+	import { useUserStore } from '@/stores/user';
+	import { useRouter, useRoute } from 'vue-router';
+	import { useFriendStore } from '@/stores/friends';
 
-	const state = inject<AppState>('state')!;
+	const friendStore = useFriendStore();
+	const friends = friendStore.friends;
 
-	const webRTCService = WebRTCService.getInstance(state);
+	const route = useRoute();
+	const userStore = useUserStore();
 
-	const props = defineProps<{
-		selectedUser: User;
-	}>();
+	let user_state = userStore.user!;
 
-	const user = props.selectedUser;
+	const userId = route.params.userId as string | undefined;
+	const user = friends.find((u) => u.id === userId)!;
 
 	const input = ref('');
 
-	const { messageBlocks, handleDirectMessage, handleInfoMessage, handleConnectionStateChange, sendMessage, loadMessages, loadOldMessages } = useMessages(props.selectedUser, state.user);
+	const { messageBlocks, handleDirectMessage, handleInfoMessage, handleConnectionStateChange, sendMessage, loadMessages, loadOldMessages } = useMessages(user, user_state);
 	const { fileInput, selectedFiles, hasSelectedFiles, handleFileSelect: onFileSelect, removeFile, clearFiles } = useFiles();
 
 	const {
@@ -72,74 +76,76 @@
 	}
 
 	function onCall() {
-		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + state.user.name };
-		webRTCService.joinChannel(channel, 'audio').catch((error) => {
+		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + user_state.name };
+		webrtcService.joinChannel(channel, 'audio').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
 	}
 
 	function onVideo() {
-		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + state.user.name };
-		webRTCService.joinChannel(channel, 'both').catch((error) => {
+		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + user_state.name };
+		webrtcService.joinChannel(channel, 'both').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
 	}
 </script>
 
 <template>
-	<header>
-		<img :src="selectedUser.avatar || '/default-user-icon.png'" alt="" />
-		<div class="container">
-			<span class="name">{{ selectedUser.name }}</span>
-			<span class="username">@{{ selectedUser.username }}</span>
-		</div>
-		<div class="call-container">
-			<div class="call-btn" @click="onCall">
-				<Icon icon="fa6-solid:phone" width="20" height="20" />
+	<template v-if="user">
+		<header>
+			<img :src="user.avatar || '/default-user-icon.png'" alt="" />
+			<div class="container">
+				<span class="name">{{ user.name }}</span>
+				<span class="username">@{{ user.username }}</span>
 			</div>
-			<div class="video-btn" @click="onVideo">
-				<Icon icon="weui:video-call-filled" width="24" height="24" />
-			</div>
-		</div>
-	</header>
-	<main ref="scrollRef" @scroll="handleScroll">
-		<MessageBlock v-if="messageBlocks.length > 0" v-for="(block, index) in messageBlocks" :key="index" :block="block" />
-	</main>
-	<div class="input-area">
-		<div class="input-container">
-			<div v-if="hasSelectedFiles" class="file-previews">
-				<div v-for="(img, index) in selectedFiles.images" :key="img.url" class="preview-item">
-					<img :src="img.url" class="preview-image" />
-					<button class="remove-file" @click="removeFile('images', index)">
-						<Icon icon="mdi:close" />
-					</button>
+			<div class="call-container">
+				<div class="call-btn" @click="onCall">
+					<Icon icon="fa6-solid:phone" width="20" height="20" />
 				</div>
-				<div v-for="(vid, index) in selectedFiles.videos" :key="vid.url" class="preview-item">
-					<video :src="vid.url" class="preview-video" />
-					<button class="remove-file" @click="removeFile('videos', index)">
-						<Icon icon="mdi:close" />
-					</button>
-				</div>
-				<div v-for="(file, index) in selectedFiles.files" :key="file.name" class="preview-item file-preview">
-					<span class="file-name">{{ file.name }}</span>
-					<span class="file-size">{{ file.size }}</span>
-					<button class="remove-file" @click="removeFile('files', index)">
-						<Icon icon="mdi:close" />
-					</button>
+				<div class="video-btn" @click="onVideo">
+					<Icon icon="weui:video-call-filled" width="24" height="24" />
 				</div>
 			</div>
-			<div class="input-row">
-				<input type="file" ref="fileInput" @change="onFileSelect" multiple accept="image/*,video/*,application/*" style="display: none" />
-				<button class="icon-btn plus" @click="onPlus" aria-label="Add">
-					<Icon icon="mdi:plus" width="24" height="24" />
-				</button>
-				<input type="text" v-model="input" placeholder="Type a message..." @keydown.enter="onSend" />
-				<button class="icon-btn send" :class="{ active: input.length > 0 || hasSelectedFiles }" @click="onSend" :disabled="!input.length && !hasSelectedFiles">
-					<Icon icon="mdi:send" width="24" height="24" />
-				</button>
+		</header>
+		<main ref="scrollRef" @scroll="handleScroll">
+			<MessageBlock v-if="messageBlocks.length > 0" v-for="(block, index) in messageBlocks" :key="index" :block="block" />
+		</main>
+		<div class="input-area">
+			<div class="input-container">
+				<div v-if="hasSelectedFiles" class="file-previews">
+					<div v-for="(img, index) in selectedFiles.images" :key="img.url" class="preview-item">
+						<img :src="img.url" class="preview-image" />
+						<button class="remove-file" @click="removeFile('images', index)">
+							<Icon icon="mdi:close" />
+						</button>
+					</div>
+					<div v-for="(vid, index) in selectedFiles.videos" :key="vid.url" class="preview-item">
+						<video :src="vid.url" class="preview-video" />
+						<button class="remove-file" @click="removeFile('videos', index)">
+							<Icon icon="mdi:close" />
+						</button>
+					</div>
+					<div v-for="(file, index) in selectedFiles.files" :key="file.name" class="preview-item file-preview">
+						<span class="file-name">{{ file.name }}</span>
+						<span class="file-size">{{ file.size }}</span>
+						<button class="remove-file" @click="removeFile('files', index)">
+							<Icon icon="mdi:close" />
+						</button>
+					</div>
+				</div>
+				<div class="input-row">
+					<input type="file" ref="fileInput" @change="onFileSelect" multiple accept="image/*,video/*,application/*" style="display: none" />
+					<button class="icon-btn plus" @click="onPlus" aria-label="Add">
+						<Icon icon="mdi:plus" width="24" height="24" />
+					</button>
+					<input type="text" v-model="input" placeholder="Type a message..." @keydown.enter="onSend" />
+					<button class="icon-btn send" :class="{ active: input.length > 0 || hasSelectedFiles }" @click="onSend" :disabled="!input.length && !hasSelectedFiles">
+						<Icon icon="mdi:send" width="24" height="24" />
+					</button>
+				</div>
 			</div>
 		</div>
-	</div>
+	</template>
 </template>
 
 <style scoped>
