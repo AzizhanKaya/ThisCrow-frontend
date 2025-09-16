@@ -1,6 +1,7 @@
-import { inject } from 'vue';
 import { websocketService } from './websocket';
-import { MessageType, type AppState } from '@/types';
+import { MessageType } from '@/types';
+import { useUserStore } from '@/stores/user';
+import type { User } from '@/types';
 
 type PeerConnectionState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed';
 type MediaType = 'audio' | 'video' | 'both' | 'none';
@@ -17,24 +18,23 @@ export interface Channel {
 	users: string[];
 }
 
-export class WebRTCService {
+class WebRTCService {
 	private static instance: WebRTCService;
-	private state: AppState;
 	private peerConnections: Map<string, PeerConnection> = new Map();
 	private localStream?: MediaStream;
+	private readonly user: User;
 	private readonly configuration: RTCConfiguration = {
 		iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
 	};
 
-	private constructor(state: AppState) {
-		this.state = state;
+	private constructor() {
+		this.user = useUserStore().user!;
 		this.setupWebSocketHandlers();
 	}
 
-	public static getInstance(state?: AppState): WebRTCService {
+	public static getInstance(): WebRTCService {
 		if (!WebRTCService.instance) {
-			if (!state) throw new Error('State should be given.');
-			WebRTCService.instance = new WebRTCService(state);
+			WebRTCService.instance = new WebRTCService();
 		}
 		return WebRTCService.instance;
 	}
@@ -74,7 +74,7 @@ export class WebRTCService {
 			if (event.candidate) {
 				websocketService.sendMessage({
 					type: MessageType.Info,
-					from: this.state.user.id,
+					from: this.user.id,
 					to: userId,
 					data: {
 						type: 'webrtc',
@@ -138,7 +138,7 @@ export class WebRTCService {
 
 		websocketService.sendMessage({
 			type: MessageType.Info,
-			from: this.state.user.id,
+			from: this.user.id,
 			to: userId,
 			data: {
 				type: 'webrtc',
@@ -150,7 +150,7 @@ export class WebRTCService {
 
 		websocketService.sendMessage({
 			type: MessageType.Server,
-			from: this.state.user.id,
+			from: this.user.id,
 			to: userId,
 			data: {
 				type: 'webrtc',
@@ -173,7 +173,7 @@ export class WebRTCService {
 
 		websocketService.sendMessage({
 			type: MessageType.Info,
-			from: this.state.user.id,
+			from: this.user.id,
 			to: userId,
 			data: {
 				type: 'webrtc',
@@ -286,3 +286,18 @@ export class WebRTCService {
 		}
 	}
 }
+
+export const getWebRTCService = () => WebRTCService.getInstance();
+
+export const webrtcService: WebRTCService = new Proxy({} as WebRTCService, {
+	get(_target, prop, _receiver) {
+		const instance = WebRTCService.getInstance() as any;
+		const value = instance[prop as keyof WebRTCService];
+		if (typeof value === 'function') {
+			return value.bind(instance);
+		}
+		return value;
+	},
+});
+
+export type { WebRTCService };

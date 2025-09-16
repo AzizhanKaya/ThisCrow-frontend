@@ -1,27 +1,19 @@
 {
-	"explorer.fileNesting.enabled": true,
-	"explorer.fileNesting.patterns": {
-		"tsconfig.json": "tsconfig.*.json, env.d.ts",
-		"vite.config.*": "jsconfig*, vitest.config.*, cypress.config.*, playwright.config.*",
-		"package.json": "package-lock.json, pnpm*, .yarnrc*, yarn*, .eslint*, eslint*, .oxlint*, oxlint*, .prettier*, prettier*, .editorconfig"
-	},
+	"explorer.fileNesting.enabled": false,
 	"editor.insertSpaces": false,
 	"editor.tabSize": 4,
 	"editor.detectIndentation": false,
 	"editor.formatOnSave": true,
 	"editor.defaultFormatter": "esbenp.prettier-vscode",
 
-	// Vue-specific settings to help with the crashes
 	"vue.server.maxFileSize": 20971520,
 	"vue.server.reverseConfigFilePriority": true,
 	"vue.complete.casing.tags": "kebab",
 	"vue.complete.casing.props": "camel",
 
-	// TypeScript settings that may help
 	"typescript.preferences.includePackageJsonAutoImports": "off",
 	"typescript.suggest.autoImports": false,
 
-	// Format-specific overrides to resolve tab/space conflicts
 	"[vue]": {
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},

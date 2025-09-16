@@ -1,4 +1,5 @@
 import type { Message } from '@/types';
+import { API_URL } from '@/constants';
 
 export async function getMessages({ from, len = 20, end }: { from: string; len?: number; end?: Date }): Promise<Message[]> {
 	try {
@@ -12,7 +13,7 @@ export async function getMessages({ from, len = 20, end }: { from: string; len?:
 			params.append('end', new Date().toISOString());
 		}
 
-		const url = `/api/state/messages?${params.toString()}`;
+		const url = API_URL + `/state/messages?${params.toString()}`;
 
 		const response = await fetch(url, { credentials: 'include' });
 		if (!response.ok) {

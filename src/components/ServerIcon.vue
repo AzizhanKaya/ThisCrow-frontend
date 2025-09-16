@@ -22,7 +22,7 @@
 	.server {
 		position: relative;
 		aspect-ratio: 1;
-		border-radius: 10px;
+		border-radius: 15px;
 		width: 100%;
 		overflow: hidden;
 		cursor: pointer;

@@ -40,17 +40,13 @@ export type Message = {
 	data: any;
 	time: Date;
 	type: MessageType;
-	notSent?: boolean;
+	sent?: boolean;
 };
 
 export type Messages = {
 	messages: Message[];
 	user: User;
 };
-
-export interface AppState {
-	user: User;
-}
 
 type File = {
 	url: string;

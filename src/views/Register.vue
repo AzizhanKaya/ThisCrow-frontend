@@ -1,17 +1,14 @@
 <script setup lang="ts">
 	import { ref } from 'vue';
-	import { login } from '@/api/auth';
 	import { Icon } from '@iconify/vue';
 	import Toast from '@/components/Toast.vue';
-	import { useUserStore } from '@/stores/user';
-	import { useRouter } from 'vue-router';
-	import { initApp } from '@/init';
-
-	const userStore = useUserStore();
-	const router = useRouter();
+	import { register } from '@/api/auth';
 
 	const username = ref('');
+	const name = ref('');
+	const email = ref('');
 	const password = ref('');
+	const confirmPassword = ref('');
 
 	const error = ref<any>(null);
 	let isLoading = ref(false);
@@ -20,10 +17,12 @@
 		error.value = null;
 		isLoading.value = true;
 		try {
-			const user = await login(username.value, password.value);
-			userStore.setUser(user);
-			await initApp();
-			router.push('/');
+			if (password.value !== confirmPassword.value) {
+				error.value = 'Passwords does not match';
+				isLoading.value = false;
+				return;
+			}
+			await register(username.value, name.value, email.value, password.value);
 		} catch (err: any) {
 			error.value = err?.message || 'An error occurred';
 		} finally {
@@ -33,21 +32,36 @@
 </script>
 
 <template>
-	<div class="login">
+	<div class="register">
 		<Toast v-if="error" :message="error" />
 
 		<form @submit.prevent="submit">
 			<div class="field">
 				<label>Username</label>
 				<Icon icon="mdi:user" class="icon" />
-				<input type="username" v-model="username" required placeholder="Username" />
+				<input type="text" v-model="username" required placeholder="Username" />
+			</div>
+			<div class="field">
+				<label>Name</label>
+				<Icon icon="mdi:user" class="icon" />
+				<input type="text" v-model="name" required placeholder="Name" />
+			</div>
+			<div class="field">
+				<label>Email</label>
+				<Icon icon="ic:baseline-email" class="icon" />
+				<input type="email" v-model="email" required placeholder="Email" />
 			</div>
 			<div class="field">
 				<label>Password</label>
 				<Icon icon="fa6-solid:lock" class="icon" />
 				<input type="password" v-model="password" required placeholder="Password" />
 			</div>
-			<button type="submit">Login</button>
+			<div class="field">
+				<label>Confirm Password</label>
+				<Icon icon="octicon:lock-24" class="icon" />
+				<input type="password" v-model="confirmPassword" required placeholder="Confirm Password" />
+			</div>
+			<button type="submit">Register</button>
 		</form>
 	</div>
 </template>
@@ -56,7 +70,6 @@
 	form {
 		text-align: left;
 	}
-
 	.field {
 		margin-bottom: 16px;
 		position: relative;
@@ -82,7 +95,6 @@
 		width: 100%;
 		padding: 0.5rem;
 		box-sizing: border-box;
-		border-radius: 4px;
 		background-color: #272727;
 		border: 2px solid transparent;
 		font-size: 1rem;
@@ -94,7 +106,7 @@
 		color: #e9e9e9;
 	}
 
-	button {
+	button[type='submit'] {
 		width: 100%;
 		padding: 1rem;
 		background: #6427d6;
@@ -108,7 +120,7 @@
 		font-size: 1rem;
 	}
 
-	button:hover {
+	button[type='submit']:hover {
 		background: #4b1f9e;
 	}
 </style>

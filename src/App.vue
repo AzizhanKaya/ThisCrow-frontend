@@ -1,66 +1,36 @@
 <script setup lang="ts">
-	import Chats from './views/Chats.vue';
-	import ServerList from './views/ServersList.vue';
-	import { websocketService } from './services/websocket';
-	import { onMounted, onUnmounted, computed, watch, inject } from 'vue';
-	import Login from './views/Login.vue';
-	import { State, type AppState, type User } from './types';
-	import { me } from './api/state';
+	import { onMounted, ref } from 'vue';
+	import { useUserStore } from '@/stores/user';
+	import { useRouter, useRoute } from 'vue-router';
+	import { initApp } from '@/init';
 
-	const state = inject<AppState>('state')!;
+	const userStore = useUserStore();
 
-	const isLoggedIn = computed(() => !!state.user);
+	const router = useRouter();
+	const route = useRoute();
+	const loading = ref(true);
 
-	watch(
-		isLoggedIn,
-		(isLoggedIn) => {
-			if (isLoggedIn) websocketService.connect();
-		},
-		{ once: true }
-	);
+	onMounted(async () => {
+		await userStore.initUser();
 
-	onMounted(() => {
-		const init = async () => {
-			if (!isLoggedIn.value) {
-				try {
-					const user = await me();
-					user.state = State.Online;
-					state.user = user;
-				} catch (e) {
-					console.error(e);
-				}
-			}
-		};
-		init();
+		if (userStore.isLoggedIn) {
+			await initApp();
+		} else {
+			router.push('/login');
+		}
+		loading.value = false;
 	});
-
-	onUnmounted(() => {
-		websocketService.disconnect();
-	});
-
-	function handleLogin(user: User) {
-		user.state = State.Online;
-		state.user = user;
-	}
 </script>
 
 <template>
-	<template v-if="isLoggedIn">
-		<header class="header">This Crow</header>
-
-		<div class="main">
-			<aside class="server-side">
-				<ServerList />
-			</aside>
-			<section class="chats">
-				<Chats />
-			</section>
-		</div>
-	</template>
-
-	<template v-else>
-		<Login @login="handleLogin" />
-	</template>
+	<router-view v-slot="{ Component }">
+		<transition name="fade" mode="out-in">
+			<div v-if="loading" class="splash-screen">
+				<img src="/default-server-icon.png" alt="" />
+			</div>
+			<component v-else :is="Component" :key="route.meta.layout" />
+		</transition>
+	</router-view>
 </template>
 
 <style>
@@ -89,27 +59,25 @@
 </style>
 
 <style scoped>
-	.header {
-		height: 2vh;
-		width: max-content;
+	.fade-enter-active,
+	.fade-leave-active {
+		transition: opacity 0.3s ease-out;
+	}
+	.fade-enter-from,
+	.fade-leave-to {
+		opacity: 0;
+	}
+
+	.splash-screen {
+		height: 100vh;
+		display: flex;
+		justify-content: center;
+		align-items: center;
 		color: white;
-		margin: auto;
-		font-family: 'Times New Roman', Times, serif;
 	}
 
-	.main {
-		display: grid;
-		grid-template-columns: 100px 1fr;
-		height: 98vh;
-		overflow: auto;
-	}
-
-	.server-side {
-		padding-top: 10px;
-	}
-
-	.chats {
-		border-top-left-radius: 15px;
-		min-width: 500px;
+	.splash-screen img {
+		width: 200px;
+		object-fit: contain;
 	}
 </style>

@@ -3,7 +3,9 @@
 	import { Icon } from '@iconify/vue';
 	import { searchFriends, addFriend } from '@/api/state';
 	import type { User } from '@/types';
+	import { useUserStore } from '@/stores/user';
 
+	const userStore = useUserStore();
 	const props = defineProps<{
 		isModalOpen: boolean;
 	}>();
@@ -23,6 +25,9 @@
 
 		try {
 			const data = await searchFriends(searchQuery.value);
+			console.log(data);
+			console.log(userStore.user);
+			data.filter((user) => user.id == userStore.user?.id);
 			NoUsersFound.value = data.length == 0;
 			searchResults.value = data;
 		} catch (err) {

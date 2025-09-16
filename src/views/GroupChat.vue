@@ -1,35 +1,31 @@
 <script setup lang="ts">
-	import { computed } from 'vue';
+	import { ref } from 'vue';
 	import User from '@/components/User.vue';
 	import Chat from '@/views/Chat.vue';
 	import type { User as UserType } from '@/types';
 	import AddFriend from '@/components/AddFriendButton.vue';
 	import UserCard from '@/components/UserCard.vue';
 	import { useFriendStore } from '@/stores/friends';
-	import { useRouter, useRoute } from 'vue-router';
-	import FriendsButton from '@/components/FriendsButton.vue';
 
 	const friendStore = useFriendStore();
+
 	const friends = friendStore.friends;
 
-	const router = useRouter();
-	const route = useRoute();
-
-	const selectedUserId = computed(() => route.params.userId);
+	const selectedUser = ref<UserType | undefined>(undefined);
 
 	function handleUserClick(user: UserType) {
-		router.push({ name: 'user', params: { userId: user.id } });
+		selectedUser.value = user;
 	}
 </script>
 
 <template>
 	<div class="container">
 		<aside>
-			<FriendsButton />
+			<AddFriend />
 
 			<div v-if="friends" class="user-list">
 				<template v-for="(user, index) in friends" :key="user.id">
-					<User :user="user" @click="handleUserClick(user)" :class="{ selected: selectedUserId === user.id }" />
+					<User :user="user" @click="handleUserClick(user)" :class="{ selected: selectedUser?.id === user.id }" />
 					<div v-if="index < friends.length - 1" class="user-separator"></div>
 				</template>
 			</div>
@@ -37,7 +33,7 @@
 			<UserCard />
 		</aside>
 		<main>
-			<router-view />
+			<Chat v-if="selectedUser" :key="selectedUser.id" :selectedUser="selectedUser" />
 		</main>
 	</div>
 </template>
