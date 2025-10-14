@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import { ref, watch } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import { searchFriends, addFriend } from '@/api/state';
+	import { searchUser, addFriend } from '@/api/event';
 	import type { User } from '@/types';
 	import { useUserStore } from '@/stores/user';
 
@@ -24,9 +24,7 @@
 		}
 
 		try {
-			const data = await searchFriends(searchQuery.value);
-			console.log(data);
-			console.log(userStore.user);
+			const data = await searchUser(searchQuery.value);
 			data.filter((user) => user.id == userStore.user?.id);
 			NoUsersFound.value = data.length == 0;
 			searchResults.value = data;

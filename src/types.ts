@@ -1,8 +1,14 @@
 export type Server = {
 	id: string;
-	icon: string | null;
+	icon?: string;
 	name: string;
-	members: User[];
+	members?: User[];
+	channels?: Channel[];
+};
+
+export type Channel = {
+	id: string;
+	name: string;
 };
 
 export enum State {
@@ -24,6 +30,7 @@ export enum MessageType {
 	Group = 'group',
 	Server = 'server',
 	Info = 'info',
+	InfoGroup = 'info_group',
 }
 
 export type MessageData = {
@@ -43,7 +50,7 @@ export type Message = {
 	sent?: boolean;
 };
 
-export type Messages = {
+export type MessageBlock = {
 	messages: Message[];
 	user: User;
 };
@@ -53,3 +60,21 @@ type File = {
 	name: string;
 	size: string;
 };
+
+import canonicalize from 'canonical-json';
+import { v5 as uuidv5 } from 'uuid';
+
+const NAMESPACE_MESSAGE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+export function computeId(message: Message): string {
+	const canonicalObj = {
+		from: message.from,
+		to: message.to,
+		data: message.data,
+		time: message.time.toISOString(),
+		type: message.type,
+	};
+
+	const jsonStr = canonicalize(canonicalObj);
+
+	return uuidv5(jsonStr, NAMESPACE_MESSAGE);
+}

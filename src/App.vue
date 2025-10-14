@@ -16,6 +16,7 @@
 		if (userStore.isLoggedIn) {
 			await initApp();
 		} else {
+			userStore.user = null;
 			router.push('/login');
 		}
 		loading.value = false;

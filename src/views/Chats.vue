@@ -5,12 +5,12 @@
 	import type { User as UserType } from '@/types';
 	import AddFriend from '@/components/AddFriendButton.vue';
 	import UserCard from '@/components/UserCard.vue';
-	import { useFriendStore } from '@/stores/friends';
+	import { useDMStore } from '@/stores/dm';
 	import { useRouter, useRoute } from 'vue-router';
 	import FriendsButton from '@/components/FriendsButton.vue';
 
-	const friendStore = useFriendStore();
-	const friends = friendStore.friends;
+	const dmStore = useDMStore();
+	const dms = dmStore.dms;
 
 	const router = useRouter();
 	const route = useRoute();
@@ -27,10 +27,10 @@
 		<aside>
 			<FriendsButton />
 
-			<div v-if="friends" class="user-list">
-				<template v-for="(user, index) in friends" :key="user.id">
+			<div v-if="dms" class="user-list">
+				<template v-for="(user, index) in dms" :key="user.id">
 					<User :user="user" @click="handleUserClick(user)" :class="{ selected: selectedUserId === user.id }" />
-					<div v-if="index < friends.length - 1" class="user-separator"></div>
+					<div v-if="index < dms.length - 1" class="user-separator"></div>
 				</template>
 			</div>
 

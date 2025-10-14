@@ -1,11 +1,12 @@
 import { ref, watch, type Ref, reactive } from 'vue';
-import type { Message, Messages, User, MessageData } from '@/types';
+import type { Message, MessageBlock, User, MessageData } from '@/types';
 import { MessageType } from '@/types';
 import { websocketService } from '@/services/websocket';
 import { messageService } from '@/services/message';
+import { toRaw } from 'vue';
 
 export function useMessages(selectedUser: User, currentUser: User) {
-	const messageBlocks = ref<Messages[]>([]) as Ref<Messages[]>;
+	const messageBlocks = ref<MessageBlock[]>([]) as Ref<MessageBlock[]>;
 	const pendingMessages: Message[] = [];
 	const typing = ref(false);
 
@@ -67,7 +68,7 @@ export function useMessages(selectedUser: User, currentUser: User) {
 					try {
 						websocketService.sendMessage(msg);
 						msg.sent = true;
-						messageService.storeMessage(msg);
+						messageService.storeMessage(toRaw(msg));
 					} catch (e) {
 						pendingMessages.unshift(msg);
 						break;
@@ -92,7 +93,7 @@ export function useMessages(selectedUser: User, currentUser: User) {
 		try {
 			websocketService.sendMessage(message);
 			message.sent = true;
-			messageService.storeMessage(message);
+			messageService.storeMessage(toRaw(message));
 		} catch (e) {
 			message.sent = false;
 			pendingMessages.push(message);

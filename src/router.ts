@@ -46,12 +46,12 @@ const router = createRouter({
 });
 
 import { useUserStore } from '@/stores/user';
-import { initialized } from '@/init';
 
 router.beforeEach((to) => {
-	if (!initialized) return;
-
 	const userStore = useUserStore();
+
+	if (userStore.user == undefined) return;
+
 	const isLoggedIn = userStore.isLoggedIn;
 
 	if (to.meta?.requiresAuth && !isLoggedIn) {
