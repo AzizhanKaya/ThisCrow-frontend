@@ -134,8 +134,16 @@ class WebSocketService {
 	}
 
 	onConnectionStateChange(callback: (state: string) => void) {
-		this.ws?.addEventListener('open', () => callback('OPEN'));
-		this.ws?.addEventListener('close', () => callback('CLOSED'));
+		const openListener = () => callback('OPEN');
+		const closeListener = () => callback('CLOSED');
+
+		this.ws?.addEventListener('open', openListener);
+		this.ws?.addEventListener('close', closeListener);
+
+		return () => {
+			this.ws?.removeEventListener('open', openListener);
+			this.ws?.removeEventListener('close', closeListener);
+		};
 	}
 
 	offConnectionStateChange(callback: (state: string) => void) {

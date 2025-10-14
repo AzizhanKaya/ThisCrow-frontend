@@ -3,15 +3,15 @@
 	import { Icon } from '@iconify/vue';
 	import MessageBlock from '@/components/MessageBlock.vue';
 	import type { User } from '@/types';
-	import { MessageType } from '@/types';
-	import { useMessages } from '@/composables/useMessages';
+	import { type Message, MessageType, computeId } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
 	import { useScroll } from '@/composables/useScroll';
 	import { webrtcService, type Channel } from '@/services/webrtc';
 	import { websocketService } from '@/services/websocket';
 	import { useUserStore } from '@/stores/user';
-	import { useRouter, useRoute } from 'vue-router';
+	import { useRoute } from 'vue-router';
 	import { useFriendStore } from '@/stores/friends';
+	import { messageService } from '@/services/message';
 
 	const friendStore = useFriendStore();
 	const friends = friendStore.friends;
@@ -26,7 +26,8 @@
 
 	const input = ref('');
 
-	const { messageBlocks, handleDirectMessage, handleInfoMessage, handleConnectionStateChange, sendMessage, loadMessages, loadOldMessages } = useMessages(user, user_state);
+	const messageBlocks = messageService.messageBlocks;
+
 	const { fileInput, selectedFiles, hasSelectedFiles, handleFileSelect: onFileSelect, removeFile, clearFiles } = useFiles();
 
 	const {
@@ -39,15 +40,7 @@
 	});
 
 	onMounted(() => {
-		loadMessages();
-		websocketService.onMessage(MessageType.Direct, handleDirectMessage);
-		websocketService.onMessage(MessageType.Info, handleInfoMessage);
-		websocketService.onConnectionStateChange(handleConnectionStateChange);
-	});
-
-	onUnmounted(() => {
-		websocketService.offMessage(MessageType.Direct, handleDirectMessage);
-		websocketService.offMessage(MessageType.Info, handleInfoMessage);
+		messageService.loadMessages(user);
 	});
 
 	async function onSend() {
@@ -66,7 +59,19 @@
 			}),
 		};
 
-		sendMessage(messageData);
+		let message: Message = {
+			from: user_state.id,
+			to: user.id,
+			data: messageData,
+			type: MessageType.Direct,
+			time: new Date(),
+			sent: false,
+		};
+
+		message.id = computeId(message);
+
+		messageService.sendMessage(message);
+
 		input.value = '';
 		clearFiles();
 	}

@@ -8,16 +8,14 @@ export const useFriendStore = defineStore('friends', {
 	}),
 	getters: {
 		hasFriends: (state) => !!state.friends,
+		getFriend: (state) => {
+			return (id: string) => state.friends.find((user) => user.id === id);
+		},
 	},
 	actions: {
-		setFriends(friends: User[]) {
-			this.friends = friends;
-		},
-
 		async initFriend() {
 			try {
-				const friends = await getFriendList();
-				this.setFriends(friends);
+				this.friends = await getFriendList();
 			} catch (e) {
 				console.error(e);
 			}

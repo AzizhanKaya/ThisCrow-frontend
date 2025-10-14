@@ -20,8 +20,7 @@
 		error.value = null;
 		isLoading.value = true;
 		try {
-			const user = await login(username.value, password.value);
-			userStore.setUser(user);
+			userStore.user = await login(username.value, password.value);
 			await initApp();
 			router.push('/');
 		} catch (err: any) {

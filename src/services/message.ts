@@ -1,31 +1,133 @@
-import { getMessages as fetchMessages } from '@/api/message';
-import type { Message } from '@/types';
-import { MessageType } from '@/types';
+import { fetchMessages } from '@/api/message';
+import type { Message, MessageBlock, User, Server } from '@/types';
+import { MessageType, type Channel } from '@/types';
+import { websocketService, type WebSocketService } from './websocket';
+import { ref, watch, type Ref, type Reactive, reactive } from 'vue';
+import { useServerStore } from '@/stores/servers';
+
+export enum ChatType {
+	User,
+	Channel,
+}
+
+export type Chat = {
+	chat: User | Channel;
+	type: ChatType;
+};
 
 class MessageService {
-	private db: IDBDatabase | null = null;
-	private dbName = 'ThisCrowMessages';
-	private storeName = 'messages';
-	private dbVersion = 1;
 	private static instance: MessageService;
+	private db!: IDBDatabase;
+	private storeName = 'messages';
+	private ws: WebSocketService;
+	private pendingMessages: Map<String, Message[]> = new Map();
+	public readonly messageBlocks: Reactive<MessageBlock[]> = reactive([]);
+	private active: Chat | null = null;
 
 	private constructor() {
-		this.initDB().catch(console.error);
+		this.ws = websocketService;
+		this.initHandlers();
 	}
 
-	public static getInstance(): MessageService {
+	private static async create(): Promise<MessageService> {
+		const service = new MessageService();
+		await service.initDB();
+		return service;
+	}
+
+	public static async getInstance(): Promise<MessageService> {
 		if (!MessageService.instance) {
-			MessageService.instance = new MessageService();
+			MessageService.instance = await this.create();
 		}
 		return MessageService.instance;
 	}
 
+	public sendMessage(message: Message) {
+		try {
+			websocketService.sendMessage(message);
+			message.sent = true;
+			this.storeMessage(message);
+		} catch (e) {
+			message.sent = false;
+			const pendingMessages = this.pendingMessages.get(message.to!);
+			pendingMessages?.push(message);
+		}
+
+		this.addMessageToBlocks(message);
+	}
+
+	public initHandlers() {
+		this.ws.onMessage(MessageType.Direct, this.handleDirectMessage);
+		this.ws.onMessage(MessageType.Group, this.handleGroupMessage);
+		this.ws.onMessage(MessageType.Info, this.handleInfoMessage);
+		this.ws.onMessage(MessageType.Server, this.handleServerMessage);
+	}
+
+	private async handleDirectMessage(message: Message) {
+		if (this.active?.chat.id == message.from) {
+			this.addMessageToBlocks(message);
+		}
+		this.storeMessage(message);
+	}
+
+	private async handleGroupMessage(message: Message) {}
+	private async handleInfoMessage(message: Message) {}
+	private async handleServerMessage(message: Message) {}
+
+	private addMessageToBlocks(newMessage: Message) {
+		const blocks = this.messageBlocks;
+
+		const insertMessage = (block: any, position: 'start' | 'end') => {
+			if (newMessage.from === block.user.id) {
+				position === 'end' ? block.messages.push(newMessage) : block.messages.unshift(newMessage);
+			} else {
+				const user = this.getUserFromId(newMessage.from);
+				const newBlock = { user, messages: [newMessage] };
+				position === 'end' ? blocks.push(newBlock) : blocks.unshift(newBlock);
+			}
+		};
+
+		if (!blocks.length) {
+			blocks.push({ messages: [newMessage], user: this.getUserFromId(newMessage.from) });
+			return;
+		}
+
+		const firstBlock = blocks.first!;
+		const lastBlock = blocks.last!;
+
+		const firstMessage = firstBlock.messages.first!;
+		const lastMessage = lastBlock.messages.last!;
+
+		if (newMessage.time < firstMessage.time) {
+			insertMessage(firstBlock, 'start');
+		} else if (newMessage.time > lastMessage.time) {
+			insertMessage(lastBlock, 'end');
+		}
+	}
+
+	private getUserFromId(id: string): User {
+		if (!this.active) throw new Error('No active chat');
+
+		if (this.active.type === ChatType.User) {
+			return this.active.chat as User;
+		}
+
+		if (this.active.type === ChatType.Channel) {
+			const server = this.active.chat as Server;
+			const serverStore = useServerStore();
+			const user = serverStore.members.get(server)?.find((u) => u.id === id);
+			if (!user) throw new Error(`User with id ${id} not found in server`);
+			return user;
+		}
+
+		throw new Error(`Unknown chat type: ${this.active.type}`);
+	}
+
 	private async initDB(): Promise<void> {
 		return new Promise((resolve, reject) => {
-			const request = indexedDB.open(this.dbName, this.dbVersion);
+			const request = indexedDB.open('ThisCrow', 1);
 
 			request.onerror = () => {
-				console.error('Failed to open IndexedDB');
 				reject(new Error('Failed to open IndexedDB'));
 			};
 
@@ -37,7 +139,7 @@ class MessageService {
 			request.onupgradeneeded = (event) => {
 				const db = (event.target as IDBOpenDBRequest).result;
 				if (!db.objectStoreNames.contains(this.storeName)) {
-					const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
+					const store = db.createObjectStore(this.storeName, { keyPath: 'hash' });
 					store.createIndex('from', 'from', { unique: false });
 					store.createIndex('to', 'to', { unique: false });
 					store.createIndex('type', 'type', { unique: false });
@@ -47,7 +149,7 @@ class MessageService {
 		});
 	}
 
-	public async storeMessage(message: Message): Promise<void> {
+	private async storeMessage(message: Message): Promise<void> {
 		if (!this.db) {
 			console.warn('IndexedDB not initialized');
 			return Promise.resolve();
@@ -67,16 +169,32 @@ class MessageService {
 		});
 	}
 
+	public async loadMessages(from: User | Server) {
+		try {
+			this.active = { chat: from, type: ChatType.User };
+			let messages = await this.getMessages(from.id);
+
+			messages = messages.sort((a, b) => a.time.getTime() - b.time.getTime());
+			this.messageBlocks.splice(0, this.messageBlocks.length);
+
+			for (const msg of messages) {
+				this.addMessageToBlocks(msg);
+			}
+		} catch (error) {
+			console.error('loadMessages failed:', error);
+		}
+	}
+
 	public async getMessages(from: string, type: MessageType = MessageType.Direct, limit: number = 20, before?: Date): Promise<Message[]> {
 		try {
-			const localMessages = await this.getMessagesFromIndexedDB(from, type, limit, before);
+			const localMessages = await this.getMessagesFromDB(from, type, limit, before);
 
 			const oldestLocalTime = localMessages.length > 0 ? new Date(Math.min(...localMessages.map((m) => m.time.getTime()))) : before || new Date();
 
 			try {
 				const serverMessages = await fetchMessages({
 					from,
-					len: limit,
+					len: undefined,
 					end: oldestLocalTime,
 				});
 
@@ -103,7 +221,7 @@ class MessageService {
 		}
 	}
 
-	private async getMessagesFromIndexedDB(from: string, type: MessageType = MessageType.Direct, limit: number, before?: Date): Promise<Message[]> {
+	private async getMessagesFromDB(from: string, type: MessageType = MessageType.Direct, limit: number, before?: Date): Promise<Message[]> {
 		if (!this.db) {
 			console.warn('IndexedDB not initialized');
 			return [];
@@ -150,15 +268,6 @@ class MessageService {
 	}
 }
 
-export const messageService: MessageService = new Proxy({} as MessageService, {
-	get(_target, prop, _receiver) {
-		const instance = MessageService.getInstance() as any;
-		const value = instance[prop as keyof MessageService];
-		if (typeof value === 'function') {
-			return value.bind(instance);
-		}
-		return value;
-	},
-});
+export const messageService: MessageService = await MessageService.getInstance();
 
 export type { MessageService };

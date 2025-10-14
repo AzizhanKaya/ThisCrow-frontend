@@ -1,12 +1,12 @@
 <script lang="ts">
 	import type { PropType } from 'vue';
-	import type { Messages } from '@/types';
+	import type { MessageBlock } from '@/types';
 	import { Icon } from '@iconify/vue';
 
 	export default {
 		props: {
 			block: {
-				type: Object as PropType<Messages>,
+				type: Object as PropType<MessageBlock>,
 				required: true,
 			},
 		},
@@ -36,7 +36,7 @@
 						<span class="file-size">{{ file.size }}</span>
 					</div>
 				</div>
-				<span v-if="message.data.text" class="text" :class="{ 'not-sent': message.notSent }">{{ message.data.text }}</span>
+				<span v-if="message.data.text" class="text" :class="{ 'not-sent': !message.sent }">{{ message.data.text }}</span>
 				<span class="time">{{ message.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
 			</div>
 		</div>
