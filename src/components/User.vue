@@ -37,8 +37,9 @@
 <style scoped>
 	.user {
 		height: 50px;
-		border-radius: 25px;
+		border-radius: 10px;
 		position: relative;
+		height: 50px;
 	}
 
 	.user:hover {
@@ -50,6 +51,8 @@
 		aspect-ratio: 1;
 		height: 100%;
 		border-radius: 50%;
+		padding: 5px;
+		margin-left: 5px;
 	}
 
 	.name {
@@ -57,7 +60,7 @@
 		font-size: 1.1em;
 		color: #dbdbdb;
 		position: absolute;
-		top: 10px;
+		top: 8px;
 		left: 60px;
 	}
 
@@ -65,24 +68,24 @@
 		font-size: 0.9em;
 		color: #bebebe;
 		position: absolute;
-		top: 30px;
-		left: 58px;
+		top: 28px;
+		left: 60px;
 	}
 
 	.state {
-		height: 16px;
+		height: 12px;
 		aspect-ratio: 1;
 		border-radius: 50%;
 		position: absolute;
 		z-index: 10;
 		border: 2px #333 solid;
-		left: 37px;
-		bottom: 1px;
+		left: 40px;
+		bottom: 5px;
 		flex-shrink: 0;
 	}
 
 	.online {
-		background-color: rgba(4, 206, 4, 0.8);
+		background-color: #43b581;
 	}
 	.dnd {
 		background-color: red;

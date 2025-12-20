@@ -2,8 +2,6 @@ export type Server = {
 	id: string;
 	icon?: string;
 	name: string;
-	members?: User[];
-	channels?: Channel[];
 };
 
 export type Channel = {
@@ -16,13 +14,13 @@ export enum State {
 	Offline = 'Offline',
 	Dnd = 'Dnd',
 }
+
 export type User = {
 	id: string;
 	name: string;
 	username: string;
 	avatar?: string;
 	state: State;
-	is_friend?: boolean;
 };
 
 export enum MessageType {
@@ -43,7 +41,7 @@ export type MessageData = {
 export type Message = {
 	id?: string;
 	from: string;
-	to?: string;
+	to: string;
 	data: any;
 	time: Date;
 	type: MessageType;

@@ -63,7 +63,7 @@
 	}
 
 	.buttons a:hover:not(.router-link-exact-active) {
-		background: #202020;
+		background: var(--bg-dark);
 	}
 
 	.fade-enter-active,

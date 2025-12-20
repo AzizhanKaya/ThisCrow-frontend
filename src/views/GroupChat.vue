@@ -47,7 +47,7 @@
 	}
 
 	aside {
-		background-color: #202225;
+		background-color: var(--bg-dark);
 		border: 1px solid #303030;
 		border-top-left-radius: 20px;
 		position: relative;
@@ -68,7 +68,7 @@
 	}
 
 	main {
-		background-color: #36393f;
+		background-color: var(--bg);
 		position: relative;
 		height: 100%;
 	}

@@ -4,18 +4,17 @@ import { getServerList, getServerMembers } from '@/api/state';
 
 export const useServerStore = defineStore('servers', {
 	state: () => ({
-		servers: [] as Server[],
-		members: {} as Map<string, User[]>,
+		servers: new Map<string, Server>(),
 		selectedServerId: '' as string,
 	}),
 	getters: {
-		getServerById: (state) => (id: string) => state.servers.find((s) => s.id === id),
-		getMembersByServerId: (state) => (id: string) => state.members.get(id),
+		getServerById: (state) => (id: string) => state.servers.get(id),
 	},
 	actions: {
 		async initServers() {
 			try {
-				this.servers = await getServerList();
+				const serverList = await getServerList();
+				this.servers = new Map(serverList.map((server) => [server.id, server]));
 			} catch (e) {
 				console.error('Failed to load servers:', e);
 			}
@@ -24,7 +23,12 @@ export const useServerStore = defineStore('servers', {
 		async setMembers(server: Server) {
 			try {
 				const members = await getServerMembers(server);
-				this.members = { ...this.members, [server.id]: members };
+				const srv = this.servers.get(server.id);
+				if (srv) {
+					srv.members = members;
+				} else {
+					console.warn(`Server ${server.id} not found`);
+				}
 			} catch (e) {
 				console.error(`Failed to load members for server ${server.id}:`, e);
 			}
@@ -35,11 +39,11 @@ export const useServerStore = defineStore('servers', {
 		},
 
 		getSelectedServer(): Server | undefined {
-			return this.servers.find((s) => s.id === this.selectedServerId);
+			return this.servers.get(this.selectedServerId);
 		},
 
-		getSelectedMembers(): User[] {
-			return this.members[this.selectedServerId] || [];
+		getMembers(id: string): User[] {
+			return this.servers.get(id)?.members || [];
 		},
 	},
 });

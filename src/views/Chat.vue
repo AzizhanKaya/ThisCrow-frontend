@@ -1,47 +1,38 @@
 <script setup lang="ts">
-	import { ref, onMounted, onUnmounted, computed } from 'vue';
+	import { ref, onMounted, reactive, type Reactive, watch, computed } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import MessageBlock from '@/components/MessageBlock.vue';
-	import type { User } from '@/types';
-	import { type Message, MessageType, computeId } from '@/types';
+	import type { User, MessageBlock as MessageBlockType } from '@/types';
+	import { type Message as MessageType, MessageType as MessageEnum, computeId } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
-	import { useScroll } from '@/composables/useScroll';
 	import { webrtcService, type Channel } from '@/services/webrtc';
-	import { websocketService } from '@/services/websocket';
 	import { useUserStore } from '@/stores/user';
 	import { useRoute } from 'vue-router';
-	import { useFriendStore } from '@/stores/friends';
-	import { messageService } from '@/services/message';
+	import { useDMStore } from '@/stores/dm';
+	import { useMessageStore } from '@/stores/message';
+	import { getUser as getUserApi } from '@/api/state';
+	import Message from '@/components/Message.vue';
 
-	const friendStore = useFriendStore();
-	const friends = friendStore.friends;
-
+	const dmStore = useDMStore();
+	const messageStore = useMessageStore();
 	const route = useRoute();
 	const userStore = useUserStore();
 
-	let user_state = userStore.user!;
+	const to = computed(() => route.params.userId as string);
+	const user = computed<User>(() => dmStore.getUser(to.value)!);
+	const getUser = (id: string) => (id === user.value.id ? user.value : userStore.user)!;
 
-	const userId = route.params.userId as string | undefined;
-	const user = friends.find((u) => u.id === userId)!;
+	const messageBlocks = reactive([]) as Reactive<MessageBlockType[]>;
+
+	watch(
+		() => route.params.userId,
+		() => {
+			messageBlocks.length = 0;
+		}
+	);
 
 	const input = ref('');
 
-	const messageBlocks = messageService.messageBlocks;
-
 	const { fileInput, selectedFiles, hasSelectedFiles, handleFileSelect: onFileSelect, removeFile, clearFiles } = useFiles();
-
-	const {
-		scrollRef,
-		isLoading: loadingOldMessages,
-		updateScrollPadding,
-		handleScroll,
-	} = useScroll(async () => {
-		await loadOldMessages();
-	});
-
-	onMounted(() => {
-		messageService.loadMessages(user);
-	});
 
 	async function onSend() {
 		if (input.value.trim() === '' && !hasSelectedFiles.value) return;
@@ -59,18 +50,17 @@
 			}),
 		};
 
-		let message: Message = {
-			from: user_state.id,
-			to: user.id,
+		let message: MessageType = {
+			from: userStore.user!.id,
+			to: user.value.id,
 			data: messageData,
-			type: MessageType.Direct,
+			type: MessageEnum.Direct,
 			time: new Date(),
-			sent: false,
 		};
 
 		message.id = computeId(message);
 
-		messageService.sendMessage(message);
+		messageStore.sendMessage(message);
 
 		input.value = '';
 		clearFiles();
@@ -81,14 +71,14 @@
 	}
 
 	function onCall() {
-		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + user_state.name };
+		let channel: Channel = { id: user.value.id, users: [user.value.id], name: user.value.name + '-' + userStore.user!.name };
 		webrtcService.joinChannel(channel, 'audio').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
 	}
 
 	function onVideo() {
-		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + user_state.name };
+		let channel: Channel = { id: user.value.id, users: [user.value.id], name: user.value.name + '-' + userStore.user!.name };
 		webrtcService.joinChannel(channel, 'both').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
@@ -96,7 +86,7 @@
 </script>
 
 <template>
-	<template v-if="user">
+	<div class="chat-view" v-if="user">
 		<header>
 			<img :src="user.avatar || '/default-user-icon.png'" alt="" />
 			<div class="container">
@@ -112,8 +102,13 @@
 				</div>
 			</div>
 		</header>
-		<main ref="scrollRef" @scroll="handleScroll">
-			<MessageBlock v-if="messageBlocks.length > 0" v-for="(block, index) in messageBlocks" :key="index" :block="block" />
+		<main>
+			<Message
+				v-for="(message, index) in messageStore.messages[to]"
+				:key="message.id"
+				:message="message"
+				:user="index === 0 || messageStore.messages[to][index - 1].from !== message.from ? getUser(message.from) : undefined"
+			/>
 		</main>
 		<div class="input-area">
 			<div class="input-container">
@@ -144,26 +139,40 @@
 						<Icon icon="mdi:plus" width="24" height="24" />
 					</button>
 					<input type="text" v-model="input" placeholder="Type a message..." @keydown.enter="onSend" />
-					<button class="icon-btn send" :class="{ active: input.length > 0 || hasSelectedFiles }" @click="onSend" :disabled="!input.length && !hasSelectedFiles">
+					<button
+						class="icon-btn send"
+						:class="{ active: input.length > 0 || hasSelectedFiles }"
+						@click="onSend"
+						:disabled="!input.length && !hasSelectedFiles"
+					>
 						<Icon icon="mdi:send" width="24" height="24" />
 					</button>
 				</div>
 			</div>
 		</div>
-	</template>
+	</div>
 </template>
 
 <style scoped>
+	.chat-view {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+	}
+
 	main {
 		height: calc(98vh - 60px);
 		overflow-y: auto;
 		overflow-x: hidden;
-		padding-bottom: 80px;
+		padding-bottom: 95px;
 		margin-top: 55px;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
 	}
 
 	header {
-		background-color: #202225;
+		background-color: var(--bg-dark);
 		height: 55px;
 		width: 100%;
 		position: absolute;
@@ -211,7 +220,7 @@
 		padding-right: 20px;
 	}
 	header .call-btn {
-		color: #fff;
+		color: var(--text);
 		cursor: pointer;
 		display: flex;
 		align-items: center;
@@ -223,7 +232,7 @@
 	}
 
 	header .video-btn {
-		color: #fff;
+		color: var(--text);
 		cursor: pointer;
 		display: flex;
 		align-items: center;
@@ -336,11 +345,11 @@
 	}
 
 	.icon-btn:hover {
-		color: #fff;
+		color: var(--text);
 	}
 
 	.icon-btn.send.active {
-		color: #fff;
+		color: var(--text);
 		cursor: pointer;
 	}
 
