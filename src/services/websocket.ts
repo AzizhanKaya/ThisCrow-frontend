@@ -24,28 +24,6 @@ class WebSocketService {
 		return WebSocketService.instance;
 	}
 
-	private initializeMessageHandlers() {
-		Object.values(MessageType).forEach((type) => {
-			this.messageHandlers.set(type as MessageType, new Set());
-		});
-	}
-
-	private handleIncomingMessage(event: MessageEvent) {
-		try {
-			const message = JSON.parse(event.data) as Message;
-			message.time = new Date(message.time);
-
-			const handlers = this.messageHandlers.get(message.type);
-			if (handlers && handlers.size > 0) {
-				handlers.forEach((handler) => handler(message));
-			} else {
-				console.warn(`No handlers registered for message type: ${message.type}`);
-			}
-		} catch (error) {
-			console.error('Error handling message:', error);
-		}
-	}
-
 	connect() {
 		if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
 			this.ws = new WebSocket(this.url);
@@ -69,6 +47,28 @@ class WebSocketService {
 					console.error('Max reconnection attempts reached');
 				}
 			};
+		}
+	}
+
+	private initializeMessageHandlers() {
+		Object.values(MessageType).forEach((type) => {
+			this.messageHandlers.set(type as MessageType, new Set());
+		});
+	}
+
+	private handleIncomingMessage(event: MessageEvent) {
+		try {
+			const message = JSON.parse(event.data) as Message;
+			message.time = new Date(message.time);
+
+			const handlers = this.messageHandlers.get(message.type);
+			if (handlers && handlers.size > 0) {
+				handlers.forEach((handler) => handler(message));
+			} else {
+				console.warn(`No handlers registered for message type: ${message.type}`);
+			}
+		} catch (error) {
+			console.error('Error handling message:', error);
 		}
 	}
 
@@ -134,21 +134,19 @@ class WebSocketService {
 	}
 
 	onConnectionStateChange(callback: (state: string) => void) {
+		const ws = this.ws;
+		if (!ws) return () => {};
+
 		const openListener = () => callback('OPEN');
 		const closeListener = () => callback('CLOSED');
 
-		this.ws?.addEventListener('open', openListener);
-		this.ws?.addEventListener('close', closeListener);
+		ws.addEventListener('open', openListener);
+		ws.addEventListener('close', closeListener);
 
 		return () => {
-			this.ws?.removeEventListener('open', openListener);
-			this.ws?.removeEventListener('close', closeListener);
+			ws.removeEventListener('open', openListener);
+			ws.removeEventListener('close', closeListener);
 		};
-	}
-
-	offConnectionStateChange(callback: (state: string) => void) {
-		this.ws?.removeEventListener('open', () => callback('OPEN'));
-		this.ws?.removeEventListener('close', () => callback('CLOSED'));
 	}
 }
 

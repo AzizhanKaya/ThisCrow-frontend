@@ -1,10 +1,23 @@
 import type { Message, User } from '@/types';
 import { API_URL } from '@/constants';
 
-export async function fetchMessages({ from, len, end, order = 'inc' }: { from: string; len?: number; end?: Date; order?: string }): Promise<Message[]> {
+export async function fetchMessages({
+	from,
+	len,
+	end,
+	order = 'inc',
+	type = 'direct',
+}: {
+	from: string;
+	len?: number;
+	end?: Date;
+	order?: string;
+	type: string;
+}): Promise<Message[]> {
 	try {
 		const params = new URLSearchParams();
-		params.append('user_id', from);
+		params.append('id', from);
+		params.append('type', type);
 		params.append('order', order);
 
 		if (len) {

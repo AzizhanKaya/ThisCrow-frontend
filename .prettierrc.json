@@ -3,7 +3,7 @@
 	"tabWidth": 1,
 	"semi": true,
 	"singleQuote": true,
-	"printWidth": 1000,
+	"printWidth": 150,
 	"trailingComma": "es5",
 	"bracketSpacing": true,
 	"vueIndentScriptAndStyle": true

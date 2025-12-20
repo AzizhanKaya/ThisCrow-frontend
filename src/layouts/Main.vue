@@ -4,7 +4,7 @@
 
 <template>
 	<div class="main-layout">
-		<header class="header">This Crow</header>
+		<header class="header">ThisCrow</header>
 		<div class="main">
 			<aside class="server-side">
 				<ServerList />

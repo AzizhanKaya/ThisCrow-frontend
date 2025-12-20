@@ -50,7 +50,7 @@
 
 	.separator {
 		height: 1px;
-		background-color: #303030;
-		margin: 10px 0px;
+		background-color: var(--border);
+		margin: 7px 0px;
 	}
 </style>

@@ -11,6 +11,9 @@ export const useFriendStore = defineStore('friends', {
 		getFriend: (state) => {
 			return (id: string) => state.friends.find((user) => user.id === id);
 		},
+		isFriend: (state) => {
+			return (id: string) => state.friends.some((user) => user.id === id);
+		},
 	},
 	actions: {
 		async initFriend() {

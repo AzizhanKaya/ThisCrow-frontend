@@ -4,8 +4,10 @@
 	import { searchUser, addFriend } from '@/api/event';
 	import type { User } from '@/types';
 	import { useUserStore } from '@/stores/user';
+	import { useFriendStore } from '@/stores/friends';
 
 	const userStore = useUserStore();
+	const friendStore = useFriendStore();
 	const props = defineProps<{
 		isModalOpen: boolean;
 	}>();
@@ -50,7 +52,6 @@
 	const sendFriendRequest = async (userId: string) => {
 		try {
 			await addFriend(userId);
-			console.info('Friend request sent to:', userId);
 			searchResults.value = searchResults.value!.map((result) => (result.id === userId ? { ...result, is_friend: true } : result));
 		} catch (err) {
 			console.error('Failed to send friend request:', err);
@@ -63,7 +64,7 @@
 </script>
 
 <template>
-	<div class="user-modal" @click.stop>
+	<div v-if="props.isModalOpen" class="user-modal" @click.stop>
 		<header class="modal-header">
 			<h2>Add Friend</h2>
 			<Icon icon="mdi:close" class="close-icon" @click="closeModal" />
@@ -88,7 +89,7 @@
 <style scoped>
 	.user-modal {
 		position: absolute;
-		background-color: #202225;
+		background-color: var(--bg-dark);
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 		border-radius: 8px;
 		width: 30%;
@@ -163,6 +164,6 @@
 	}
 
 	.add-icon:hover {
-		color: #fff;
+		color: var(--text);
 	}
 </style>

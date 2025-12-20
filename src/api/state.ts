@@ -44,34 +44,7 @@ export async function getFriendList(): Promise<User[]> {
 		throw new Error(`error getFriendList: ${await res.text()}`);
 	}
 
-	let friends = await res.json();
-
-	friends = [
-		{
-			id: '1',
-			username: 'Arda',
-			avatar: 'https://i.pravatar.cc/150?img=1',
-			state: 'Online',
-		},
-		{
-			id: '2',
-			username: 'Ece',
-			avatar: 'https://i.pravatar.cc/150?img=5',
-			state: 'Offline',
-		},
-		{
-			id: '3',
-			username: 'Can',
-			avatar: 'https://i.pravatar.cc/150?img=8',
-			state: 'Dnd',
-		},
-		{
-			id: '4',
-			username: 'Mina',
-			avatar: 'https://i.pravatar.cc/150?img=12',
-			state: 'Dnd',
-		},
-	] as User[];
+	const friends = await res.json();
 
 	return friends as User[];
 }
@@ -84,4 +57,33 @@ export async function me() {
 
 	const data: User = await response.json();
 	return data;
+}
+
+export async function getDms(): Promise<User[]> {
+	try {
+		const url = API_URL + `/state/dms`;
+
+		const response = await fetch(url, { credentials: 'include' });
+		if (!response.ok) {
+			throw new Error(await response.text());
+		}
+		const data = await response.json();
+		return data as User[];
+	} catch (error) {
+		console.error('Failed to get dms:', error);
+		return [];
+	}
+}
+
+export async function getUser(id: string): Promise<User> {
+	const params = new URLSearchParams();
+	params.append('id', id);
+	const url = API_URL + `/state/user?${params.toString()}`;
+
+	const response = await fetch(url, { credentials: 'include' });
+	if (!response.ok) {
+		throw new Error(await response.text());
+	}
+	const data = await response.json();
+	return data as User;
 }
