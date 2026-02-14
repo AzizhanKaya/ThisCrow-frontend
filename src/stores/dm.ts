@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
-import type { User } from '@/types';
+import type { User, id } from '@/types';
 import { getDms } from '@/api/message';
-import { getUser as getUserApi } from '@/api/state';
+import { fetchUser } from '@/api/state';
+import { useUsersStore } from './users.ts';
 
 export const useDMStore = defineStore('dm', {
 	state: () => ({
@@ -9,26 +10,28 @@ export const useDMStore = defineStore('dm', {
 	}),
 	getters: {},
 	actions: {
-		async initDms() {
-			try {
-				this.dms = await getDms();
-			} catch (e) {
-				console.error(e);
-			}
+		async init(dms: id[]) {
+			const usersStore = useUsersStore();
+			const users = await usersStore.getUsers(dms);
+			this.dms = users;
 		},
 
-		isInDms(user_id: string): boolean {
-			return this.dms.some((user) => user.id === user_id);
+		isInDms(id: id): boolean {
+			return this.dms.some((u) => u.id === id);
 		},
 
-		getUser(id: string) {
+		getUser(id: id) {
 			return this.dms.find((u) => u.id === id);
 		},
 
-		async ensureUser(id: string) {
-			if (this.getUser(id)) return;
-			const user = await getUserApi(id);
+		async ensureUser(id: id) {
+			if (this.isInDms(id)) return;
+			const user = await fetchUser(id);
 			this.dms.unshift(user);
+		},
+
+		async getOrFetchUser(id: id): Promise<User> {
+			return this.getUser(id) || (await fetchUser(id));
 		},
 	},
 });

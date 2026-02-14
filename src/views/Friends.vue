@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { useFriendStore } from '@/stores/friends';
+	import { useFriendStore } from '@/stores/friend';
 	import { State, type User } from '@/types';
 	import { useRouter } from 'vue-router';
 	import { Icon } from '@iconify/vue';
@@ -9,7 +9,8 @@
 	const router = useRouter();
 	const friendStore = useFriendStore();
 
-	const activeTab = ref('all');
+	type FriendTab = 'all' | 'online' | 'pending';
+	const activeTab = ref<FriendTab>('all');
 	const searchQuery = ref('');
 	const isModalOpen = ref(false);
 
@@ -18,7 +19,13 @@
 	});
 
 	const filteredFriends: ComputedRef<User[]> = computed(() => {
-		let friends = activeTab.value === 'online' ? onlineFriends.value : friendStore.friends;
+		let friends: User[] = [];
+		if (activeTab.value === 'online') {
+			friends = onlineFriends.value;
+		} else {
+			friends = friendStore.friends;
+		}
+
 		if (searchQuery.value) {
 			friends = friends.filter((friend) => friend.username.toLowerCase().includes(searchQuery.value.toLowerCase()));
 		}
@@ -31,6 +38,14 @@
 
 	function handleAddFriend() {
 		isModalOpen.value = true;
+	}
+
+	function handleAccept(friend: User) {
+		friendStore.acceptFriendRequest(friend);
+	}
+
+	function handleReject(friend: User) {
+		friendStore.removeFriend(friend);
 	}
 
 	function isOnline(friend: User) {
@@ -65,13 +80,14 @@
 				<button :class="['tab', { active: activeTab === 'pending' }]" @click="activeTab = 'pending'">
 					<Icon icon="mdi:account-plus" />
 					Pending
+					<span v-if="friendStore.incoming_requests.length > 0" class="badge">{{ friendStore.incoming_requests.length }}</span>
 				</button>
 			</div>
 
 			<!-- Search Bar -->
 			<div class="search-container">
 				<Icon icon="mdi:magnify" class="search-icon" />
-				<input v-model="searchQuery" type="text" placeholder="Ara" class="search-input" />
+				<input v-model="searchQuery" type="text" placeholder="Search" class="search-input" />
 			</div>
 
 			<button class="add-friend-btn" @click="handleAddFriend">
@@ -80,43 +96,96 @@
 			</button>
 		</div>
 
-		<div v-if="!friendStore.friends.length" class="no-friends">No friends yet.</div>
-
-		<div v-else class="content">
-			<!-- Online Counter -->
-			<div class="section-header">Online — {{ activeTab === 'online' ? onlineFriends.length : filteredFriends.filter((f) => isOnline(f)).length }}</div>
-
-			<!-- Friend List -->
-			<div class="friend-list">
-				<div v-for="friend in filteredFriends" :key="friend.id" class="friend-card">
-					<div class="friend-info">
-						<div class="avatar-container">
-							<img
-								:src="friend.avatar || '/default-user-icon.png'"
-								alt="avatar"
-								class="avatar"
-								@load="($event.target as HTMLImageElement).classList.add('loaded')"
-							/>
-							<div :class="['state', getState(friend)]"></div>
-						</div>
-						<div class="friend-text">
-							<span class="username">{{ friend.username }}</span>
-							<div class="status-container">
-								<span v-if="friend.state" class="status">{{ friend.state }}</span>
+		<div v-if="activeTab === 'pending'" class="content">
+			<template v-if="friendStore.incoming_requests.length === 0 && friendStore.outgoing_requests.length === 0">
+				<div class="no-friends">No pending requests.</div>
+			</template>
+			<template v-else>
+				<!-- Incoming Requests -->
+				<div v-if="friendStore.incoming_requests.length > 0">
+					<div class="section-header">Incoming — {{ friendStore.incoming_requests.length }}</div>
+					<div class="friend-list">
+						<div v-for="friend in friendStore.incoming_requests" :key="friend.id.toString()" class="friend-card">
+							<div class="friend-info">
+								<div class="avatar-container">
+									<img :src="friend.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
+								</div>
+								<div class="friend-text">
+									<span class="username">{{ friend.username }}</span>
+									<span class="status">Incoming Friend Request</span>
+								</div>
+							</div>
+							<div class="action-buttons">
+								<button class="icon-btn success" @click="handleAccept(friend)" title="Accept">
+									<Icon icon="mdi:check" />
+								</button>
+								<button class="icon-btn danger" @click="handleReject(friend)" title="Reject">
+									<Icon icon="mdi:close" />
+								</button>
 							</div>
 						</div>
 					</div>
-					<div class="action-buttons">
-						<button class="icon-btn" @click="handleMessage(friend)" title="Send message">
-							<Icon icon="mdi:message" />
-						</button>
-						<button class="icon-btn" title="More">
-							<Icon icon="mdi:dots-vertical" />
-						</button>
+				</div>
+
+				<!-- Outgoing Requests -->
+				<div v-if="friendStore.outgoing_requests.length > 0" :style="{ marginTop: '24px' }">
+					<div class="section-header">Outgoing — {{ friendStore.outgoing_requests.length }}</div>
+					<div class="friend-list">
+						<div v-for="friend in friendStore.outgoing_requests" :key="friend.id.toString()" class="friend-card">
+							<div class="friend-info">
+								<div class="avatar-container">
+									<img :src="friend.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
+								</div>
+								<div class="friend-text">
+									<span class="name">{{ friend.name }}</span>
+									<span class="username">@{{ friend.username }}</span>
+								</div>
+							</div>
+							<div class="action-buttons">
+								<button class="icon-btn danger" @click="handleReject(friend)" title="Cancel Request">
+									<Icon icon="mdi:close" />
+								</button>
+							</div>
+						</div>
 					</div>
 				</div>
-			</div>
+			</template>
 		</div>
+
+		<div v-else class="content">
+			<div v-if="filteredFriends.length === 0" class="no-friends">
+				<span v-if="activeTab === 'online'">No friends online.</span>
+				<span v-else>No friends found.</span>
+			</div>
+			<template v-else>
+				<div class="section-header">{{ activeTab === 'online' ? 'Online' : 'All Friends' }} — {{ filteredFriends.length }}</div>
+				<div class="friend-list">
+					<div v-for="friend in filteredFriends" :key="friend.id.toString()" class="friend-card">
+						<div class="friend-info">
+							<div class="avatar-container">
+								<img :src="friend.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
+								<div :class="['state', getState(friend)]"></div>
+							</div>
+							<div class="friend-text">
+								<span class="username">{{ friend.username }}</span>
+								<div class="status-container">
+									<span v-if="friend.state" class="status">{{ friend.state }}</span>
+								</div>
+							</div>
+						</div>
+						<div class="action-buttons">
+							<button class="icon-btn" @click="handleMessage(friend)" title="Send message">
+								<Icon icon="mdi:message" />
+							</button>
+							<button class="icon-btn" title="More">
+								<Icon icon="mdi:dots-vertical" />
+							</button>
+						</div>
+					</div>
+				</div>
+			</template>
+		</div>
+
 		<AddFriend :isModalOpen="isModalOpen" @update:isModalOpen="isModalOpen = $event" />
 	</div>
 </template>
@@ -317,10 +386,15 @@
 		gap: 2px;
 	}
 
+	.name {
+		font-weight: 500;
+		font-size: 1rem;
+		color: var(--text);
+	}
 	.username {
 		font-weight: 500;
-		font-size: 16px;
-		color: #dcddde;
+		font-size: 0.8rem;
+		color: var(--text-muted);
 	}
 
 	.status-container {
@@ -363,5 +437,25 @@
 	.icon-btn:hover {
 		background-color: #3a3d44;
 		color: #dcddde;
+	}
+
+	.icon-btn.success:hover {
+		background-color: var(--success);
+		color: white;
+	}
+
+	.icon-btn.danger:hover {
+		background-color: var(--error);
+		color: white;
+	}
+
+	.badge {
+		background-color: var(--error);
+		color: white;
+		font-size: 11px;
+		padding: 2px 6px;
+		border-radius: 10px;
+		margin-left: 4px;
+		font-weight: 700;
 	}
 </style>

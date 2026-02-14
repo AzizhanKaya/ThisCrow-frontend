@@ -1,17 +1,17 @@
 import { defineStore } from 'pinia';
-import type { Server, User } from '@/types';
+import type { Server, User, id } from '@/types';
 import { getServerList, getServerMembers } from '@/api/state';
 
 export const useServerStore = defineStore('servers', {
 	state: () => ({
-		servers: new Map<string, Server>(),
-		selectedServerId: '' as string,
+		servers: new Map<id, Server>(),
+		selectedServerId: undefined as id | undefined,
 	}),
 	getters: {
-		getServerById: (state) => (id: string) => state.servers.get(id),
+		getServerById: (state) => (id: id) => state.servers.get(id),
 	},
 	actions: {
-		async initServers() {
+		async init() {
 			try {
 				const serverList = await getServerList();
 				this.servers = new Map(serverList.map((server) => [server.id, server]));
@@ -34,15 +34,16 @@ export const useServerStore = defineStore('servers', {
 			}
 		},
 
-		selectServer(id: string) {
+		selectServer(id: id) {
 			this.selectedServerId = id;
 		},
 
 		getSelectedServer(): Server | undefined {
+			if (this.selectedServerId === undefined) return undefined;
 			return this.servers.get(this.selectedServerId);
 		},
 
-		getMembers(id: string): User[] {
+		getMembers(id: id): User[] {
 			return this.servers.get(id)?.members || [];
 		},
 	},

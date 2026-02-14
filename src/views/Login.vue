@@ -24,6 +24,7 @@
 			await initApp();
 			router.push('/');
 		} catch (err: any) {
+			console.error(err);
 			error.value = err?.message || 'An error occurred';
 		} finally {
 			isLoading.value = false;

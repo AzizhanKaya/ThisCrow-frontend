@@ -5,7 +5,7 @@
 	import type { User as UserType } from '@/types';
 	import AddFriend from '@/components/AddFriendButton.vue';
 	import UserCard from '@/components/UserCard.vue';
-	import { useFriendStore } from '@/stores/friends';
+	import { useFriendStore } from '@/stores/friend';
 
 	const friendStore = useFriendStore();
 
@@ -24,7 +24,7 @@
 			<AddFriend />
 
 			<div v-if="friends" class="user-list">
-				<template v-for="(user, index) in friends" :key="user.id">
+				<template v-for="(user, index) in friends" :key="user.id.toString()">
 					<User :user="user" @click="handleUserClick(user)" :class="{ selected: selectedUser?.id === user.id }" />
 					<div v-if="index < friends.length - 1" class="user-separator"></div>
 				</template>
@@ -33,7 +33,7 @@
 			<UserCard />
 		</aside>
 		<main>
-			<Chat v-if="selectedUser" :key="selectedUser.id" :selectedUser="selectedUser" />
+			<Chat v-if="selectedUser" :key="selectedUser.id.toString()" :selectedUser="selectedUser" />
 		</main>
 	</div>
 </template>

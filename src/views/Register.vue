@@ -24,6 +24,7 @@
 			}
 			await register(username.value, name.value, email.value, password.value);
 		} catch (err: any) {
+			console.error(err);
 			error.value = err?.message || 'An error occurred';
 		} finally {
 			isLoading.value = false;
