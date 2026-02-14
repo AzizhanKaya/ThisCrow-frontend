@@ -1,7 +1,7 @@
 import { websocketService } from './websocket';
 import { MessageType } from '@/types';
 import { useUserStore } from '@/stores/user';
-import type { User } from '@/types';
+import type { User, id } from '@/types';
 
 type PeerConnectionState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed';
 type MediaType = 'audio' | 'video' | 'both' | 'none';
@@ -9,18 +9,18 @@ type MediaType = 'audio' | 'video' | 'both' | 'none';
 interface PeerConnection {
 	connection: RTCPeerConnection;
 	stream?: MediaStream;
-	userId: string;
+	userId: id;
 }
 
 export interface Channel {
-	id: string;
+	id: id;
 	name: string;
-	users: string[];
+	users: id[];
 }
 
 class WebRTCService {
 	private static instance: WebRTCService;
-	private peerConnections: Map<string, PeerConnection> = new Map();
+	private peerConnections: Map<id, PeerConnection> = new Map();
 	private localStream?: MediaStream;
 	private readonly user: User;
 	private readonly configuration: RTCConfiguration = {
@@ -42,22 +42,23 @@ class WebRTCService {
 	private setupWebSocketHandlers() {
 		websocketService.onMessage(MessageType.Info, async (message) => {
 			if (message.data.type === 'webrtc') {
+				const fromId = message.from as unknown as id;
 				switch (message.data.action) {
 					case 'offer':
-						await this.handleOffer(message.from, message.data.offer);
+						await this.handleOffer(fromId, message.data.offer);
 						break;
 					case 'answer':
-						await this.handleAnswer(message.from, message.data.answer);
+						await this.handleAnswer(fromId, message.data.answer);
 						break;
 					case 'ice-candidate':
-						await this.handleIceCandidate(message.from, message.data.candidate);
+						await this.handleIceCandidate(fromId, message.data.candidate);
 						break;
 				}
 			}
 		});
 	}
 
-	createPeerConnection(userId: string) {
+	createPeerConnection(userId: id) {
 		if (this.peerConnections.has(userId)) {
 			console.warn(`Peer connection with ${userId} already exists`);
 			return;
@@ -69,7 +70,7 @@ class WebRTCService {
 		this.setupPeerConnectionHandlers(userId, peerConnection);
 	}
 
-	private setupPeerConnectionHandlers(userId: string, peerConnection: RTCPeerConnection) {
+	private setupPeerConnectionHandlers(userId: id, peerConnection: RTCPeerConnection) {
 		peerConnection.onicecandidate = (event) => {
 			if (event.candidate) {
 				websocketService.sendMessage({
@@ -87,7 +88,6 @@ class WebRTCService {
 		};
 
 		peerConnection.onconnectionstatechange = () => {
-			console.log(`Connection state change: ${peerConnection.connectionState}`);
 			this.handleConnectionStateChange(userId, peerConnection.connectionState as PeerConnectionState);
 		};
 	}
@@ -100,6 +100,7 @@ class WebRTCService {
 			};
 
 			const stream = await navigator.mediaDevices.getUserMedia(constraints);
+			this.localStream = stream;
 			return stream;
 		} catch (error) {
 			console.error('Error accessing media devices:', error);
@@ -119,22 +120,26 @@ class WebRTCService {
 			this.localStream = await this.startLocalStream(mediaType);
 		}
 
-		channel.users.forEach((id) => this.startPeerConnection(id));
+		channel.users.forEach((userId) => {
+			if (userId !== this.user.id) {
+				this.startPeerConnection(userId);
+			}
+		});
 	}
 
-	async startPeerConnection(userId: string): Promise<void> {
+	async startPeerConnection(userId: id): Promise<void> {
 		this.createPeerConnection(userId);
-		const peerConnection = this.peerConnections.get(userId)?.connection;
+		const peer = this.peerConnections.get(userId);
 
-		if (!peerConnection || !this.localStream) return;
+		if (!peer || !this.localStream) return;
 
 		this.localStream.getTracks().forEach((track) => {
-			peerConnection.addTrack(track, this.localStream!);
+			peer.connection.addTrack(track, this.localStream!);
 		});
-		this.peerConnections.get(userId)!.stream = this.localStream;
+		peer.stream = this.localStream;
 
-		const offer = await peerConnection.createOffer();
-		await peerConnection.setLocalDescription(offer);
+		const offer = await peer.connection.createOffer();
+		await peer.connection.setLocalDescription(offer);
 
 		websocketService.sendMessage({
 			type: MessageType.Info,
@@ -147,29 +152,17 @@ class WebRTCService {
 			},
 			time: new Date(),
 		});
-
-		websocketService.sendMessage({
-			type: MessageType.Server,
-			from: this.user.id,
-			to: userId,
-			data: {
-				type: 'webrtc',
-				action: 'offer',
-				offer,
-			},
-			time: new Date(),
-		});
 	}
 
-	private async handleOffer(userId: string, offer: RTCSessionDescriptionInit) {
+	private async handleOffer(userId: id, offer: RTCSessionDescriptionInit) {
 		this.createPeerConnection(userId);
-		const peerConnection = this.peerConnections.get(userId)?.connection;
+		const peer = this.peerConnections.get(userId);
 
-		if (!peerConnection) return;
+		if (!peer) return;
 
-		await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-		const answer = await peerConnection.createAnswer();
-		await peerConnection.setLocalDescription(answer);
+		await peer.connection.setRemoteDescription(new RTCSessionDescription(offer));
+		const answer = await peer.connection.createAnswer();
+		await peer.connection.setLocalDescription(answer);
 
 		websocketService.sendMessage({
 			type: MessageType.Info,
@@ -184,41 +177,31 @@ class WebRTCService {
 		});
 	}
 
-	private async handleAnswer(userId: string, answer: RTCSessionDescriptionInit) {
-		const peerConnection = this.peerConnections.get(userId)?.connection;
-		if (peerConnection) {
-			await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+	private async handleAnswer(userId: id, answer: RTCSessionDescriptionInit) {
+		const peer = this.peerConnections.get(userId);
+		if (peer) {
+			await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
 		}
 	}
 
-	private async handleIceCandidate(userId: string, candidate: RTCIceCandidateInit) {
-		const peerConnection = this.peerConnections.get(userId)?.connection;
-		if (peerConnection) {
-			await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+	private async handleIceCandidate(userId: id, candidate: RTCIceCandidateInit) {
+		const peer = this.peerConnections.get(userId);
+		if (peer) {
+			await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
 		}
 	}
 
-	private handleConnectionStateChange(userId: string, state: PeerConnectionState) {
+	private handleConnectionStateChange(userId: id, state: PeerConnectionState) {
 		switch (state) {
-			case 'connected':
-				console.log(`Connected to peer ${userId}`);
-				break;
 			case 'disconnected':
-				console.log(`Disconnected from peer ${userId}`);
-				this.cleanupPeerConnection(userId);
-				break;
 			case 'failed':
-				console.log(`Connection with peer ${userId} lost`);
-				this.cleanupPeerConnection(userId);
-				break;
 			case 'closed':
-				console.log(`Connection with peer ${userId} closed`);
 				this.cleanupPeerConnection(userId);
 				break;
 		}
 	}
 
-	addStream(userId: string, stream: MediaStream) {
+	addStream(userId: id, stream: MediaStream) {
 		const peer = this.peerConnections.get(userId);
 		if (peer?.connection) {
 			stream.getTracks().forEach((track) => peer.connection.addTrack(track, stream));
@@ -226,7 +209,7 @@ class WebRTCService {
 		}
 	}
 
-	removeStream(userId: string) {
+	removeStream(userId: id) {
 		const peer = this.peerConnections.get(userId);
 		if (peer?.stream) {
 			peer.stream.getTracks().forEach((track) => track.stop());
@@ -234,16 +217,16 @@ class WebRTCService {
 		}
 	}
 
-	disconnectPeer(userId: string) {
+	disconnectPeer(userId: id) {
 		this.cleanupPeerConnection(userId);
 	}
 
 	disconnectAll() {
 		this.stopLocalStream();
-		this.peerConnections.forEach((peer) => this.cleanupPeerConnection(peer.userId));
+		this.peerConnections.forEach((_peer, userId) => this.cleanupPeerConnection(userId));
 	}
 
-	private cleanupPeerConnection(userId: string) {
+	private cleanupPeerConnection(userId: id) {
 		const peer = this.peerConnections.get(userId);
 		if (peer) {
 			if (peer.stream) {
@@ -254,12 +237,12 @@ class WebRTCService {
 		}
 	}
 
-	getPeerConnectionState(userId: string): PeerConnectionState | undefined {
+	getPeerConnectionState(userId: id): PeerConnectionState | undefined {
 		return this.peerConnections.get(userId)?.connection.connectionState as PeerConnectionState;
 	}
 
-	getAllPeerStates(): Map<string, PeerConnectionState> {
-		const states = new Map<string, PeerConnectionState>();
+	getAllPeerStates(): Map<id, PeerConnectionState> {
+		const states = new Map<id, PeerConnectionState>();
 		this.peerConnections.forEach((peer, userId) => {
 			states.set(userId, peer.connection.connectionState as PeerConnectionState);
 		});

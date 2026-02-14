@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import type { RouteRecordRaw } from 'vue-router';
 
 import Login from '@/views/Login.vue';
 import Register from '@/views/Register.vue';
@@ -22,8 +21,8 @@ const routes = [
 				name: 'chats',
 				component: Chats,
 				children: [
-					{ path: 'friends', name: 'friends', component: Friends },
-					{ path: 'user/:userId', name: 'user', component: Chat },
+					{ path: 'friends', name: 'friends', component: Friends, meta: { transition: 'fade' } },
+					{ path: 'user/:username', name: 'user', component: Chat },
 				],
 			},
 			{ path: 'group/:groupId', name: 'group', component: GroupChat },

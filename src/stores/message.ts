@@ -1,23 +1,25 @@
 import { defineStore } from 'pinia';
-import { MessageType, type Message, type User } from '@/types';
-import { v5 as uuidv5 } from 'uuid';
-import stringify from 'fast-json-stable-stringify';
+import { AckType, MessageType, type Message } from '@/types';
 import { websocketService } from '@/services/websocket';
 import { useUserStore } from './user';
+import { fetchMessages } from '@/api/message';
+import type { Ack, id } from '@/types';
 
-const MESSAGE_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+export function generateTempId(): id {
+	const array = new Uint32Array(2);
+	window.crypto.getRandomValues(array);
+	const high = BigInt(array[0]);
+	const low = BigInt(array[1]);
+	const u64 = (high << 32n) | low;
 
-export function computeId(message: Message): string {
-	const { id, ...dataToHash } = message;
-	const canonicalString = stringify(dataToHash);
-
-	return uuidv5(canonicalString, MESSAGE_NAMESPACE);
+	return u64 as id;
 }
 
 export const useMessageStore = defineStore('message', {
 	state: () => ({
-		messages: {} as Record<string, Message[]>,
-		waitingMessages: {} as Record<string, Message[]>,
+		messages: new Map<id, Message[]>(),
+		loadingChats: new Map<id, Promise<Message[]>>(),
+		hasMore: new Map<id, boolean>(),
 		isInitialized: false,
 	}),
 
@@ -25,62 +27,125 @@ export const useMessageStore = defineStore('message', {
 		init() {
 			if (this.isInitialized) return;
 
-			const ws = websocketService;
-
-			ws.onMessage(MessageType.Direct, (message: Message) => {
-				this.handleIncomingMessage(message);
-			});
-
-			const unsubscribe = ws.onConnectionStateChange(this.handleConnectionStateChange);
+			websocketService.onMessage(MessageType.Direct, this.handleIncomingMessage);
+			websocketService.onMessage(MessageType.Server, this.handleAck);
+			websocketService.onConnectionStateChange(this.handleConnectionStateChange);
 
 			this.isInitialized = true;
 		},
 
 		handleConnectionStateChange(state: string) {
 			if (state !== 'OPEN') return;
-
-			Object.entries(this.waitingMessages).forEach(([chatId, messages]) => {
-				const remaining = messages.filter((message) => {
-					try {
-						websocketService.sendMessage(message);
-						return false;
-					} catch (e) {
-						return true;
-					}
-				});
-
-				if (remaining.length > 0) {
-					this.waitingMessages[chatId] = remaining;
-				} else {
-					delete this.waitingMessages[chatId];
-				}
-			});
 		},
 
 		handleIncomingMessage(message: Message) {
-			const userStore = useUserStore();
+			const chatId = message.from;
 
-			message.id = computeId(message);
-
-			const chatId = (message.from === userStore.user!.id ? message.to : message.from) as string;
-
-			if (!this.messages[chatId]) {
-				this.messages[chatId] = [];
+			if (!this.messages.has(chatId)) {
+				this.messages.set(chatId, []);
 			}
 
-			const exists = this.messages[chatId].some((m) => m.id === message.id);
+			const chatMessages = this.messages.get(chatId)!;
+			const exists = chatMessages.some((m) => m.id === message.id);
 			if (!exists) {
-				this.messages[chatId].push(message);
+				chatMessages.push(message);
+			}
+		},
+
+		handleAck(message: Message<Ack>) {
+			const data = message.data;
+			if (data.ack == AckType.Received) {
+				if (!this.messages.has(message.to)) return;
+
+				const chatMessages = this.messages.get(message.to)!;
+				const received_id = data.payload;
+
+				const msgIndex = chatMessages.findIndex((m) => m.id === received_id);
+
+				if (msgIndex !== -1) {
+					const msg = chatMessages[msgIndex];
+					msg.sent = true;
+					msg.id = message.id;
+					msg.time = message.time;
+				}
 			}
 		},
 
 		sendMessage(message: Message) {
+			const chatId = message.to;
+
+			if (!this.messages.has(chatId)) {
+				this.messages.set(chatId, []);
+			}
+			this.messages.get(chatId)!.push(message);
+
 			try {
 				websocketService.sendMessage(message);
 			} catch (e) {
-				this.waitingMessages[message.to].push(message);
+				console.error(e);
 			}
-			this.handleIncomingMessage(message);
+		},
+
+		getChatId(message: Message): id {
+			const userStore = useUserStore();
+			const currentUserId = userStore.user!.id;
+
+			return (message.from === currentUserId ? message.to : message.from) as id;
+		},
+
+		async loadMore(id: id) {
+			if (!this.messages.has(id) || this.loadingChats.has(id)) return;
+			if (this.hasMore.has(id) && this.hasMore.get(id) === false) return;
+
+			const currentMessages = this.messages.get(id)!;
+			const oldestMessage = currentMessages[0];
+
+			const fetchPromise = fetchMessages({
+				from: id,
+				end: oldestMessage.time,
+				len: 20,
+			});
+
+			this.loadingChats.set(id, fetchPromise);
+
+			try {
+				const oldMessages = await fetchPromise;
+				if (oldMessages?.length) {
+					this.messages.set(id, [...oldMessages, ...currentMessages]);
+				} else {
+					this.hasMore.set(id, false);
+				}
+			} catch (e) {
+				console.error(e);
+			} finally {
+				this.loadingChats.delete(id);
+			}
+		},
+
+		async initChat(id: id) {
+			if (this.messages.has(id) && this.messages.get(id)!.length > 0) return;
+
+			if (this.loadingChats.has(id)) {
+				await this.loadingChats.get(id);
+				return;
+			}
+
+			const fetchPromise = fetchMessages({
+				from: id,
+				end: new Date(),
+			});
+
+			this.loadingChats.set(id, fetchPromise);
+
+			try {
+				const msgs = await fetchPromise;
+				this.messages.set(id, msgs);
+				this.hasMore.set(id, msgs.length > 0);
+			} catch (e) {
+				console.error(e);
+			} finally {
+				this.loadingChats.delete(id);
+			}
 		},
 	},
 });

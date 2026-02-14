@@ -1,12 +1,11 @@
 <script setup lang="ts">
 	import { computed, ref, watch } from 'vue';
+	import type { id } from '@/types';
 	import User from '@/components/User.vue';
-	import Chat from '@/views/Chat.vue';
 	import type { User as UserType } from '@/types';
 	import UserCard from '@/components/UserCard.vue';
 	import { useDMStore } from '@/stores/dm';
 	import { useRouter, useRoute } from 'vue-router';
-	import { getUser } from '@/api/state';
 	import AsideButton from '@/components/AsideButton.vue';
 	import { RouterView } from 'vue-router';
 
@@ -15,18 +14,17 @@
 	const router = useRouter();
 	const route = useRoute();
 	const user_id = computed(() => route.params.userId as string);
-	const user = computed(() => dmStore.getUser(user_id.value));
 
 	watch(
 		user_id,
 		(id) => {
-			if (id) dmStore.ensureUser(id);
+			if (id) dmStore.ensureUser(BigInt(id) as unknown as id);
 		},
 		{ immediate: true }
 	);
 
 	function handleUserClick(user: UserType) {
-		router.push({ name: 'user', params: { userId: user.id } });
+		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 </script>
 
@@ -37,8 +35,8 @@
 			<div class="separator"></div>
 
 			<div class="user-list">
-				<template v-for="(user, index) in dmStore.dms" :key="user.id">
-					<User :user="user" @click="handleUserClick(user)" :class="{ selected: user_id === user.id }" />
+				<template v-for="(user, index) in dmStore.dms" :key="user.id.toString()">
+					<User :user="user" @click="handleUserClick(user)" :class="{ selected: user_id === user.id.toString() }" />
 					<div v-if="index < dmStore.dms.length - 1" class="user-separator"></div>
 				</template>
 			</div>
@@ -47,8 +45,14 @@
 		</aside>
 		<main>
 			<router-view v-slot="{ Component }">
-				<Transition name="fade" mode="out-in">
-					<component v-if="Component" :is="Component" :key="route.path" />
+				<Transition :name="route.meta.transition ? 'fade' : ''" mode="out-in">
+					<Suspense>
+						<template #default>
+							<component :is="Component" :key="route.path" />
+						</template>
+
+						<template #fallback></template>
+					</Suspense>
 				</Transition>
 			</router-view>
 		</main>
@@ -115,7 +119,7 @@
 
 	.fade-enter-active,
 	.fade-leave-active {
-		transition: opacity 0.07s ease-in;
+		transition: opacity 0.07s ease-in-out;
 	}
 	.fade-enter-from,
 	.fade-leave-to {

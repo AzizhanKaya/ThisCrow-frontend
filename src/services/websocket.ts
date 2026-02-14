@@ -1,6 +1,8 @@
-import type { Message } from '@/types';
-import { MessageType } from '@/types';
+import type { Me, Message } from '@/types';
+import { AckType, EventType, MessageType } from '@/types';
 import { WS_URL } from '@/constants';
+import { jsonParser } from '@/utils/json';
+
 type MessageCallback = (message: Message) => void;
 
 class WebSocketService {
@@ -58,8 +60,10 @@ class WebSocketService {
 
 	private handleIncomingMessage(event: MessageEvent) {
 		try {
-			const message = JSON.parse(event.data) as Message;
+			const message = jsonParser.parse(event.data) as Message;
 			message.time = new Date(message.time);
+
+			console.log(message);
 
 			const handlers = this.messageHandlers.get(message.type);
 			if (handlers && handlers.size > 0) {
@@ -81,7 +85,9 @@ class WebSocketService {
 			throw new Error('WebSocket is not connected. Current state:' + this.getConnectionState());
 		}
 
-		this.ws.send(JSON.stringify(message));
+		console.log(message);
+
+		this.ws.send(jsonParser.stringify(message));
 	}
 
 	onMessage(type: MessageType, callback: MessageCallback) {
@@ -147,6 +153,19 @@ class WebSocketService {
 			ws.removeEventListener('open', openListener);
 			ws.removeEventListener('close', closeListener);
 		};
+	}
+
+	public waitForSessionInit(): Promise<Me> {
+		return new Promise((resolve) => {
+			const handler = (message: Message) => {
+				if (message.type === MessageType.Server && message.data.ack === AckType.Initialized) {
+					this.offMessage(MessageType.Server, handler);
+					resolve(message.data.payload as Me);
+				}
+			};
+
+			this.onMessage(MessageType.Server, handler);
+		});
 	}
 }
 

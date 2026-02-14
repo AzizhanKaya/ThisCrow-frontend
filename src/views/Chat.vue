@@ -1,84 +1,33 @@
 <script setup lang="ts">
 	import { ref, onMounted, reactive, type Reactive, watch, computed } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import type { User, MessageBlock as MessageBlockType } from '@/types';
-	import { type Message as MessageType, MessageType as MessageEnum, computeId } from '@/types';
+	import { type Message as MessageType, MessageType as MessageEnum, type id } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
 	import { webrtcService, type Channel } from '@/services/webrtc';
 	import { useUserStore } from '@/stores/user';
 	import { useRoute } from 'vue-router';
 	import { useDMStore } from '@/stores/dm';
-	import { useMessageStore } from '@/stores/message';
-	import { getUser as getUserApi } from '@/api/state';
-	import Message from '@/components/Message.vue';
+	import MessageInput from '@/components/MessageInput.vue';
+
+	import ChatSkeleton from '@/components/Skeletons/ChatSkeleton.vue';
+	import MessageList from '@/components/MessageList.vue';
 
 	const dmStore = useDMStore();
-	const messageStore = useMessageStore();
 	const route = useRoute();
 	const userStore = useUserStore();
 
-	const to = computed(() => route.params.userId as string);
-	const user = computed<User>(() => dmStore.getUser(to.value)!);
-	const getUser = (id: string) => (id === user.value.id ? user.value : userStore.user)!;
-
-	const messageBlocks = reactive([]) as Reactive<MessageBlockType[]>;
-
-	watch(
-		() => route.params.userId,
-		() => {
-			messageBlocks.length = 0;
-		}
-	);
-
-	const input = ref('');
-
-	const { fileInput, selectedFiles, hasSelectedFiles, handleFileSelect: onFileSelect, removeFile, clearFiles } = useFiles();
-
-	async function onSend() {
-		if (input.value.trim() === '' && !hasSelectedFiles.value) return;
-
-		const messageData = {
-			...(input.value.trim() !== '' && { text: input.value }),
-			...(selectedFiles.value.images.length > 0 && {
-				images: selectedFiles.value.images.map((img) => img.url),
-			}),
-			...(selectedFiles.value.videos.length > 0 && {
-				videos: selectedFiles.value.videos.map((vid) => vid.url),
-			}),
-			...(selectedFiles.value.files.length > 0 && {
-				files: selectedFiles.value.files.map((f) => ({ url: f.url, name: f.name, size: f.size })),
-			}),
-		};
-
-		let message: MessageType = {
-			from: userStore.user!.id,
-			to: user.value.id,
-			data: messageData,
-			type: MessageEnum.Direct,
-			time: new Date(),
-		};
-
-		message.id = computeId(message);
-
-		messageStore.sendMessage(message);
-
-		input.value = '';
-		clearFiles();
-	}
-
-	function onPlus() {
-		fileInput.value?.click();
-	}
+	const to = computed(() => BigInt(route.params.userId as string));
+	const user = dmStore.getUser(to.value)!;
 
 	function onCall() {
-		let channel: Channel = { id: user.value.id, users: [user.value.id], name: user.value.name + '-' + userStore.user!.name };
+		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + userStore.user!.name };
 		webrtcService.joinChannel(channel, 'audio').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
 	}
 
 	function onVideo() {
-		let channel: Channel = { id: user.value.id, users: [user.value.id], name: user.value.name + '-' + userStore.user!.name };
+		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + userStore.user!.name };
 		webrtcService.joinChannel(channel, 'both').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
@@ -86,7 +35,7 @@
 </script>
 
 <template>
-	<div class="chat-view" v-if="user">
+	<div class="chat-view">
 		<header>
 			<img :src="user.avatar || '/default-user-icon.png'" alt="" />
 			<div class="container">
@@ -103,53 +52,14 @@
 			</div>
 		</header>
 		<main>
-			<Message
-				v-for="(message, index) in messageStore.messages[to]"
-				:key="message.id"
-				:message="message"
-				:user="index === 0 || messageStore.messages[to][index - 1].from !== message.from ? getUser(message.from) : undefined"
-			/>
+			<Suspense>
+				<MessageList :user="user" :me="userStore.user!" />
+				<template #fallback>
+					<ChatSkeleton />
+				</template>
+			</Suspense>
 		</main>
-		<div class="input-area">
-			<div class="input-container">
-				<div v-if="hasSelectedFiles" class="file-previews">
-					<div v-for="(img, index) in selectedFiles.images" :key="img.url" class="preview-item">
-						<img :src="img.url" class="preview-image" />
-						<button class="remove-file" @click="removeFile('images', index)">
-							<Icon icon="mdi:close" />
-						</button>
-					</div>
-					<div v-for="(vid, index) in selectedFiles.videos" :key="vid.url" class="preview-item">
-						<video :src="vid.url" class="preview-video" />
-						<button class="remove-file" @click="removeFile('videos', index)">
-							<Icon icon="mdi:close" />
-						</button>
-					</div>
-					<div v-for="(file, index) in selectedFiles.files" :key="file.name" class="preview-item file-preview">
-						<span class="file-name">{{ file.name }}</span>
-						<span class="file-size">{{ file.size }}</span>
-						<button class="remove-file" @click="removeFile('files', index)">
-							<Icon icon="mdi:close" />
-						</button>
-					</div>
-				</div>
-				<div class="input-row">
-					<input type="file" ref="fileInput" @change="onFileSelect" multiple accept="image/*,video/*,application/*" style="display: none" />
-					<button class="icon-btn plus" @click="onPlus" aria-label="Add">
-						<Icon icon="mdi:plus" width="24" height="24" />
-					</button>
-					<input type="text" v-model="input" placeholder="Type a message..." @keydown.enter="onSend" />
-					<button
-						class="icon-btn send"
-						:class="{ active: input.length > 0 || hasSelectedFiles }"
-						@click="onSend"
-						:disabled="!input.length && !hasSelectedFiles"
-					>
-						<Icon icon="mdi:send" width="24" height="24" />
-					</button>
-				</div>
-			</div>
-		</div>
+		<MessageInput :user="user" :me="userStore.user!" />
 	</div>
 </template>
 
@@ -161,14 +71,9 @@
 	}
 
 	main {
-		height: calc(98vh - 60px);
-		overflow-y: auto;
-		overflow-x: hidden;
-		padding-bottom: 95px;
+		height: calc(98vh - 55px);
+		overflow: hidden;
 		margin-top: 55px;
-		display: flex;
-		flex-direction: column;
-		justify-content: flex-end;
 	}
 
 	header {
@@ -367,5 +272,14 @@
 		padding: 0;
 		margin: 0;
 		min-width: 0;
+	}
+
+	.fade-enter-active,
+	.fade-leave-active {
+		transition: opacity 0.5s ease-in;
+	}
+	.fade-enter-from,
+	.fade-leave-to {
+		opacity: 0;
 	}
 </style>

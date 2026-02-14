@@ -58,6 +58,10 @@
 		--color-dark: hsl(261, 68%, 40%);
 		--color: hsl(261, 68%, 45%);
 		--color-light: hsl(261, 68%, 50%);
+
+		--success: hsl(145, 65%, 39%);
+		--success-hover: hsl(145, 65%, 34%);
+		--overlay: hsla(0, 0%, 0%, 0.7);
 	}
 
 	* {

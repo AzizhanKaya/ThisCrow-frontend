@@ -1,6 +1,6 @@
 <script setup lang="ts">
 	import Server from '@/components/ServerIcon.vue';
-	import { useServerStore } from '@/stores/servers';
+	import { useServerStore } from '@/stores/server';
 	import CrowIcon from '@/components/CrowIcon.vue';
 
 	const serverStore = useServerStore();
@@ -10,7 +10,7 @@
 <template>
 	<div class="server-list">
 		<CrowIcon />
-		<Server v-for="server in servers" :key="server.id" :server="server" />
+		<Server v-for="[id, server] in servers" :key="id.toString()" :server="server" />
 	</div>
 </template>
 
