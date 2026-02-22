@@ -4,9 +4,10 @@
 	import { type Message as MessageType, MessageType as MessageEnum, type id } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
 	import { webrtcService, type Channel } from '@/services/webrtc';
-	import { useUserStore } from '@/stores/user';
+	import { useMeStore } from '@/stores/me';
 	import { useRoute } from 'vue-router';
 	import { useDMStore } from '@/stores/dm';
+	import { useMessageStore } from '@/stores/message';
 	import MessageInput from '@/components/MessageInput.vue';
 
 	import ChatSkeleton from '@/components/Skeletons/ChatSkeleton.vue';
@@ -14,20 +15,50 @@
 
 	const dmStore = useDMStore();
 	const route = useRoute();
-	const userStore = useUserStore();
+	const meStore = useMeStore();
+	const messageStore = useMessageStore();
 
 	const to = computed(() => BigInt(route.params.userId as string));
-	const user = dmStore.getUser(to.value)!;
+
+	const showSkeleton = ref(false);
+	let skeletonTimer: any = null;
+
+	watch(
+		to,
+		(newTo) => {
+			messageStore.initChat(newTo);
+			showSkeleton.value = false;
+			if (skeletonTimer) clearTimeout(skeletonTimer);
+		},
+		{ immediate: true }
+	);
+
+	watch(
+		() => messageStore.isLoadingChat(to.value),
+		(loading) => {
+			if (skeletonTimer) clearTimeout(skeletonTimer);
+			if (loading) {
+				skeletonTimer = setTimeout(() => {
+					if (messageStore.isLoadingChat(to.value)) {
+						showSkeleton.value = true;
+					}
+				}, 100);
+			} else {
+				showSkeleton.value = false;
+			}
+		},
+		{ immediate: true }
+	);
 
 	function onCall() {
-		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + userStore.user!.name };
+		let channel: Channel = { id: to.value, users: [to.value], name: to.value.toString() + '-' + meStore.me!.id.toString() };
 		webrtcService.joinChannel(channel, 'audio').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
 	}
 
 	function onVideo() {
-		let channel: Channel = { id: user.id, users: [user.id], name: user.name + '-' + userStore.user!.name };
+		let channel: Channel = { id: to.value, users: [to.value], name: to.value.toString() + '-' + meStore.me!.id.toString() };
 		webrtcService.joinChannel(channel, 'both').catch((error) => {
 			console.error('Error accessing media devices:', error);
 		});
@@ -37,11 +68,6 @@
 <template>
 	<div class="chat-view">
 		<header>
-			<img :src="user.avatar || '/default-user-icon.png'" alt="" />
-			<div class="container">
-				<span class="name">{{ user.name }}</span>
-				<span class="username">@{{ user.username }}</span>
-			</div>
 			<div class="call-container">
 				<div class="call-btn" @click="onCall">
 					<Icon icon="fa6-solid:phone" width="20" height="20" />
@@ -52,14 +78,13 @@
 			</div>
 		</header>
 		<main>
-			<Suspense>
-				<MessageList :user="user" :me="userStore.user!" />
-				<template #fallback>
-					<ChatSkeleton />
-				</template>
-			</Suspense>
+			<Transition name="fade" mode="out-in">
+				<ChatSkeleton v-if="showSkeleton" />
+				<MessageList v-else :messages="messageStore.getMessages(to)" />
+			</Transition>
 		</main>
-		<MessageInput :user="user" :me="userStore.user!" />
+		<MessageInput :to="to" :type="MessageEnum.Direct" />
+		<div class="input-cover"></div>
 	</div>
 </template>
 
@@ -73,12 +98,12 @@
 	main {
 		height: calc(98vh - 55px);
 		overflow: hidden;
-		margin-top: 55px;
+		margin-top: 62px;
 	}
 
 	header {
 		background-color: var(--bg-dark);
-		height: 55px;
+		height: 62px;
 		width: 100%;
 		position: absolute;
 		border-top: 1px solid #303030;
@@ -172,6 +197,14 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+
+	.input-cover {
+		position: absolute;
+		bottom: 0;
+		width: 100%;
+		height: 30px;
+		background-color: var(--bg);
 	}
 
 	.file-previews {
@@ -276,7 +309,7 @@
 
 	.fade-enter-active,
 	.fade-leave-active {
-		transition: opacity 0.5s ease-in;
+		transition: opacity 0.1s ease-in;
 	}
 	.fade-enter-from,
 	.fade-leave-to {

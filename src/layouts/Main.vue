@@ -4,7 +4,6 @@
 
 <template>
 	<div class="main-layout">
-		<header class="header">ThisCrow</header>
 		<div class="main">
 			<aside class="server-side">
 				<ServerList />
@@ -17,19 +16,11 @@
 </template>
 
 <style scoped>
-	.header {
-		height: 2vh;
-		width: max-content;
-		color: white;
-		margin: auto;
-		font-family: 'Times New Roman', Times, serif;
-	}
-
 	.main {
 		display: grid;
 		grid-template-columns: 70px 1fr;
 		height: 98vh;
-		overflow: auto;
+		overflow: hidden;
 	}
 
 	.server-side {

@@ -3,11 +3,12 @@
 	import { login } from '@/api/auth';
 	import { Icon } from '@iconify/vue';
 	import Toast from '@/components/Toast.vue';
-	import { useUserStore } from '@/stores/user';
+	import { useMeStore } from '@/stores/me';
 	import { useRouter } from 'vue-router';
 	import { initApp } from '@/init';
+	import { websocketService } from '@/services/websocket';
 
-	const userStore = useUserStore();
+	const meStore = useMeStore();
 	const router = useRouter();
 
 	const username = ref('');
@@ -20,8 +21,8 @@
 		error.value = null;
 		isLoading.value = true;
 		try {
-			userStore.user = await login(username.value, password.value);
-			await initApp();
+			await login(username.value, password.value);
+			websocketService.connect();
 			router.push('/');
 		} catch (err: any) {
 			console.error(err);
@@ -40,12 +41,12 @@
 			<div class="field">
 				<label>Username</label>
 				<Icon icon="mdi:user" class="icon" />
-				<input type="username" v-model="username" required placeholder="Username" />
+				<input id="username" type="text" v-model="username" required placeholder="Username" />
 			</div>
 			<div class="field">
 				<label>Password</label>
 				<Icon icon="fa6-solid:lock" class="icon" />
-				<input type="password" v-model="password" required placeholder="Password" />
+				<input id="password" type="password" v-model="password" required placeholder="Password" />
 			</div>
 			<button type="submit">Login</button>
 		</form>
@@ -92,6 +93,16 @@
 		font-weight: 200;
 		padding-left: 40px;
 		color: #e9e9e9;
+	}
+
+	input:-webkit-autofill,
+	input:-webkit-autofill:hover,
+	input:-webkit-autofill:focus,
+	input:-webkit-autofill:active {
+		-webkit-box-shadow: 0 0 0 30px #272727 inset !important;
+		-webkit-text-fill-color: #e9e9e9 !important;
+		font-size: 1rem !important;
+		font-weight: 200 !important;
 	}
 
 	button {

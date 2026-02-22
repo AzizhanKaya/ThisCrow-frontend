@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PropType } from 'vue';
-	import { type User, State } from '@/types';
+	import { type User, Status } from '@/types';
 
 	export default {
 		props: {
@@ -10,14 +10,16 @@
 			},
 		},
 		computed: {
-			getState(): string {
-				switch (this.user.state) {
-					case State.Online:
+			getStatus(): string {
+				switch (this.user.status) {
+					case Status.Online:
 						return 'online';
-					case State.Offline:
-						return 'offline';
-					case State.Dnd:
+					case Status.Idle:
+						return 'idle';
+					case Status.Dnd:
 						return 'dnd';
+					case Status.Offline:
+						return 'offline';
 				}
 			},
 		},
@@ -30,7 +32,7 @@
 
 		<span class="name">{{ user.name }}</span>
 		<span class="username">@{{ user.username }}</span>
-		<div class="state" :class="getState"></div>
+		<div class="status" :class="getStatus"></div>
 	</div>
 </template>
 
@@ -72,26 +74,27 @@
 		left: 60px;
 	}
 
-	.state {
+	.status {
 		height: 12px;
-		aspect-ratio: 1;
+		width: 12px;
 		border-radius: 50%;
 		position: absolute;
 		z-index: 10;
 		border: 2px #333 solid;
 		left: 40px;
 		bottom: 5px;
-		flex-shrink: 0;
 	}
 
 	.online {
 		background-color: #43b581;
 	}
 	.dnd {
-		background-color: red;
+		background-color: #f04747;
 	}
-
+	.idle {
+		background-color: #e2e446;
+	}
 	.offline {
-		background-color: gray;
+		background-color: #72767d;
 	}
 </style>

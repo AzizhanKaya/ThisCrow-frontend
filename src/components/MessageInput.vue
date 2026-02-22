@@ -4,13 +4,16 @@
 	import { type Message as MessageType, MessageType as MessageEnum, type id, type User } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
 	import { useMessageStore, generateTempId } from '@/stores/message';
+	import { useMeStore } from '@/stores/me';
 
 	const props = defineProps<{
-		user: User;
-		me: User;
+		to: id;
+		group_id?: id;
+		type: MessageEnum;
 	}>();
 
 	const messageStore = useMessageStore();
+	const meStore = useMeStore();
 
 	const input = ref('');
 
@@ -34,10 +37,11 @@
 
 		const message: MessageType = {
 			id: generateTempId(),
-			from: props.me.id,
-			to: props.user.id,
+			from: meStore.me!.id,
+			to: props.to,
+			group_id: props.group_id,
 			data: messageData,
-			type: MessageEnum.Direct,
+			type: props.type,
 			time: new Date(),
 		};
 

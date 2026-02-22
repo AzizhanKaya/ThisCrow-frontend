@@ -3,13 +3,13 @@
 	import { Icon } from '@iconify/vue';
 	import { searchUser } from '@/api/event';
 	import type { User } from '@/types';
-	import { useUserStore } from '@/stores/user';
+	import { useMeStore } from '@/stores/me';
 	import { useFriendStore } from '@/stores/friend';
 	import { type Message, MessageType, type Event, EventType } from '@/types';
 	import { websocketService } from '@/services/websocket';
 
 	const friendStore = useFriendStore();
-	const userStore = useUserStore();
+	const meStore = useMeStore();
 	const props = defineProps<{ isModalOpen: boolean }>();
 	const emit = defineEmits<{ (event: 'update:isModalOpen', value: boolean): void }>();
 
@@ -27,7 +27,7 @@
 		hasSearched.value = true;
 		try {
 			const data = await searchUser(searchQuery.value);
-			const filteredData = data.filter((user) => user.id !== userStore.user?.id);
+			const filteredData = data.filter((user) => user.id !== meStore.me?.id);
 			searchResults.value = filteredData;
 		} catch (err) {
 			console.error(err);
@@ -50,26 +50,6 @@
 			fetchSearchResults();
 		}, 600);
 	});
-
-	const sendFriendRequest = async (user: User) => {
-		try {
-			const add_friend: Message<Event> = {
-				id: 0n,
-				from: userStore.user!.id,
-				to: user.id,
-				data: {
-					event: EventType.FriendRequest,
-				},
-				type: MessageType.Info,
-				time: new Date(),
-			};
-
-			websocketService.sendMessage(add_friend);
-			friendStore.addSentRequest(user);
-		} catch (err) {
-			console.error(err);
-		}
-	};
 
 	const closeModal = () => {
 		emit('update:isModalOpen', false);
@@ -124,7 +104,7 @@
 							<button
 								class="action-btn"
 								:class="getButtonStatus(user).class"
-								@click="sendFriendRequest(user)"
+								@click="friendStore.sendFriendRequest(user)"
 								:disabled="friendStore.isRequestSent(user.id) || friendStore.isFriend(user.id)"
 							>
 								<Icon :icon="getButtonStatus(user).icon" />
@@ -163,7 +143,6 @@
 		width: 100vw;
 		height: 100vh;
 		background-color: var(--overlay);
-		backdrop-filter: blur(2px);
 		z-index: 1000;
 		display: flex;
 		align-items: center;

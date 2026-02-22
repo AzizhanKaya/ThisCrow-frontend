@@ -27,7 +27,7 @@
 	.button {
 		margin-inline: auto;
 		width: 90%;
-		background-color: var(--bg2);
+		background-color: var(--bg);
 		border-radius: 10px;
 		height: 40px;
 		display: flex;

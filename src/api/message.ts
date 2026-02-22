@@ -31,22 +31,11 @@ export async function fetchMessages({
 		const messages = await msgFetch<Message[]>(url, { credentials: 'include' });
 
 		messages.forEach((msg) => {
-			msg.time = new Date(msg.time);
+			msg.time = new Date(Number(msg.time));
+			msg.sent = true;
 		});
 
 		return messages;
-	} catch (error) {
-		console.error('Failed to get messages:', error);
-		return [];
-	}
-}
-
-export async function getDms(): Promise<User[]> {
-	try {
-		const url = API_URL + `/state/dms`;
-
-		const users = await msgFetch<User[]>(url, { credentials: 'include' });
-		return users;
 	} catch (error) {
 		console.error('Failed to get messages:', error);
 		return [];

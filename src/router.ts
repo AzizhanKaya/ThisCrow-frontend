@@ -22,7 +22,7 @@ const routes = [
 				component: Chats,
 				children: [
 					{ path: 'friends', name: 'friends', component: Friends, meta: { transition: 'fade' } },
-					{ path: 'user/:username', name: 'user', component: Chat },
+					{ path: 'user/:userId', name: 'user', component: Chat },
 				],
 			},
 			{ path: 'group/:groupId', name: 'group', component: GroupChat },
@@ -44,20 +44,18 @@ const router = createRouter({
 	routes,
 });
 
-import { useUserStore } from '@/stores/user';
+import { useMeStore } from '@/stores/me';
 
 router.beforeEach((to) => {
-	const userStore = useUserStore();
+	const meStore = useMeStore();
 
-	if (userStore.user == undefined) return;
+	if (meStore.me == undefined) return;
 
-	const isLoggedIn = userStore.isLoggedIn;
-
-	if (to.meta?.requiresAuth && !isLoggedIn) {
+	if (to.meta?.requiresAuth && !meStore.me) {
 		return { name: 'login' };
 	}
 
-	if (to.meta?.guestOnly && isLoggedIn) {
+	if (to.meta?.guestOnly && meStore.me) {
 		return { name: 'chats' };
 	}
 });

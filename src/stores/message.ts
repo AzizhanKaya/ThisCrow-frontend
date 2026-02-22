@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia';
 import { AckType, MessageType, type Message } from '@/types';
 import { websocketService } from '@/services/websocket';
-import { useUserStore } from './user';
+import { useMeStore } from './me';
 import { fetchMessages } from '@/api/message';
 import type { Ack, id } from '@/types';
+import { useDMStore } from './dm';
 
 export function generateTempId(): id {
 	const array = new Uint32Array(2);
@@ -18,10 +19,16 @@ export function generateTempId(): id {
 export const useMessageStore = defineStore('message', {
 	state: () => ({
 		messages: new Map<id, Message[]>(),
-		loadingChats: new Map<id, Promise<Message[]>>(),
+		loadingChats: new Map<id, boolean>(),
 		hasMore: new Map<id, boolean>(),
 		isInitialized: false,
 	}),
+
+	getters: {
+		isLoadingChat: (state) => (id: id) => {
+			return state.loadingChats.get(id);
+		},
+	},
 
 	actions: {
 		init() {
@@ -29,46 +36,44 @@ export const useMessageStore = defineStore('message', {
 
 			websocketService.onMessage(MessageType.Direct, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Server, this.handleAck);
-			websocketService.onConnectionStateChange(this.handleConnectionStateChange);
 
 			this.isInitialized = true;
 		},
 
-		handleConnectionStateChange(state: string) {
-			if (state !== 'OPEN') return;
-		},
-
 		handleIncomingMessage(message: Message) {
-			const chatId = message.from;
+			const chat_id = message.from;
 
-			if (!this.messages.has(chatId)) {
-				this.messages.set(chatId, []);
+			if (!this.messages.has(chat_id)) {
+				const dmStore = useDMStore();
+				dmStore.ensureUser(chat_id);
+				this.messages.set(chat_id, []);
 			}
 
-			const chatMessages = this.messages.get(chatId)!;
+			const chatMessages = this.messages.get(chat_id)!;
 			const exists = chatMessages.some((m) => m.id === message.id);
 			if (!exists) {
+				message.sent = true;
 				chatMessages.push(message);
 			}
 		},
 
 		handleAck(message: Message<Ack>) {
-			const data = message.data;
-			if (data.ack == AckType.Received) {
-				if (!this.messages.has(message.to)) return;
+			const { ack, payload } = message.data;
+			if (ack == AckType.Received) {
+				const messages = this.messages.get(message.to);
+				if (!messages) return;
 
-				const chatMessages = this.messages.get(message.to)!;
-				const received_id = data.payload;
-
-				const msgIndex = chatMessages.findIndex((m) => m.id === received_id);
-
-				if (msgIndex !== -1) {
-					const msg = chatMessages[msgIndex];
+				const msg = messages.find((m) => m.id === payload);
+				if (msg) {
 					msg.sent = true;
 					msg.id = message.id;
 					msg.time = message.time;
 				}
 			}
+		},
+
+		getMessages(id: id) {
+			return this.messages.get(id) || [];
 		},
 
 		sendMessage(message: Message) {
@@ -87,65 +92,42 @@ export const useMessageStore = defineStore('message', {
 		},
 
 		getChatId(message: Message): id {
-			const userStore = useUserStore();
-			const currentUserId = userStore.user!.id;
-
-			return (message.from === currentUserId ? message.to : message.from) as id;
+			const meStore = useMeStore();
+			return (message.from === meStore.me!.id ? message.to : message.from) as id;
 		},
 
 		async loadMore(id: id) {
-			if (!this.messages.has(id) || this.loadingChats.has(id)) return;
-			if (this.hasMore.has(id) && this.hasMore.get(id) === false) return;
+			if (!this.messages.has(id) || this.loadingChats.get(id) || !this.hasMore.get(id)) return;
 
 			const currentMessages = this.messages.get(id)!;
 			const oldestMessage = currentMessages[0];
 
-			const fetchPromise = fetchMessages({
+			this.loadingChats.set(id, true);
+
+			const oldMessages = await fetchMessages({
 				from: id,
 				end: oldestMessage.time,
 				len: 20,
 			});
-
-			this.loadingChats.set(id, fetchPromise);
-
-			try {
-				const oldMessages = await fetchPromise;
-				if (oldMessages?.length) {
-					this.messages.set(id, [...oldMessages, ...currentMessages]);
-				} else {
-					this.hasMore.set(id, false);
-				}
-			} catch (e) {
-				console.error(e);
-			} finally {
-				this.loadingChats.delete(id);
+			if (oldMessages?.length) {
+				this.messages.set(id, [...oldMessages, ...currentMessages]);
+			} else {
+				this.hasMore.set(id, false);
 			}
+			this.loadingChats.set(id, false);
 		},
 
 		async initChat(id: id) {
-			if (this.messages.has(id) && this.messages.get(id)!.length > 0) return;
+			if ((this.messages.has(id) && this.messages.get(id)!.length > 0) || this.loadingChats.get(id)) return;
+			this.loadingChats.set(id, true);
 
-			if (this.loadingChats.has(id)) {
-				await this.loadingChats.get(id);
-				return;
-			}
-
-			const fetchPromise = fetchMessages({
+			const msgs = await fetchMessages({
 				from: id,
 				end: new Date(),
 			});
-
-			this.loadingChats.set(id, fetchPromise);
-
-			try {
-				const msgs = await fetchPromise;
-				this.messages.set(id, msgs);
-				this.hasMore.set(id, msgs.length > 0);
-			} catch (e) {
-				console.error(e);
-			} finally {
-				this.loadingChats.delete(id);
-			}
+			this.messages.set(id, msgs);
+			this.loadingChats.set(id, false);
+			this.hasMore.set(id, msgs.length > 0);
 		},
 	},
 });

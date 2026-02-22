@@ -5,11 +5,13 @@
 	import type { User as UserType } from '@/types';
 	import UserCard from '@/components/UserCard.vue';
 	import { useDMStore } from '@/stores/dm';
+	import { useUserStore } from '@/stores/user';
 	import { useRouter, useRoute } from 'vue-router';
 	import AsideButton from '@/components/AsideButton.vue';
 	import { RouterView } from 'vue-router';
 
 	const dmStore = useDMStore();
+	const userStore = useUserStore();
 
 	const router = useRouter();
 	const route = useRoute();
@@ -18,7 +20,7 @@
 	watch(
 		user_id,
 		(id) => {
-			if (id) dmStore.ensureUser(BigInt(id) as unknown as id);
+			if (id) dmStore.ensureUser(BigInt(id));
 		},
 		{ immediate: true }
 	);
@@ -29,7 +31,7 @@
 </script>
 
 <template>
-	<div class="container">
+	<div class="chats-view">
 		<aside>
 			<AsideButton icon="mdi:account-multiple" name="Friends" route="/friends" />
 			<div class="separator"></div>
@@ -44,23 +46,13 @@
 			<UserCard />
 		</aside>
 		<main>
-			<router-view v-slot="{ Component }">
-				<Transition :name="route.meta.transition ? 'fade' : ''" mode="out-in">
-					<Suspense>
-						<template #default>
-							<component :is="Component" :key="route.path" />
-						</template>
-
-						<template #fallback></template>
-					</Suspense>
-				</Transition>
-			</router-view>
+			<router-view />
 		</main>
 	</div>
 </template>
 
 <style scoped>
-	.container {
+	.chats-view {
 		display: grid;
 		grid-template-columns: clamp(200px, 20%, 300px) 1fr;
 		height: 100%;

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 	import { useFriendStore } from '@/stores/friend';
-	import { State, type User } from '@/types';
+	import { Status, type User } from '@/types';
 	import { useRouter } from 'vue-router';
 	import { Icon } from '@iconify/vue';
 	import { ref, computed, type ComputedRef } from 'vue';
 	import AddFriend from '@/modals/AddFriend.vue';
+	import { useDMStore } from '@/stores/dm';
 
 	const router = useRouter();
 	const friendStore = useFriendStore();
@@ -14,52 +15,54 @@
 	const searchQuery = ref('');
 	const isModalOpen = ref(false);
 
-	const onlineFriends = computed(() => {
-		return friendStore.friends.filter((friend) => friend.state && friend.state !== 'Offline');
-	});
-
 	const filteredFriends: ComputedRef<User[]> = computed(() => {
-		let friends: User[] = [];
+		let friends = Array.from(friendStore.friends.values());
+
 		if (activeTab.value === 'online') {
-			friends = onlineFriends.value;
-		} else {
-			friends = friendStore.friends;
+			friends = friends.filter((f) => f.status && f.status !== 'Offline');
 		}
 
 		if (searchQuery.value) {
-			friends = friends.filter((friend) => friend.username.toLowerCase().includes(searchQuery.value.toLowerCase()));
+			const query = searchQuery.value.toLowerCase();
+			friends = friends.filter((f) => f.username.toLowerCase().includes(query) || f.name.toLowerCase().includes(query));
 		}
-		return friends;
+
+		return friends.sort((a, b) => {
+			const priorityA = a.status === 'Offline' ? 1 : 0;
+			const priorityB = b.status === 'Offline' ? 1 : 0;
+
+			if (priorityA !== priorityB) {
+				return priorityA - priorityB;
+			}
+
+			return a.username.localeCompare(b.username);
+		});
 	});
 
-	function handleMessage(friend: User) {
-		router.push('/user/' + friend.id);
+	async function handleMessage(friend: User) {
+		const dmStore = useDMStore();
+		await dmStore.ensureUser(friend.id);
+		router.push({ name: 'user', params: { userId: friend.id.toString() } });
 	}
 
 	function handleAddFriend() {
 		isModalOpen.value = true;
 	}
 
-	function handleAccept(friend: User) {
-		friendStore.acceptFriendRequest(friend);
-	}
-
-	function handleReject(friend: User) {
-		friendStore.removeFriend(friend);
-	}
-
 	function isOnline(friend: User) {
-		return friend.state && friend.state !== 'Offline';
+		return friend.status && friend.status !== 'Offline';
 	}
 
 	function getState(user: User): string {
-		switch (user.state) {
-			case State.Online:
+		switch (user.status) {
+			case Status.Online:
 				return 'online';
-			case State.Offline:
-				return 'offline';
-			case State.Dnd:
+			case Status.Idle:
+				return 'idle';
+			case Status.Dnd:
 				return 'dnd';
+			case Status.Offline:
+				return 'offline';
 		}
 	}
 </script>
@@ -109,17 +112,21 @@
 							<div class="friend-info">
 								<div class="avatar-container">
 									<img :src="friend.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
+									<div :class="['state', getState(friend)]"></div>
 								</div>
 								<div class="friend-text">
-									<span class="username">{{ friend.username }}</span>
-									<span class="status">Incoming Friend Request</span>
+									<div>
+										<span class="name">{{ friend.name }}</span>
+										<span class="username">@{{ friend.username }}</span>
+									</div>
+									<span class="status">{{ friend.status }}</span>
 								</div>
 							</div>
 							<div class="action-buttons">
-								<button class="icon-btn success" @click="handleAccept(friend)" title="Accept">
+								<button class="icon-btn success" @click="friendStore.acceptFriendRequest(friend)" title="Accept">
 									<Icon icon="mdi:check" />
 								</button>
-								<button class="icon-btn danger" @click="handleReject(friend)" title="Reject">
+								<button class="icon-btn danger" @click="friendStore.removeFriend(friend)" title="Reject">
 									<Icon icon="mdi:close" />
 								</button>
 							</div>
@@ -142,7 +149,7 @@
 								</div>
 							</div>
 							<div class="action-buttons">
-								<button class="icon-btn danger" @click="handleReject(friend)" title="Cancel Request">
+								<button class="icon-btn danger" @click="friendStore.removeFriend(friend)" title="Cancel Request">
 									<Icon icon="mdi:close" />
 								</button>
 							</div>
@@ -167,9 +174,12 @@
 								<div :class="['state', getState(friend)]"></div>
 							</div>
 							<div class="friend-text">
-								<span class="username">{{ friend.username }}</span>
+								<div>
+									<span class="name">{{ friend.name }}</span>
+									<span class="username">@{{ friend.username }}</span>
+								</div>
 								<div class="status-container">
-									<span v-if="friend.state" class="status">{{ friend.state }}</span>
+									<span v-if="friend.status" class="status">{{ friend.status }}</span>
 								</div>
 							</div>
 						</div>
@@ -177,8 +187,8 @@
 							<button class="icon-btn" @click="handleMessage(friend)" title="Send message">
 								<Icon icon="mdi:message" />
 							</button>
-							<button class="icon-btn" title="More">
-								<Icon icon="mdi:dots-vertical" />
+							<button class="icon-btn danger" title="Unfriend" @click="friendStore.removeFriend(friend)">
+								<Icon icon="mdi:user-remove" />
 							</button>
 						</div>
 					</div>
@@ -358,7 +368,7 @@
 
 	.state {
 		height: 12px;
-		aspect-ratio: 1;
+		width: 12px;
 		border-radius: 50%;
 		position: absolute;
 		z-index: 10;
@@ -371,13 +381,14 @@
 	.state.online {
 		background-color: #43b581;
 	}
-
 	.state.dnd {
-		background-color: red;
+		background-color: #f04747;
 	}
-
+	.state.idle {
+		background-color: #e2e446;
+	}
 	.state.offline {
-		background-color: gray;
+		background-color: #72767d;
 	}
 
 	.friend-text {
@@ -395,6 +406,7 @@
 		font-weight: 500;
 		font-size: 0.8rem;
 		color: var(--text-muted);
+		margin-left: 4px;
 	}
 
 	.status-container {

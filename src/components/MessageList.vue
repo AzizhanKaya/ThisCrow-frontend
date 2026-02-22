@@ -1,24 +1,16 @@
 <script setup lang="ts">
 	import { computed, watch, ref, onMounted, nextTick } from 'vue';
-	import { useMessageStore } from '@/stores/message';
 	import Message from './Message.vue';
-	import type { User, id } from '@/types';
+	import type { Message as MessageType, User, id } from '@/types';
+	import { useUserStore } from '@/stores/user';
 
 	const props = defineProps<{
-		user: User;
-		me: User;
+		messages: MessageType[];
 	}>();
 
-	const messageStore = useMessageStore();
+	const userStore = useUserStore();
+
 	const scroller = ref<HTMLElement | null>(null);
-
-	await messageStore.initChat(props.user.id);
-
-	const messages = computed(() => messageStore.messages.get(props.user.id) || []);
-
-	function getUser(id: id): User {
-		return id === props.user.id ? props.user : props.me;
-	}
 
 	const scrollToBottom = () => {
 		if (!scroller.value) return;
@@ -33,7 +25,7 @@
 	});
 
 	watch(
-		() => messages.value[messages.value.length - 1],
+		() => props.messages[props.messages.length - 1],
 		() => {
 			scrollToBottom();
 		},
@@ -44,10 +36,10 @@
 <template>
 	<div ref="scroller" class="message-list">
 		<Message
-			v-for="(message, index) in messages"
+			v-for="(message, index) in props.messages"
 			:key="message.id.toString()"
 			:message="message"
-			:user="index === 0 || messages[index - 1].from !== message.from ? getUser(message.from) : undefined"
+			:user="index === 0 || messages[index - 1].from !== message.from ? userStore.users.get(message.from) : undefined"
 		/>
 	</div>
 </template>

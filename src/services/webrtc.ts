@@ -1,6 +1,6 @@
 import { websocketService } from './websocket';
 import { MessageType } from '@/types';
-import { useUserStore } from '@/stores/user';
+import { useMeStore } from '@/stores/me';
 import type { User, id } from '@/types';
 
 type PeerConnectionState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed';
@@ -28,7 +28,7 @@ class WebRTCService {
 	};
 
 	private constructor() {
-		this.user = useUserStore().user!;
+		this.user = useMeStore().user!;
 		this.setupWebSocketHandlers();
 	}
 
