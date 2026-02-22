@@ -1,25 +1,12 @@
 export type id = bigint;
 
-export type Me = {
-	id: id;
-	version: id;
-	username: string;
-	name: string;
-	avatar?: string;
-	status: State;
-	friends: id[];
-	friend_requests: id[];
-	friend_requests_sent: id[];
-	groups: id[];
-	dms: id[];
-};
-
 export type Server = {
 	id: id;
 	icon?: string;
 	name: string;
 	members?: User[];
 	channels?: Channel[];
+	roles?: Role[];
 	version: id;
 };
 
@@ -45,7 +32,7 @@ export type Role = {
 	color: string;
 };
 
-export enum State {
+export enum Status {
 	Online = 'Online',
 	Idle = 'Idle',
 	Dnd = 'Dnd',
@@ -54,12 +41,22 @@ export enum State {
 
 export type User = {
 	id: id;
+	version: id;
 	name: string;
 	username: string;
 	avatar?: string;
-	state: State;
-	version: id;
+	status: Status;
+	friends?: id[];
+	groups?: id[];
 };
+
+export interface Me extends User {
+	friends: id[];
+	friend_requests: id[];
+	friend_requests_sent: id[];
+	groups: id[];
+	dms: id[];
+}
 
 export enum MessageType {
 	Direct = 'direct',
@@ -83,6 +80,7 @@ export interface Message<T = any> {
 	data: T;
 	time: Date;
 	type: MessageType;
+	group_id?: id;
 	sent?: boolean;
 }
 
@@ -99,7 +97,7 @@ type File = {
 
 export type Event =
 	/* ===== PRESENCE ===== */
-	| { event: EventType.ChangeState; payload: State }
+	| { event: EventType.ChangeStatus; payload: Status }
 
 	/* ===== FRIEND ===== */
 	| { event: EventType.FriendRequest }
@@ -151,11 +149,11 @@ export type Event =
 	/* ===== CHANNEL ===== */
 	| {
 			event: EventType.CreateChannel;
-			payload: { name: string; kind: ChannelType };
+			payload: { name: string; type: ChannelType };
 	  }
 	| {
 			event: EventType.UpdateChannel;
-			payload: { name?: string; order?: number };
+			payload: { name?: string; type?: ChannelType };
 	  }
 	| { event: EventType.DeleteChannel }
 
@@ -166,13 +164,13 @@ export type Event =
 
 	/* ===== MODERATION ===== */
 	| { event: EventType.KickUser }
-	| { event: EventType.BanUser };
+	| { type: EventType.BanUser };
 
 export enum EventType {
 	/* ===== USER ===== */
 
 	/* ===== PRESENCE ===== */
-	ChangeState = 'change_state',
+	ChangeStatus = 'change_status',
 
 	/* ===== FRIEND ===== */
 	FriendRequest = 'friend_request',
@@ -206,13 +204,13 @@ export enum EventType {
 }
 
 export type Ack =
-	| { ack: AckType.None }
+	| { ack: AckType.None; payload: undefined }
 	| { ack: AckType.Error; payload: string }
 	| { ack: AckType.Received; payload: id }
 
 	/* ===== USER ===== */
 	| { ack: AckType.Initialized; payload: Me }
-	| { ack: AckType.ChangedStatus; payload: State }
+	| { ack: AckType.ChangedStatus; payload: Status }
 	| { ack: AckType.AddedFriend; payload: id }
 	| { ack: AckType.ReceivedFriendRequest; payload: id }
 	| { ack: AckType.SentFriendRequest; payload: id }
@@ -243,7 +241,7 @@ export type Ack =
 			payload: {
 				id: id;
 				name: string;
-				kind: ChannelType;
+				type: ChannelType;
 			};
 	  }
 	| {
@@ -287,15 +285,17 @@ export type Ack =
 export enum AckType {
 	None = 'none',
 	Error = 'error',
+	// MESSAGE
 	Received = 'received',
 	// USER
 	Initialized = 'initialized',
 	ChangedStatus = 'changed_status',
+	UpdatedUser = 'updated_user',
+	// FRIEND
 	AddedFriend = 'added_friend',
 	ReceivedFriendRequest = 'received_friend_request',
 	SentFriendRequest = 'sent_friend_request',
 	DeletedFriend = 'deleted_friend',
-	UpdatedUser = 'updated_user',
 	// GROUP
 	Subscribed = 'subscribed',
 	Unsubscribed = 'unsubscribed',

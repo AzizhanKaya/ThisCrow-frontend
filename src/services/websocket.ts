@@ -1,7 +1,7 @@
 import type { Me, Message } from '@/types';
 import { AckType, EventType, MessageType } from '@/types';
 import { WS_URL } from '@/constants';
-import { jsonParser } from '@/utils/json';
+import { decode, encode } from '@/utils/msgpack';
 
 type MessageCallback = (message: Message) => void;
 
@@ -10,6 +10,8 @@ class WebSocketService {
 	private ws: WebSocket | null = null;
 	private readonly url: string;
 	private messageHandlers: Map<MessageType, Set<MessageCallback>> = new Map();
+	private errorHandlers: Set<(error: Event) => void> = new Set();
+	private connectionStateHandlers: Set<(state: string) => void> = new Set();
 	private reconnectAttempts = 0;
 	private maxReconnectAttempts = 2;
 	private readonly reconnectDelay = 5000;
@@ -26,30 +28,54 @@ class WebSocketService {
 		return WebSocketService.instance;
 	}
 
-	connect() {
-		if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-			this.ws = new WebSocket(this.url);
-
-			this.ws.onopen = () => {
-				console.log('WebSocket connection established');
-			};
-
-			this.ws.onmessage = this.handleIncomingMessage.bind(this);
-
-			this.ws.onerror = (error) => {
-				console.error('WebSocket error:', error);
-			};
-
-			this.ws.onclose = () => {
-				console.log('WebSocket connection closed');
-				if (this.reconnectAttempts < this.maxReconnectAttempts) {
-					this.reconnectAttempts++;
-					setTimeout(() => this.connect(), this.reconnectDelay);
-				} else {
-					console.error('Max reconnection attempts reached');
-				}
-			};
+	cleanup() {
+		if (this.ws) {
+			console.log('Cleaned websocket');
+			this.ws.onopen = null;
+			this.ws.onclose = null;
+			this.ws.onerror = null;
+			this.ws.onmessage = null;
+			this.ws.close();
 		}
+	}
+
+	connect() {
+		if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+			return;
+		}
+
+		this.cleanup();
+
+		this.connectionStateHandlers.forEach((h) => h('CONNECTING'));
+
+		this.ws = new WebSocket(this.url);
+		this.ws.binaryType = 'arraybuffer';
+
+		this.ws.onopen = () => {
+			console.log('WebSocket connection established');
+			this.reconnectAttempts = 0;
+			this.connectionStateHandlers.forEach((h) => h('OPEN'));
+		};
+
+		this.ws.onmessage = this.handleIncomingMessage.bind(this);
+
+		this.ws.onerror = (error) => {
+			this.errorHandlers.forEach((h) => h(error));
+			console.error('WebSocket error:', error);
+		};
+
+		this.ws.onclose = (event) => {
+			this.connectionStateHandlers.forEach((h) => h('CLOSED'));
+			if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+				const delay = Math.min(10000, this.reconnectDelay * Math.pow(2, this.reconnectAttempts));
+
+				console.log(`Reconnecting in ${delay}ms...`);
+				setTimeout(() => {
+					this.reconnectAttempts++;
+					this.connect();
+				}, delay);
+			}
+		};
 	}
 
 	private initializeMessageHandlers() {
@@ -60,8 +86,9 @@ class WebSocketService {
 
 	private handleIncomingMessage(event: MessageEvent) {
 		try {
-			const message = jsonParser.parse(event.data) as Message;
-			message.time = new Date(message.time);
+			let message = decode(new Uint8Array(event.data)) as Message;
+
+			message.time = new Date(Number(message.time));
 
 			console.log(message);
 
@@ -85,9 +112,11 @@ class WebSocketService {
 			throw new Error('WebSocket is not connected. Current state:' + this.getConnectionState());
 		}
 
-		console.log(message);
+		const payload = { ...message, time: BigInt(message.time.getTime()) };
 
-		this.ws.send(jsonParser.stringify(message));
+		console.log(payload);
+
+		this.ws.send(encode(payload));
 	}
 
 	onMessage(type: MessageType, callback: MessageCallback) {
@@ -110,15 +139,18 @@ class WebSocketService {
 		handlers.delete(callback);
 	}
 
-	disconnect() {
-		if (!this.ws) return;
+	onError(callback: (error: Event) => void) {
+		this.errorHandlers.add(callback);
+	}
 
-		try {
-			this.ws.close();
-			this.messageHandlers.forEach((handlers) => handlers.clear());
-			console.log('WebSocket disconnected and handlers cleared');
-		} catch (error) {
-			console.error('Error during disconnect:', error);
+	disconnect() {
+		if (this.ws) {
+			this.messageHandlers.forEach((callback) => {
+				callback.clear();
+			});
+			console.log('disconnect');
+			this.ws.close(1000, 'Close');
+			this.ws = null;
 		}
 	}
 
@@ -140,27 +172,21 @@ class WebSocketService {
 	}
 
 	onConnectionStateChange(callback: (state: string) => void) {
-		const ws = this.ws;
-		if (!ws) return () => {};
-
-		const openListener = () => callback('OPEN');
-		const closeListener = () => callback('CLOSED');
-
-		ws.addEventListener('open', openListener);
-		ws.addEventListener('close', closeListener);
-
+		this.connectionStateHandlers.add(callback);
 		return () => {
-			ws.removeEventListener('open', openListener);
-			ws.removeEventListener('close', closeListener);
+			this.connectionStateHandlers.delete(callback);
 		};
 	}
 
 	public waitForSessionInit(): Promise<Me> {
-		return new Promise((resolve) => {
+		return new Promise((resolve, reject) => {
 			const handler = (message: Message) => {
 				if (message.type === MessageType.Server && message.data.ack === AckType.Initialized) {
 					this.offMessage(MessageType.Server, handler);
 					resolve(message.data.payload as Me);
+				} else if (message.type === MessageType.Server && message.data.ack === AckType.Error) {
+					this.offMessage(MessageType.Server, handler);
+					reject(new Error(message.data.payload || 'Session initialization failed'));
 				}
 			};
 

@@ -144,6 +144,9 @@
 		font-size: 1rem;
 		line-height: 1.4;
 		word-break: break-word;
+		-webkit-user-select: auto;
+		user-select: auto;
+		-webkit-user-drag: none;
 	}
 
 	.sent {
