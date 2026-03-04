@@ -119,21 +119,24 @@ class WebSocketService {
 		this.ws.send(encode(payload));
 	}
 
-	onMessage(type: MessageType, callback: MessageCallback) {
+	onMessage(type: MessageType, callback: MessageCallback): () => void {
 		const handlers = this.messageHandlers.get(type);
 		if (!handlers) {
 			console.error(`Invalid message type: ${type}`);
-			return;
+			throw new Error(`Invalid message type: ${type}`);
 		}
 
 		handlers.add(callback);
+		return () => {
+			handlers.delete(callback);
+		};
 	}
 
 	offMessage(type: MessageType, callback: MessageCallback) {
 		const handlers = this.messageHandlers.get(type);
 		if (!handlers) {
 			console.error(`Invalid message type: ${type}`);
-			return;
+			throw new Error(`Invalid message type: ${type}`);
 		}
 
 		handlers.delete(callback);
@@ -144,11 +147,10 @@ class WebSocketService {
 	}
 
 	disconnect() {
+		this.messageHandlers.forEach((callback) => {
+			callback.clear();
+		});
 		if (this.ws) {
-			this.messageHandlers.forEach((callback) => {
-				callback.clear();
-			});
-			console.log('disconnect');
 			this.ws.close(1000, 'Close');
 			this.ws = null;
 		}

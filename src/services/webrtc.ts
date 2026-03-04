@@ -28,7 +28,7 @@ class WebRTCService {
 	};
 
 	private constructor() {
-		this.user = useMeStore().user!;
+		this.user = useMeStore().me!;
 		this.setupWebSocketHandlers();
 	}
 
@@ -74,6 +74,7 @@ class WebRTCService {
 		peerConnection.onicecandidate = (event) => {
 			if (event.candidate) {
 				websocketService.sendMessage({
+					id: 0n,
 					type: MessageType.Info,
 					from: this.user.id,
 					to: userId,
@@ -142,6 +143,7 @@ class WebRTCService {
 		await peer.connection.setLocalDescription(offer);
 
 		websocketService.sendMessage({
+			id: 0n,
 			type: MessageType.Info,
 			from: this.user.id,
 			to: userId,
@@ -165,6 +167,7 @@ class WebRTCService {
 		await peer.connection.setLocalDescription(answer);
 
 		websocketService.sendMessage({
+			id: 0n,
 			type: MessageType.Info,
 			from: this.user.id,
 			to: userId,

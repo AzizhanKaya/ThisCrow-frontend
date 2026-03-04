@@ -1,26 +1,36 @@
 <script setup lang="ts">
-	import Server from '@/components/ServerIcon.vue';
+	import Server from '@/components/Group/ServerIcon.vue';
 	import { useServerStore } from '@/stores/server';
 	import CrowIcon from '@/components/CrowIcon.vue';
+	import { computed } from 'vue';
+	import ServerAdd from '@/components/Group/ServerAdd.vue';
 
 	const serverStore = useServerStore();
-	const servers = serverStore.servers;
+	const servers = computed(() => serverStore.servers);
 </script>
 
 <template>
 	<div class="server-list">
 		<CrowIcon />
+		<div v-if="servers.size > 0" class="separator"></div>
 		<Server v-for="[id, server] in servers" :key="id.toString()" :server="server" />
+		<ServerAdd />
 	</div>
 </template>
 
 <style scoped>
 	.server-list {
-		width: 70%;
-		margin-inline: auto;
+		width: 100%;
+		padding-inline: 10px;
 		display: flex;
 		flex-direction: column;
-		gap: 15px;
 		justify-content: flex-start;
+		align-items: center;
+	}
+	.separator {
+		width: 100%;
+		height: 1px;
+		background-color: var(--border);
+		margin: 7px 0px;
 	}
 </style>

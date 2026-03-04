@@ -3,8 +3,12 @@
 	import { computed, ref } from 'vue';
 	import { useMeStore } from '@/stores/me';
 	import { onClickOutside } from '@vueuse/core';
+	import { useRouter } from 'vue-router';
+	import { Icon } from '@iconify/vue';
+	import { websocketService } from '@/services/websocket';
 
 	const meStore = useMeStore();
+	const router = useRouter();
 
 	const user = meStore.me!;
 
@@ -29,14 +33,34 @@
 	};
 
 	const statusContainer = ref(null);
+	const userCardRef = ref(null);
 
 	onClickOutside(statusContainer, () => {
 		showStatusMenu.value = false;
 	});
+
+	onClickOutside(userCardRef, () => {
+		showUserMenu.value = false;
+	});
+
+	const showUserMenu = ref(false);
+
+	const handleUserCardClick = () => {
+		showUserMenu.value = !showUserMenu.value;
+	};
+
+	const handleAction = (action: string) => {
+		if (action === 'logout') {
+			websocketService.disconnect();
+			meStore.logOut();
+			router.push('/login');
+		}
+		showUserMenu.value = false;
+	};
 </script>
 
 <template>
-	<div class="user-card">
+	<div class="user-card" ref="userCardRef" @click="handleUserCardClick">
 		<img class="avatar" :src="user.avatar || '/default-user-icon.png'" />
 
 		<div class="names">
@@ -44,7 +68,7 @@
 			<span class="username">@{{ user.username }}</span>
 		</div>
 
-		<div ref="statusContainer" class="status-container" @click="showStatusMenu = !showStatusMenu">
+		<div ref="statusContainer" class="status-container" @click.stop="showStatusMenu = !showStatusMenu">
 			<div class="status" :class="getStatus"></div>
 
 			<Transition name="fade">
@@ -56,6 +80,36 @@
 				</div>
 			</Transition>
 		</div>
+
+		<Transition name="slide-up" mode="out-in">
+			<div v-if="showUserMenu" class="user-menu" @click.stop>
+				<button class="menu-item danger" @click="handleAction('logout')">
+					<div class="item-left">
+						<Icon icon="mdi:logout" class="item-icon" />
+						<div class="item-text">
+							<span class="label">Log Out</span>
+						</div>
+					</div>
+				</button>
+				<div class="menu-divider"></div>
+				<button class="menu-item" @click="handleAction('profile')">
+					<div class="item-left">
+						<Icon icon="mdi:account" class="item-icon" />
+						<div class="item-text">
+							<span class="label">Profile</span>
+						</div>
+					</div>
+				</button>
+				<button class="menu-item" @click="handleAction('settings')">
+					<div class="item-left">
+						<Icon icon="mdi:cog" class="item-icon" />
+						<div class="item-text">
+							<span class="label">Settings</span>
+						</div>
+					</div>
+				</button>
+			</div>
+		</Transition>
 	</div>
 </template>
 
@@ -63,8 +117,8 @@
 	.user-card {
 		position: absolute;
 		bottom: 20px;
-		width: 90%;
-		left: 5%;
+		left: 80px;
+		width: calc(clamp(200px, (100% - 70px) * 0.2, 300px) - 20px);
 		background-color: var(--bg);
 		padding: 10px;
 		border-radius: 10px;
@@ -73,6 +127,7 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
+		transition: background-color 0.2s ease;
 	}
 
 	.user-card:hover {
@@ -129,7 +184,7 @@
 	.status-menu {
 		position: absolute;
 		bottom: 35px;
-		background-color: #1e1e1e;
+		background-color: var(--bg-darker);
 		border-radius: 12px;
 		padding: 8px;
 		width: 140px;
@@ -168,6 +223,107 @@
 		flex-shrink: 0;
 	}
 
+	.user-menu {
+		position: absolute;
+		bottom: calc(100% + 10px);
+		left: 0;
+		width: 100%;
+		background-color: var(--bg-darker);
+		border-radius: 12px;
+		padding: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+		z-index: 100;
+		border: 1px solid var(--border);
+	}
+
+	.menu-divider {
+		height: 1px;
+		background-color: var(--border);
+		margin: 4px 0;
+	}
+
+	.menu-item {
+		background: none;
+		border: none;
+		color: var(--text);
+		padding: 8px;
+		text-align: left;
+		cursor: pointer;
+		border-radius: 8px;
+		display: flex;
+		align-items: center;
+		justify-content: flex-start;
+		font-family: inherit;
+		width: 100%;
+		transition:
+			background-color 0.2s,
+			color 0.2s;
+	}
+
+	.item-left {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.item-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.label {
+		font-size: 14px;
+		font-weight: 500;
+		color: #dbdbdb;
+	}
+
+	.item-icon {
+		font-size: 18px;
+		flex-shrink: 0;
+		color: #dbdbdb;
+	}
+
+	.menu-item:hover {
+		background-color: var(--bg);
+	}
+
+	.menu-item:hover .label,
+	.menu-item:hover .item-icon {
+		color: #fff;
+	}
+
+	.menu-item.danger .label,
+	.menu-item.danger .item-icon {
+		color: var(--error);
+	}
+
+	.menu-item.danger:hover {
+		background-color: var(--error);
+	}
+
+	.menu-item.danger:hover .label,
+	.menu-item.danger:hover .item-icon {
+		color: #fff;
+	}
+
+	.slide-up-enter-active,
+	.slide-up-leave-active {
+		transition:
+			transform 0.2s ease,
+			opacity 0.2s ease;
+		transform-origin: bottom;
+	}
+
+	.slide-up-enter-from,
+	.slide-up-leave-to {
+		transform: translate3d(0, 10px, 0);
+		opacity: 0;
+	}
+
 	.fade-enter-active,
 	.fade-leave-active {
 		transition:
@@ -178,7 +334,7 @@
 	.fade-enter-from,
 	.fade-leave-to {
 		opacity: 0;
-		transform: translateY(10px) scale(0.95);
+		transform: translate3d(0, 10px, 0) scale(0.95);
 	}
 
 	.online {

@@ -35,9 +35,8 @@ export const useFriendStore = defineStore('friends', {
 
 				switch (ack) {
 					case AckType.AddedFriend: {
-						const user = await userStore.getUser(payload);
 						const dmStore = useDMStore();
-						dmStore.addUser(user);
+						const user = await dmStore.ensureUser(message.from);
 						this.friends.set(user.id, user);
 						this.outgoing_requests = this.outgoing_requests.filter((u) => u.id !== user.id);
 						this.incoming_requests = this.incoming_requests.filter((u) => u.id !== user.id);
@@ -45,7 +44,7 @@ export const useFriendStore = defineStore('friends', {
 					}
 
 					case AckType.ReceivedFriendRequest: {
-						const user = await userStore.getUser(payload);
+						const user = await userStore.getUser(message.from);
 						if (!this.incoming_requests.some((u) => u.id === user.id)) {
 							this.incoming_requests.push(user);
 						}
@@ -53,7 +52,7 @@ export const useFriendStore = defineStore('friends', {
 					}
 
 					case AckType.SentFriendRequest: {
-						const user = await userStore.getUser(payload);
+						const user = await userStore.getUser(message.from);
 						if (!this.outgoing_requests.some((u) => u.id === user.id)) {
 							this.outgoing_requests.push(user);
 						}
@@ -61,9 +60,10 @@ export const useFriendStore = defineStore('friends', {
 					}
 
 					case AckType.DeletedFriend: {
-						this.friends.delete(payload);
-						this.incoming_requests = this.incoming_requests.filter((u) => u.id !== payload);
-						this.outgoing_requests = this.outgoing_requests.filter((u) => u.id !== payload);
+						console.log('Deleted friend', message.from);
+						this.friends.delete(message.from);
+						this.incoming_requests = this.incoming_requests.filter((u) => u.id !== message.from);
+						this.outgoing_requests = this.outgoing_requests.filter((u) => u.id !== message.from);
 						break;
 					}
 				}

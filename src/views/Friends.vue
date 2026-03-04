@@ -1,11 +1,13 @@
 <script setup lang="ts">
 	import { useFriendStore } from '@/stores/friend';
-	import { Status, type User } from '@/types';
+	import { Status, type User as UserType } from '@/types';
 	import { useRouter } from 'vue-router';
 	import { Icon } from '@iconify/vue';
 	import { ref, computed, type ComputedRef } from 'vue';
-	import AddFriend from '@/modals/AddFriend.vue';
 	import { useDMStore } from '@/stores/dm';
+	import ContextMenu from '@/components/ContextMenu.vue';
+	import AddFriendButton from '@/components/Friends/AddFriendButton.vue';
+	import User from '@/components/Friends/User.vue';
 
 	const router = useRouter();
 	const friendStore = useFriendStore();
@@ -13,9 +15,8 @@
 	type FriendTab = 'all' | 'online' | 'pending';
 	const activeTab = ref<FriendTab>('all');
 	const searchQuery = ref('');
-	const isModalOpen = ref(false);
 
-	const filteredFriends: ComputedRef<User[]> = computed(() => {
+	const filteredFriends: ComputedRef<UserType[]> = computed(() => {
 		let friends = Array.from(friendStore.friends.values());
 
 		if (activeTab.value === 'online') {
@@ -38,33 +39,6 @@
 			return a.username.localeCompare(b.username);
 		});
 	});
-
-	async function handleMessage(friend: User) {
-		const dmStore = useDMStore();
-		await dmStore.ensureUser(friend.id);
-		router.push({ name: 'user', params: { userId: friend.id.toString() } });
-	}
-
-	function handleAddFriend() {
-		isModalOpen.value = true;
-	}
-
-	function isOnline(friend: User) {
-		return friend.status && friend.status !== 'Offline';
-	}
-
-	function getState(user: User): string {
-		switch (user.status) {
-			case Status.Online:
-				return 'online';
-			case Status.Idle:
-				return 'idle';
-			case Status.Dnd:
-				return 'dnd';
-			case Status.Offline:
-				return 'offline';
-		}
-	}
 </script>
 
 <template>
@@ -93,10 +67,7 @@
 				<input v-model="searchQuery" type="text" placeholder="Search" class="search-input" />
 			</div>
 
-			<button class="add-friend-btn" @click="handleAddFriend">
-				<Icon icon="mdi:account-plus" />
-				Add Friend
-			</button>
+			<AddFriendButton />
 		</div>
 
 		<div v-if="activeTab === 'pending'" class="content">
@@ -105,55 +76,18 @@
 			</template>
 			<template v-else>
 				<!-- Incoming Requests -->
-				<div v-if="friendStore.incoming_requests.length > 0">
+				<div class="section" v-if="friendStore.incoming_requests.length > 0">
 					<div class="section-header">Incoming — {{ friendStore.incoming_requests.length }}</div>
 					<div class="friend-list">
-						<div v-for="friend in friendStore.incoming_requests" :key="friend.id.toString()" class="friend-card">
-							<div class="friend-info">
-								<div class="avatar-container">
-									<img :src="friend.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
-									<div :class="['state', getState(friend)]"></div>
-								</div>
-								<div class="friend-text">
-									<div>
-										<span class="name">{{ friend.name }}</span>
-										<span class="username">@{{ friend.username }}</span>
-									</div>
-									<span class="status">{{ friend.status }}</span>
-								</div>
-							</div>
-							<div class="action-buttons">
-								<button class="icon-btn success" @click="friendStore.acceptFriendRequest(friend)" title="Accept">
-									<Icon icon="mdi:check" />
-								</button>
-								<button class="icon-btn danger" @click="friendStore.removeFriend(friend)" title="Reject">
-									<Icon icon="mdi:close" />
-								</button>
-							</div>
-						</div>
+						<User v-for="friend in friendStore.incoming_requests" :key="friend.id.toString()" :user="friend" request />
 					</div>
 				</div>
 
 				<!-- Outgoing Requests -->
-				<div v-if="friendStore.outgoing_requests.length > 0" :style="{ marginTop: '24px' }">
+				<div class="section" v-if="friendStore.outgoing_requests.length > 0">
 					<div class="section-header">Outgoing — {{ friendStore.outgoing_requests.length }}</div>
 					<div class="friend-list">
-						<div v-for="friend in friendStore.outgoing_requests" :key="friend.id.toString()" class="friend-card">
-							<div class="friend-info">
-								<div class="avatar-container">
-									<img :src="friend.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
-								</div>
-								<div class="friend-text">
-									<span class="name">{{ friend.name }}</span>
-									<span class="username">@{{ friend.username }}</span>
-								</div>
-							</div>
-							<div class="action-buttons">
-								<button class="icon-btn danger" @click="friendStore.removeFriend(friend)" title="Cancel Request">
-									<Icon icon="mdi:close" />
-								</button>
-							</div>
-						</div>
+						<User v-for="friend in friendStore.outgoing_requests" :key="friend.id.toString()" :user="friend" request_sent />
 					</div>
 				</div>
 			</template>
@@ -166,37 +100,11 @@
 			</div>
 			<template v-else>
 				<div class="section-header">{{ activeTab === 'online' ? 'Online' : 'All Friends' }} — {{ filteredFriends.length }}</div>
-				<div class="friend-list">
-					<div v-for="friend in filteredFriends" :key="friend.id.toString()" class="friend-card">
-						<div class="friend-info">
-							<div class="avatar-container">
-								<img :src="friend.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
-								<div :class="['state', getState(friend)]"></div>
-							</div>
-							<div class="friend-text">
-								<div>
-									<span class="name">{{ friend.name }}</span>
-									<span class="username">@{{ friend.username }}</span>
-								</div>
-								<div class="status-container">
-									<span v-if="friend.status" class="status">{{ friend.status }}</span>
-								</div>
-							</div>
-						</div>
-						<div class="action-buttons">
-							<button class="icon-btn" @click="handleMessage(friend)" title="Send message">
-								<Icon icon="mdi:message" />
-							</button>
-							<button class="icon-btn danger" title="Unfriend" @click="friendStore.removeFriend(friend)">
-								<Icon icon="mdi:user-remove" />
-							</button>
-						</div>
-					</div>
-				</div>
+				<TransitionGroup name="list" tag="div" class="friend-list">
+					<User v-for="friend in filteredFriends" :key="friend.id.toString()" :user="friend" friend />
+				</TransitionGroup>
 			</template>
 		</div>
-
-		<AddFriend :isModalOpen="isModalOpen" @update:isModalOpen="isModalOpen = $event" />
 	</div>
 </template>
 
@@ -237,33 +145,14 @@
 		transition: all 0.2s;
 	}
 
-	.tab:hover {
-		background-color: var(--bg-light);
-		color: var(--text);
-	}
-
 	.tab.active {
 		background-color: var(--bg-light);
 		color: var(--text);
 	}
 
-	.add-friend-btn {
-		background-color: var(--color);
-		color: white;
-		border: none;
-		border-radius: 4px;
-		padding: 8px 16px;
-		cursor: pointer;
-		font-size: 15px;
-		font-weight: 500;
-		transition: background-color 0.2s;
-		align-items: center;
-		display: flex;
-		gap: 6px;
-	}
-
-	.add-friend-btn:hover {
-		background-color: var(--color-light);
+	.tab:hover {
+		background-color: var(--bg-lighter);
+		color: var(--text);
 	}
 
 	.search-container {
@@ -283,6 +172,7 @@
 
 	.search-input {
 		width: 100%;
+		min-width: 150px;
 		background-color: var(--bg-dark);
 		border: none;
 		border-radius: 4px;
@@ -302,12 +192,16 @@
 		padding: 16px 24px;
 	}
 
+	.section {
+		padding-bottom: 16px;
+	}
+
 	.section-header {
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--text-muted);
 		text-transform: uppercase;
-		margin-bottom: 12px;
+		margin-bottom: 8px;
 		letter-spacing: 0.5px;
 	}
 
@@ -326,16 +220,11 @@
 
 	.friend-card {
 		border-radius: 8px;
-		padding: 12px 16px;
+		padding: 8px 12px;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		transition: background-color 0.2s;
-		border-top: 1px solid var(--border-muted);
-	}
-
-	.friend-card:first-child {
-		border-top: none;
 	}
 
 	.friend-card:hover {
@@ -406,7 +295,11 @@
 		font-weight: 500;
 		font-size: 0.8rem;
 		color: var(--text-muted);
-		margin-left: 4px;
+		margin-left: 0px;
+	}
+	.name:hover {
+		text-decoration: underline;
+		cursor: pointer;
 	}
 
 	.status-container {
@@ -469,5 +362,16 @@
 		border-radius: 10px;
 		margin-left: 4px;
 		font-weight: 700;
+	}
+
+	.list-enter-active,
+	.list-leave-active {
+		transition: all 0.1s ease-in;
+	}
+
+	.list-enter-from,
+	.list-leave-to {
+		opacity: 0;
+		transform: translateY(20px);
 	}
 </style>

@@ -12,6 +12,11 @@ export const useMeStore = defineStore('me', {
 			this.me = me;
 		},
 
+		logOut() {
+			this.me = null;
+			document.cookie = 'session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+		},
+
 		changeStatus(status: Status) {
 			let change_status: Message<Event> = {
 				id: 0n,

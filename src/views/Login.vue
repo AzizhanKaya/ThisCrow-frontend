@@ -7,6 +7,7 @@
 	import { useRouter } from 'vue-router';
 	import { initApp } from '@/init';
 	import { websocketService } from '@/services/websocket';
+	import { invoke } from '@tauri-apps/api/core';
 
 	const meStore = useMeStore();
 	const router = useRouter();
@@ -31,6 +32,18 @@
 			isLoading.value = false;
 		}
 	}
+
+	async function launchNetflix() {
+		await invoke('launch_netflix');
+	}
+
+	async function connectToNetflix() {
+		await invoke('connect_to_netflix');
+	}
+
+	async function seekNetflix() {
+		await invoke('seek_netflix', { milliseconds: 100000 });
+	}
 </script>
 
 <template>
@@ -50,6 +63,9 @@
 			</div>
 			<button type="submit">Login</button>
 		</form>
+		<button @click="launchNetflix">Launch Netflix</button>
+		<button @click="connectToNetflix">Connect to Netflix</button>
+		<button @click="seekNetflix">Seek Netflix</button>
 	</div>
 </template>
 
@@ -59,24 +75,23 @@
 	}
 
 	.field {
-		margin-bottom: 16px;
+		margin-bottom: 8px;
 		position: relative;
 	}
 
 	label {
 		display: block;
 		font-weight: 600;
-		margin-bottom: 0.25rem;
-		padding: 10px 0px;
+		padding: 8px 0px;
 	}
 
 	.icon {
 		position: absolute;
 		width: 24px;
 		height: 24px;
-		left: 8px;
-		top: 48px;
-		color: #e9e9e9;
+		left: 10px;
+		top: 40px;
+		color: var(--text);
 	}
 
 	input {
@@ -84,7 +99,7 @@
 		padding: 0.5rem;
 		box-sizing: border-box;
 		border-radius: 4px;
-		background-color: #272727;
+		background-color: var(--bg-darker);
 		border: 2px solid transparent;
 		font-size: 1rem;
 		border-radius: 5px;
@@ -92,14 +107,14 @@
 		transition: 0.5s ease;
 		font-weight: 200;
 		padding-left: 40px;
-		color: #e9e9e9;
+		color: var(--text);
 	}
 
 	input:-webkit-autofill,
 	input:-webkit-autofill:hover,
 	input:-webkit-autofill:focus,
 	input:-webkit-autofill:active {
-		-webkit-box-shadow: 0 0 0 30px #272727 inset !important;
+		-webkit-box-shadow: 0 0 0 30px var(--bg-darker) inset !important;
 		-webkit-text-fill-color: #e9e9e9 !important;
 		font-size: 1rem !important;
 		font-weight: 200 !important;
@@ -108,9 +123,9 @@
 	button {
 		width: 100%;
 		padding: 1rem;
-		background: #6427d6;
+		background: var(--color-light);
 		border: none;
-		margin-top: 10px;
+		margin-top: 12px;
 		font-weight: 600;
 		border-radius: 4px;
 		cursor: pointer;
@@ -120,6 +135,6 @@
 	}
 
 	button:hover {
-		background: #4b1f9e;
+		background: var(--color-dark);
 	}
 </style>

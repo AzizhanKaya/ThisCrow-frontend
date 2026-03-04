@@ -41,11 +41,9 @@ export const useMessageStore = defineStore('message', {
 		},
 
 		handleIncomingMessage(message: Message) {
-			const chat_id = message.from;
+			const chat_id = this.getChatId(message);
 
 			if (!this.messages.has(chat_id)) {
-				const dmStore = useDMStore();
-				dmStore.ensureUser(chat_id);
 				this.messages.set(chat_id, []);
 			}
 

@@ -5,11 +5,8 @@
 </script>
 
 <template>
-	<div>
-		<div @click="router.push('/')" class="crow-icon">
-			<img src="/default-server-icon.png" />
-		</div>
-		<div class="separator"></div>
+	<div @click="router.push({ name: 'chats' })" class="crow-icon">
+		<img src="/crow.png" />
 	</div>
 </template>
 
@@ -46,11 +43,5 @@
 		top: 50%;
 		transform: translate(-50%, -50%);
 		object-fit: contain;
-	}
-
-	.separator {
-		height: 1px;
-		background-color: var(--border);
-		margin: 7px 0px;
 	}
 </style>

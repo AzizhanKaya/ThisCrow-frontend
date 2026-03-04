@@ -7,7 +7,6 @@ import { MessageType, AckType, type Message, type Ack } from '@/types';
 export const useUserStore = defineStore('user', {
 	state: () => ({
 		users: new Map<id, User>(),
-		username_to_id: new Map<string, id>(),
 	}),
 
 	actions: {
@@ -36,7 +35,6 @@ export const useUserStore = defineStore('user', {
 			} else {
 				this.users.set(user.id, user);
 			}
-			this.username_to_id.set(user.username, user.id);
 		},
 		setUsers(users: User[]) {
 			users.forEach((user) => this.setUser(user));
@@ -58,11 +56,7 @@ export const useUserStore = defineStore('user', {
 		},
 
 		async getUser(id: id): Promise<User> {
-			return this.users.get(id) ?? (this.setUser(await fetchUser({ id })), this.users.get(id)!);
-		},
-
-		async getId(username: string): Promise<id> {
-			return this.username_to_id.get(username) ?? (this.setUser(await fetchUser({ username })), this.username_to_id.get(username)!);
+			return this.users.get(id) ?? (this.setUser(await fetchUser(id)), this.users.get(id)!);
 		},
 	},
 });

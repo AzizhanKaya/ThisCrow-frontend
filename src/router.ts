@@ -5,7 +5,7 @@ import Register from '@/views/Register.vue';
 import Chats from '@/views/Chats.vue';
 import Chat from '@/views/Chat.vue';
 import Friends from '@/views/Friends.vue';
-import GroupChat from '@/views/GroupChat.vue';
+import Group from '@/views/Group.vue';
 
 import AuthLayout from '@/layouts/Auth.vue';
 import MainLayout from '@/layouts/Main.vue';
@@ -21,11 +21,11 @@ const routes = [
 				name: 'chats',
 				component: Chats,
 				children: [
-					{ path: 'friends', name: 'friends', component: Friends, meta: { transition: 'fade' } },
+					{ path: 'friends', name: 'friends', component: Friends },
 					{ path: 'user/:userId', name: 'user', component: Chat },
 				],
 			},
-			{ path: 'group/:groupId', name: 'group', component: GroupChat },
+			{ path: 'server/:groupId', name: 'group', component: Group },
 		],
 	},
 	{

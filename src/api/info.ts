@@ -10,10 +10,9 @@ export async function fetchServers(server_ids: id[]): Promise<Server[]> {
 	});
 }
 
-export async function fetchUser({ id, username }: { id?: id; username?: string }): Promise<User> {
+export async function fetchUser(id: id): Promise<User> {
 	const params = new URLSearchParams();
-	if (id) params.append('id', id.toString());
-	if (username) params.append('username', username);
+	params.append('id', id.toString());
 	const url = API_URL + `/info/user?${params.toString()}`;
 
 	return await msgFetch<User>(url, { credentials: 'include' });
@@ -26,5 +25,14 @@ export async function fetchUsers(ids: id[]): Promise<User[]> {
 		method: 'POST',
 		credentials: 'include',
 		body: encode(ids),
+	});
+}
+
+export async function searchUser(username: string): Promise<User[]> {
+	const params = new URLSearchParams();
+	params.append('username', username);
+
+	return msgFetch<User[]>(API_URL + `/info/search_user?${params.toString()}`, {
+		credentials: 'include',
 	});
 }

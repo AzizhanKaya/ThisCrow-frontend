@@ -1,6 +1,6 @@
 <script setup lang="ts">
 	import { computed, watch, ref, onMounted, nextTick } from 'vue';
-	import Message from './Message.vue';
+	import Message from '@/components/Message/Message.vue';
 	import type { Message as MessageType, User, id } from '@/types';
 	import { useUserStore } from '@/stores/user';
 

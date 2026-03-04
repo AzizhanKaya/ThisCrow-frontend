@@ -1,34 +1,37 @@
 <script setup lang="ts">
-	import ServerList from '@/views/ServersList.vue';
+	import ServerList from '@/components/Group/ServerList.vue';
+	import UserCard from '@/components/UserCard.vue';
 </script>
 
 <template>
 	<div class="main-layout">
-		<div class="main">
-			<aside class="server-side">
-				<ServerList />
-			</aside>
-			<section class="chats">
-				<router-view />
-			</section>
-		</div>
+		<aside class="server-sidebar">
+			<ServerList />
+		</aside>
+		<section class="content-view">
+			<router-view />
+		</section>
+		<UserCard />
 	</div>
 </template>
 
 <style scoped>
-	.main {
+	.main-layout {
 		display: grid;
 		grid-template-columns: 70px 1fr;
-		height: 98vh;
 		overflow: hidden;
+		height: calc(100% - 30px);
 	}
 
-	.server-side {
+	.server-sidebar {
 		padding-top: 5px;
 	}
 
-	.chats {
+	.content-view {
 		border-top-left-radius: 15px;
 		min-width: 500px;
+		border-left: 1px solid var(--border);
+		border-top: 1px solid var(--border);
+		border-top-left-radius: 20px;
 	}
 </style>

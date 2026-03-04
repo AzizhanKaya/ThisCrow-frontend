@@ -8,17 +8,20 @@
 	import { useRoute } from 'vue-router';
 	import { useDMStore } from '@/stores/dm';
 	import { useMessageStore } from '@/stores/message';
-	import MessageInput from '@/components/MessageInput.vue';
+	import MessageInput from '@/components/Message/MessageInput.vue';
 
 	import ChatSkeleton from '@/components/Skeletons/ChatSkeleton.vue';
-	import MessageList from '@/components/MessageList.vue';
+	import MessageList from '@/components/Message/MessageList.vue';
 
 	const dmStore = useDMStore();
 	const route = useRoute();
 	const meStore = useMeStore();
 	const messageStore = useMessageStore();
 
-	const to = computed(() => BigInt(route.params.userId as string));
+	const to = computed(() => {
+		console.log(route.params.userId);
+		return BigInt(route.params.userId as string);
+	});
 
 	const showSkeleton = ref(false);
 	let skeletonTimer: any = null;
@@ -103,10 +106,9 @@
 
 	header {
 		background-color: var(--bg-dark);
-		height: 62px;
+		height: 61px;
 		width: 100%;
 		position: absolute;
-		border-top: 1px solid #303030;
 		border-bottom: 1px solid #303030;
 		z-index: 10;
 		display: flex;

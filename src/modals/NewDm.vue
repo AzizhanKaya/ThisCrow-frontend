@@ -1,25 +1,59 @@
 <script setup lang="ts">
-	import { ref, watch } from 'vue';
+	import { ref, computed, watch } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import { searchUser } from '@/api/info';
-	import type { User } from '@/types';
+	import { useRouter } from 'vue-router';
+	import { useModalStore } from '@/stores/modal';
 	import { useMeStore } from '@/stores/me';
 	import { useFriendStore } from '@/stores/friend';
-	import { useModalStore } from '@/stores/modal';
-
-	const friendStore = useFriendStore();
-	const meStore = useMeStore();
+	import { useDMStore } from '@/stores/dm';
+	import { searchUser } from '@/api/info';
+	import type { id, User } from '@/types';
 
 	const modalStore = useModalStore();
+	const meStore = useMeStore();
+	const friendStore = useFriendStore();
+	const dmStore = useDMStore();
+	const router = useRouter();
 
 	const searchQuery = ref('');
-	const searchResults = ref<User[]>([]);
+	const networkResults = ref<User[]>([]);
 	const isLoading = ref(false);
 	const hasSearched = ref(false);
 
+	const allLocalUsers = computed(() => {
+		const users = new Map<string, User>();
+		for (const friend of friendStore.friends.values()) {
+			users.set(friend.id.toString(), friend);
+		}
+		for (const user of dmStore.dms) {
+			users.set(user.id.toString(), user);
+		}
+		return Array.from(users.values());
+	});
+
+	const displayedResults = computed(() => {
+		let localResults = allLocalUsers.value;
+
+		if (searchQuery.value.trim()) {
+			const query = searchQuery.value.toLowerCase();
+			localResults = localResults.filter(
+				(user) => user.username.toLowerCase().includes(query) || user.name.toLowerCase().includes(query)
+			);
+		}
+
+		const combined = new Map<id, User>();
+		for (const user of localResults) {
+			combined.set(user.id, user);
+		}
+		for (const user of networkResults.value) {
+			combined.set(user.id, user);
+		}
+		return Array.from(combined.values()).sort((a, b) => a.username.localeCompare(b.username));
+	});
+
 	const fetchSearchResults = async () => {
 		if (!searchQuery.value.trim()) {
-			searchResults.value = [];
+			networkResults.value = [];
 			return;
 		}
 		isLoading.value = true;
@@ -27,10 +61,10 @@
 		try {
 			const data = await searchUser(searchQuery.value);
 			const filteredData = data.filter((user) => user.id !== meStore.me?.id);
-			searchResults.value = filteredData;
+			networkResults.value = filteredData;
 		} catch (err) {
 			console.error(err);
-			searchResults.value = [];
+			networkResults.value = [];
 		} finally {
 			isLoading.value = false;
 		}
@@ -39,7 +73,7 @@
 	let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 	watch(searchQuery, (newVal) => {
 		if (!newVal) {
-			searchResults.value = [];
+			networkResults.value = [];
 			hasSearched.value = false;
 			return;
 		}
@@ -50,20 +84,10 @@
 		}, 600);
 	});
 
-	const closeModal = () => {
+	const handleMessage = async (user: User) => {
 		modalStore.closeModal();
-		setTimeout(() => {
-			searchQuery.value = '';
-			searchResults.value = [];
-			hasSearched.value = false;
-		}, 200);
-	};
-
-	const getButtonStatus = (user: User) => {
-		if (friendStore.isFriend(user.id)) return { class: 'btn-disabled', icon: 'mdi:account-check' };
-		if (friendStore.isRequestSent(user.id)) return { class: 'btn-disabled', icon: 'mdi:check' };
-		if (friendStore.isRequestReceived(user.id)) return { class: 'btn-primary', icon: 'mdi:account-arrow-left' };
-		return { class: 'btn-primary', icon: 'mdi:account-plus' };
+		await dmStore.ensureUser(user.id);
+		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	};
 </script>
 
@@ -72,8 +96,8 @@
 		<div class="modal-container" @click.stop>
 			<header class="modal-header">
 				<div class="title-group">
-					<h2>Add Friend</h2>
-					<span class="subtitle">You can add friends with their username.</span>
+					<h2>Select User</h2>
+					<span class="subtitle">Search for a friend to start a direct message.</span>
 				</div>
 				<button class="close-btn" @click="modalStore.closeModal">
 					<Icon icon="mdi:close" />
@@ -82,47 +106,46 @@
 
 			<div class="search-section">
 				<div class="input-wrapper">
-					<input type="text" v-model="searchQuery" placeholder="Enter a username..." autofocus />
+					<input type="text" v-model="searchQuery" placeholder="Type a username..." autofocus />
 					<Icon icon="mdi:magnify" class="search-icon" />
 				</div>
 			</div>
 
 			<div class="results-area">
-				<div v-if="isLoading" class="state-message">
+				<div v-if="isLoading && displayedResults.length === 0" class="state-message">
 					<Icon icon="eos-icons:loading" class="spin" />
 				</div>
 
-				<div v-else-if="searchResults.length > 0" class="user-list">
-					<div v-for="user in searchResults" :key="user.id.toString()" class="user-card">
+				<div v-else-if="displayedResults.length > 0" class="user-list">
+					<div v-for="user in displayedResults" :key="user.id.toString()" class="user-card" @click="handleMessage(user)">
 						<div class="user-info">
 							<img :src="user.avatar || '/default-user-icon.png'" alt="avatar" />
-							<span class="username">{{ user.username }}</span>
+							<div class="user-text">
+								<span class="name">{{ user.name }}</span>
+								<span class="username">@{{ user.username }}</span>
+							</div>
 						</div>
 
-						<button
-							class="action-btn"
-							:class="getButtonStatus(user).class"
-							@click="friendStore.sendFriendRequest(user)"
-							:disabled="friendStore.isRequestSent(user.id) || friendStore.isFriend(user.id)"
-						>
-							<Icon :icon="getButtonStatus(user).icon" />
+						<button class="action-btn btn-primary" @click.stop="handleMessage(user)">
+							<Icon icon="mdi:message-text" />
 						</button>
 					</div>
 				</div>
 
-				<div v-else-if="hasSearched && searchQuery" class="state-message error">
+				<div v-else-if="searchQuery" class="state-message error">
 					<Icon icon="mdi:account-off-outline" />
 					<span>No user found with that name.</span>
 				</div>
 
 				<div v-else class="state-message idle">
-					<Icon icon="mdi:account-search-outline" />
-					<span>Start typing to find friends.</span>
+					<Icon icon="mdi:account-group" />
+					<span>No users found to message.</span>
 				</div>
 			</div>
 		</div>
 	</div>
 </template>
+
 <style scoped>
 	.modal-backdrop {
 		position: fixed;
@@ -267,10 +290,22 @@
 		border: 2px solid var(--bg-dark);
 	}
 
-	.user-info .username {
+	.user-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.user-text .name {
 		color: var(--text);
 		font-weight: 600;
 		font-size: 1rem;
+	}
+
+	.user-text .username {
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		font-weight: 500;
 	}
 
 	.action-btn {
@@ -287,27 +322,12 @@
 	}
 
 	.btn-primary {
-		background-color: var(--success);
+		background-color: var(--color);
 		color: #fff;
 	}
 	.btn-primary:hover {
-		background-color: var(--success-hover);
+		filter: brightness(1.1);
 		transform: translateY(-1px);
-	}
-
-	.btn-disabled {
-		background-color: var(--bg-dark);
-		color: var(--text-muted);
-		opacity: 0.8;
-	}
-
-	.btn-text {
-		display: none;
-	}
-	@media (min-width: 400px) {
-		.btn-text {
-			display: block;
-		}
 	}
 
 	.state-message {

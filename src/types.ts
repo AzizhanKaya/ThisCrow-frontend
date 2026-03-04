@@ -2,22 +2,25 @@ export type id = bigint;
 
 export type Server = {
 	id: id;
-	icon?: string;
+	version: id;
+	position: id;
 	name: string;
-	members?: User[];
+	icon?: string;
+	description?: string;
+	members?: Member[];
 	channels?: Channel[];
 	roles?: Role[];
-	version: id;
 };
 
 export type Channel = {
 	id: id;
 	name: string;
 	type: ChannelType;
+	messages?: Message[];
 };
 
 export enum ChannelType {
-	Chat = 'chat',
+	Text = 'text',
 	Voice = 'voice',
 }
 
@@ -104,9 +107,12 @@ export type Event =
 	| { event: EventType.FriendAccept }
 	| { event: EventType.FriendRemove }
 
-	/* ===== GUILD ===== */
+	/* ===== GROUP ===== */
+	| { event: EventType.CreateGroup; payload: { name: string; icon?: string; description?: string } }
+	| { event: EventType.Subscribe }
+	| { event: EventType.Unsubscribe }
 	| {
-			event: EventType.UpdateGuild;
+			event: EventType.UpdateGroup;
 			payload: {
 				name?: string;
 				icon?: string;
@@ -177,8 +183,11 @@ export enum EventType {
 	FriendAccept = 'friend_accept',
 	FriendRemove = 'friend_remove',
 
-	/* ===== GUILD ===== */
-	UpdateGuild = 'update_guild',
+	/* ===== Group ===== */
+	CreateGroup = 'create_group',
+	Subscribe = 'subscribe',
+	Unsubscribe = 'unsubscribe',
+	UpdateGroup = 'update_group',
 
 	/* ===== ROLE ===== */
 	CreateRole = 'create_role',
@@ -211,10 +220,10 @@ export type Ack =
 	/* ===== USER ===== */
 	| { ack: AckType.Initialized; payload: Me }
 	| { ack: AckType.ChangedStatus; payload: Status }
-	| { ack: AckType.AddedFriend; payload: id }
-	| { ack: AckType.ReceivedFriendRequest; payload: id }
-	| { ack: AckType.SentFriendRequest; payload: id }
-	| { ack: AckType.DeletedFriend; payload: id }
+	| { ack: AckType.AddedFriend; payload: undefined }
+	| { ack: AckType.ReceivedFriendRequest; payload: undefined }
+	| { ack: AckType.SentFriendRequest; payload: undefined }
+	| { ack: AckType.DeletedFriend; payload: undefined }
 	| {
 			ack: AckType.UpdatedUser;
 			payload: {
@@ -225,21 +234,20 @@ export type Ack =
 
 	/* ===== GROUP / GUILD ===== */
 	| { ack: AckType.Subscribed; payload: Server }
-	| { ack: AckType.Unsubscribed; payload: id }
-	| { ack: AckType.AddedMember; payload: id }
-	| { ack: AckType.RemovedMember; payload: id }
+	| { ack: AckType.Unsubscribed; payload: undefined }
+	| { ack: AckType.AddedMember; payload: undefined }
+	| { ack: AckType.RemovedMember; payload: undefined }
 	| {
 			ack: AckType.CreatedGroup;
 			payload: {
-				id: id;
 				name: string;
+				description?: string;
 				icon?: string;
 			};
 	  }
 	| {
 			ack: AckType.CreatedChannel;
 			payload: {
-				id: id;
 				name: string;
 				type: ChannelType;
 			};
@@ -247,17 +255,14 @@ export type Ack =
 	| {
 			ack: AckType.CreatedRole;
 			payload: {
-				id: id;
 				name: string;
-				permissions: number;
 				color: string;
 			};
 	  }
-	| { ack: AckType.AssignedRole; payload: id }
+	| { ack: AckType.AssignedRole; payload: undefined }
 	| {
 			ack: AckType.UpdatedGroup;
 			payload: {
-				id: id;
 				name?: string;
 				icon?: string;
 			};
@@ -265,22 +270,23 @@ export type Ack =
 	| {
 			ack: AckType.UpdatedChannel;
 			payload: {
-				id: id;
 				name?: string;
+				position?: number;
+				title?: string;
 			};
 	  }
 	| {
 			ack: AckType.UpdatedRole;
 			payload: {
-				id: id;
 				name?: string;
+				position?: number;
 				permissions?: number;
 				color?: string;
 			};
 	  }
-	| { ack: AckType.DeletedGroup; payload: id }
-	| { ack: AckType.DeletedChannel; payload: id }
-	| { ack: AckType.DeletedRole; payload: id };
+	| { ack: AckType.DeletedGroup; payload: undefined }
+	| { ack: AckType.DeletedChannel; payload: undefined }
+	| { ack: AckType.DeletedRole; payload: undefined };
 
 export enum AckType {
 	None = 'none',

@@ -81,7 +81,14 @@
 				</div>
 			</div>
 			<div class="input-row">
-				<input type="file" ref="fileInput" @change="onFileSelect" multiple accept="image/*,video/*,application/*" style="display: none" />
+				<input
+					type="file"
+					ref="fileInput"
+					@change="onFileSelect"
+					multiple
+					accept="image/*,video/*,application/*"
+					style="display: none"
+				/>
 				<button class="icon-btn plus" @click="onPlus" aria-label="Add">
 					<Icon icon="mdi:plus" width="24" height="24" />
 				</button>
@@ -102,7 +109,7 @@
 <style>
 	.input-area {
 		position: absolute;
-		bottom: 30px;
+		bottom: 15px;
 		width: 100%;
 		padding: 0 20px;
 		z-index: 10;
@@ -110,7 +117,7 @@
 
 	.input-container {
 		width: 100%;
-		background-color: #222;
+		background-color: var(--bg-dark);
 		border-radius: 16px;
 		display: flex;
 		flex-direction: column;

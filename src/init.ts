@@ -21,7 +21,9 @@ export async function initApp() {
 	meStore.changeStatus(Status.Online);
 
 	userStore.init(me);
-	await friendStore.init(me.friends, me.friend_requests, me.friend_requests_sent);
-	await serverStore.init(me.groups);
-	await dmStore.init(me.dms);
+	await Promise.all([
+		friendStore.init(me.friends, me.friend_requests, me.friend_requests_sent),
+		serverStore.init(me.groups),
+		dmStore.init(),
+	]);
 }

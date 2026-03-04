@@ -45,7 +45,7 @@
 	}
 
 	.user:hover {
-		background-color: #333;
+		background-color: var(--bg-light);
 		cursor: pointer;
 	}
 
@@ -59,7 +59,7 @@
 
 	.name {
 		font-weight: bold;
-		font-size: 1.1em;
+		font-size: 1.1rem;
 		color: #dbdbdb;
 		position: absolute;
 		top: 8px;
@@ -67,7 +67,7 @@
 	}
 
 	.username {
-		font-size: 0.9em;
+		font-size: 0.8rem;
 		color: #bebebe;
 		position: absolute;
 		top: 28px;

@@ -1,11 +1,14 @@
 import { defineStore } from 'pinia';
-import type { User, id } from '@/types';
+import { MessageType, type User, type id, type Message } from '@/types';
 import { useUserStore } from './user.ts';
+import { useMeStore } from './me.ts';
+import { fetchDms } from '@/api/state.ts';
+import { websocketService } from '@/services/websocket.ts';
 
 export const useDMStore = defineStore('dm', {
 	state: () => ({
 		dms: [] as User[],
-		loading_users: new Set<id>(),
+		loading_user: new Map<id, Promise<User>>(),
 	}),
 	getters: {
 		isInDms:
@@ -21,23 +24,52 @@ export const useDMStore = defineStore('dm', {
 			},
 	},
 	actions: {
-		async init(dms: id[]) {
+		setupListeners() {
+			websocketService.onMessage(MessageType.Direct, async (m: Message) => {
+				const meStore = useMeStore();
+				if (!meStore.me) return;
+
+				const user_id = m.from === meStore.me.id ? m.to : m.from;
+
+				await this.ensureUser(user_id);
+
+				const index = this.dms.findIndex((u) => u.id === user_id);
+				if (index > 0) {
+					const [user] = this.dms.splice(index, 1);
+					this.dms.unshift(user);
+				}
+			});
+		},
+		async init() {
+			const dms = await fetchDms();
 			const userStore = useUserStore();
 			this.dms = await userStore.getUsers(dms);
 		},
 
 		async ensureUser(id: id) {
-			if (this.isInDms(id) || this.loading_users.has(id)) return;
-			this.loading_users.add(id);
-			const userStore = useUserStore();
-			try {
-				const user = await userStore.getUser(id);
-				this.dms.push(user);
-			} catch (e) {
-				console.error(e);
-			} finally {
-				this.loading_users.delete(id);
+			if (this.getUser(id)) return this.getUser(id)!;
+
+			if (this.loading_user.has(id)) {
+				return this.loading_user.get(id)!;
 			}
+
+			const addUser = new Promise<User>(async (resolve, reject) => {
+				try {
+					const userStore = useUserStore();
+					const user = await userStore.getUser(id);
+					this.dms.push(user);
+					resolve(user);
+				} catch (e) {
+					console.error(e);
+					reject(e);
+				} finally {
+					this.loading_user.delete(id);
+				}
+			});
+
+			this.loading_user.set(id, addUser);
+
+			return addUser;
 		},
 
 		addUser(user: User) {
