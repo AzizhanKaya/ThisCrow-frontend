@@ -1,34 +1,36 @@
 import { websocketService } from './websocket';
-import { MessageType } from '@/types';
+import { EventType, MessageType, type Event } from '@/types';
 import { useMeStore } from '@/stores/me';
-import type { User, id } from '@/types';
-
-type PeerConnectionState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed';
-type MediaType = 'audio' | 'video' | 'both' | 'none';
+import type { Message, User, id } from '@/types';
+import { generate_uid } from '@/utils/uid';
+import { generate_snowflake } from '@/utils/snowflake';
 
 interface PeerConnection {
 	connection: RTCPeerConnection;
-	stream?: MediaStream;
+	dataChannel?: RTCDataChannel;
+	remoteStream?: MediaStream;
 	userId: id;
+	mediaTypes: Map<string, MediaType>;
 }
 
-export interface Channel {
-	id: id;
-	name: string;
-	users: id[];
+export enum MediaType {
+	Audio = 'audio',
+	Video = 'video',
+	Screen = 'screen',
 }
 
 class WebRTCService {
 	private static instance: WebRTCService;
-	private peerConnections: Map<id, PeerConnection> = new Map();
-	private localStream?: MediaStream;
-	private readonly user: User;
+	private pcs: Map<id, PeerConnection> = new Map();
+	localStream?: MediaStream;
+	private localMediaTypes: Map<string, MediaType> = new Map();
+	private readonly me: User;
 	private readonly configuration: RTCConfiguration = {
 		iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
 	};
 
 	private constructor() {
-		this.user = useMeStore().me!;
+		this.me = useMeStore().me!;
 		this.setupWebSocketHandlers();
 	}
 
@@ -40,240 +42,241 @@ class WebRTCService {
 	}
 
 	private setupWebSocketHandlers() {
-		websocketService.onMessage(MessageType.Info, async (message) => {
-			if (message.data.type === 'webrtc') {
-				const fromId = message.from as unknown as id;
-				switch (message.data.action) {
-					case 'offer':
-						await this.handleOffer(fromId, message.data.offer);
+		websocketService.onMessage(MessageType.Info, async (message: Message<Event>) => {
+			try {
+				const { from, data } = message;
+				switch (data.event) {
+					case EventType.Offer:
+						await this.handleOffer(from, { sdp: data.payload, type: 'offer' } as RTCSessionDescriptionInit);
 						break;
-					case 'answer':
-						await this.handleAnswer(fromId, message.data.answer);
+					case EventType.Answer:
+						await this.handleAnswer(from, { sdp: data.payload, type: 'answer' } as RTCSessionDescriptionInit);
 						break;
-					case 'ice-candidate':
-						await this.handleIceCandidate(fromId, message.data.candidate);
+					case EventType.IceCandidate:
+						await this.handleIceCandidate(from, data.payload as RTCIceCandidateInit);
 						break;
 				}
+			} catch (error) {
+				console.error(error);
 			}
-		});
-	}
-
-	createPeerConnection(userId: id) {
-		if (this.peerConnections.has(userId)) {
-			console.warn(`Peer connection with ${userId} already exists`);
-			return;
-		}
-
-		const peerConnection = new RTCPeerConnection(this.configuration);
-		this.peerConnections.set(userId, { connection: peerConnection, userId });
-
-		this.setupPeerConnectionHandlers(userId, peerConnection);
-	}
-
-	private setupPeerConnectionHandlers(userId: id, peerConnection: RTCPeerConnection) {
-		peerConnection.onicecandidate = (event) => {
-			if (event.candidate) {
-				websocketService.sendMessage({
-					id: 0n,
-					type: MessageType.Info,
-					from: this.user.id,
-					to: userId,
-					data: {
-						type: 'webrtc',
-						action: 'ice-candidate',
-						candidate: event.candidate,
-					},
-					time: new Date(),
-				});
-			}
-		};
-
-		peerConnection.onconnectionstatechange = () => {
-			this.handleConnectionStateChange(userId, peerConnection.connectionState as PeerConnectionState);
-		};
-	}
-
-	async startLocalStream(mediaType: MediaType = 'both'): Promise<MediaStream | undefined> {
-		try {
-			const constraints: MediaStreamConstraints = {
-				audio: mediaType === 'audio' || mediaType === 'both',
-				video: mediaType === 'video' || mediaType === 'both',
-			};
-
-			const stream = await navigator.mediaDevices.getUserMedia(constraints);
-			this.localStream = stream;
-			return stream;
-		} catch (error) {
-			console.error('Error accessing media devices:', error);
-			throw error;
-		}
-	}
-
-	stopLocalStream() {
-		if (this.localStream) {
-			this.localStream.getTracks().forEach((track) => track.stop());
-			this.localStream = undefined;
-		}
-	}
-
-	async joinChannel(channel: Channel, mediaType: MediaType = 'both'): Promise<void> {
-		if (!this.localStream) {
-			this.localStream = await this.startLocalStream(mediaType);
-		}
-
-		channel.users.forEach((userId) => {
-			if (userId !== this.user.id) {
-				this.startPeerConnection(userId);
-			}
-		});
-	}
-
-	async startPeerConnection(userId: id): Promise<void> {
-		this.createPeerConnection(userId);
-		const peer = this.peerConnections.get(userId);
-
-		if (!peer || !this.localStream) return;
-
-		this.localStream.getTracks().forEach((track) => {
-			peer.connection.addTrack(track, this.localStream!);
-		});
-		peer.stream = this.localStream;
-
-		const offer = await peer.connection.createOffer();
-		await peer.connection.setLocalDescription(offer);
-
-		websocketService.sendMessage({
-			id: 0n,
-			type: MessageType.Info,
-			from: this.user.id,
-			to: userId,
-			data: {
-				type: 'webrtc',
-				action: 'offer',
-				offer,
-			},
-			time: new Date(),
 		});
 	}
 
 	private async handleOffer(userId: id, offer: RTCSessionDescriptionInit) {
-		this.createPeerConnection(userId);
-		const peer = this.peerConnections.get(userId);
+		const connection = new RTCPeerConnection(this.configuration);
+		connection.setRemoteDescription(new RTCSessionDescription(offer));
 
-		if (!peer) return;
+		const peer: PeerConnection = {
+			connection,
+			userId,
+			mediaTypes: new Map<string, MediaType>(),
+		};
 
-		await peer.connection.setRemoteDescription(new RTCSessionDescription(offer));
+		this.pcs.set(userId, peer);
+
+		this.setupPeerConnectionHandlers(userId, connection);
+
+		if (this.localStream) {
+			this.localStream.getTracks().forEach((track) => {
+				connection.addTrack(track, this.localStream!);
+			});
+		}
+
 		const answer = await peer.connection.createAnswer();
 		await peer.connection.setLocalDescription(answer);
 
 		websocketService.sendMessage({
-			id: 0n,
+			id: generate_snowflake(),
 			type: MessageType.Info,
-			from: this.user.id,
+			from: this.me.id,
 			to: userId,
-			data: {
-				type: 'webrtc',
-				action: 'answer',
-				answer,
-			},
-			time: new Date(),
+			data: { event: EventType.Answer, payload: answer.sdp },
 		});
 	}
 
 	private async handleAnswer(userId: id, answer: RTCSessionDescriptionInit) {
-		const peer = this.peerConnections.get(userId);
+		const peer = this.pcs.get(userId);
 		if (peer) {
 			await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
 		}
 	}
 
 	private async handleIceCandidate(userId: id, candidate: RTCIceCandidateInit) {
-		const peer = this.peerConnections.get(userId);
+		const peer = this.pcs.get(userId);
 		if (peer) {
 			await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
 		}
 	}
 
-	private handleConnectionStateChange(userId: id, state: PeerConnectionState) {
-		switch (state) {
-			case 'disconnected':
-			case 'failed':
-			case 'closed':
-				this.cleanupPeerConnection(userId);
-				break;
-		}
+	public async initPeerConnections(userIds: id[]) {
+		this.disconnectAll();
+
+		await Promise.all(
+			userIds.map(async (userId) => {
+				const connection = new RTCPeerConnection(this.configuration);
+
+				const dataChannel = connection.createDataChannel('media-metadata');
+				this.handleDataChannel(userId, dataChannel);
+
+				this.setupPeerConnectionHandlers(userId, connection);
+
+				const peer: PeerConnection = { connection, userId, mediaTypes: new Map<string, MediaType>() };
+				this.pcs.set(userId, peer);
+
+				const offer = await connection.createOffer();
+				await connection.setLocalDescription(offer);
+
+				websocketService.sendMessage({
+					id: generate_snowflake(),
+					type: MessageType.Info,
+					from: this.me.id,
+					to: userId,
+					data: { event: EventType.Offer, payload: offer.sdp },
+				});
+			})
+		);
 	}
 
-	addStream(userId: id, stream: MediaStream) {
-		const peer = this.peerConnections.get(userId);
-		if (peer?.connection) {
-			stream.getTracks().forEach((track) => peer.connection.addTrack(track, stream));
-			peer.stream = stream;
-		}
-	}
-
-	removeStream(userId: id) {
-		const peer = this.peerConnections.get(userId);
-		if (peer?.stream) {
-			peer.stream.getTracks().forEach((track) => track.stop());
-			peer.stream = undefined;
-		}
-	}
-
-	disconnectPeer(userId: id) {
-		this.cleanupPeerConnection(userId);
-	}
-
-	disconnectAll() {
-		this.stopLocalStream();
-		this.peerConnections.forEach((_peer, userId) => this.cleanupPeerConnection(userId));
-	}
-
-	private cleanupPeerConnection(userId: id) {
-		const peer = this.peerConnections.get(userId);
-		if (peer) {
-			if (peer.stream) {
-				peer.stream.getTracks().forEach((track) => track.stop());
+	private setupPeerConnectionHandlers(userId: id, connection: RTCPeerConnection) {
+		connection.onicecandidate = (event) => {
+			if (event.candidate) {
+				websocketService.sendMessage({
+					id: generate_snowflake(),
+					type: MessageType.Info,
+					from: this.me.id,
+					to: userId,
+					data: { event: EventType.IceCandidate, payload: event.candidate },
+				});
 			}
-			peer.connection.close();
-			this.peerConnections.delete(userId);
+		};
+
+		connection.ondatachannel = (event) => {
+			this.handleDataChannel(userId, event.channel);
+		};
+
+		connection.ontrack = (event) => {
+			const peer = this.pcs.get(userId);
+			if (peer) {
+				if (!peer.remoteStream) {
+					peer.remoteStream = new MediaStream();
+				}
+				peer.remoteStream.addTrack(event.track);
+			}
+		};
+
+		connection.onconnectionstatechange = () => {
+			if (['disconnected', 'failed', 'closed'].includes(connection.connectionState)) {
+				this.removePeerConnection(userId);
+			}
+		};
+	}
+
+	private handleDataChannel(userId: id, channel: RTCDataChannel) {
+		const peer = this.pcs.get(userId);
+		if (peer) peer.dataChannel = channel;
+
+		channel.onmessage = (event) => {
+			const data = JSON.parse(event.data);
+			if (data.type === 'TRACK_META') {
+				peer?.mediaTypes.set(data.trackId, data.mediaType);
+			}
+		};
+	}
+
+	public async addTrack(type: MediaType) {
+		if (!this.localStream) {
+			this.localStream = new MediaStream();
 		}
-	}
 
-	getPeerConnectionState(userId: id): PeerConnectionState | undefined {
-		return this.peerConnections.get(userId)?.connection.connectionState as PeerConnectionState;
-	}
+		let track: MediaStreamTrack;
 
-	getAllPeerStates(): Map<id, PeerConnectionState> {
-		const states = new Map<id, PeerConnectionState>();
-		this.peerConnections.forEach((peer, userId) => {
-			states.set(userId, peer.connection.connectionState as PeerConnectionState);
+		if (type === 'audio') {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+			track = stream.getAudioTracks()[0];
+		} else if (type === 'video') {
+			const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+			track = stream.getVideoTracks()[0];
+		} else if (type === 'screen') {
+			const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
+			track = stream.getVideoTracks()[0];
+		} else {
+			throw new Error('Unsupported media type');
+		}
+
+		this.localStream.addTrack(track);
+		this.localMediaTypes.set(track.id, type);
+
+		this.pcs.forEach((peer) => {
+			peer.connection.addTrack(track, this.localStream!);
+
+			if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+				peer.dataChannel.send(
+					JSON.stringify({
+						type: 'TRACK_META',
+						trackId: track.id,
+						mediaType: type,
+					})
+				);
+			}
 		});
-		return states;
 	}
 
-	getLocalStream(): MediaStream | undefined {
-		return this.localStream;
+	public toggleTrack(type: MediaType, enabled: boolean) {
+		this.localStream
+			?.getTracks()
+			.filter((t) => this.localMediaTypes.get(t.id) === type)
+			.forEach((t) => (t.enabled = enabled));
 	}
 
-	toggleAudio(enabled: boolean) {
-		if (this.localStream) {
-			this.localStream.getAudioTracks().forEach((track) => {
-				track.enabled = enabled;
-			});
+	public disconnectAll() {
+		this.stopLocalStream();
+		this.pcs.forEach((_, id) => this.removePeerConnection(id));
+	}
+
+	public stopLocalStream() {
+		this.localStream?.getTracks().forEach((t) => t.stop());
+		this.localStream = undefined;
+		this.localMediaTypes.clear();
+	}
+
+	public removePeerConnection(userId: id) {
+		const peer = this.pcs.get(userId);
+		if (peer) {
+			if (peer.dataChannel) {
+				peer.dataChannel.onmessage = null;
+				peer.dataChannel.onopen = null;
+				peer.dataChannel.onclose = null;
+				if (peer.dataChannel.readyState !== 'closed') {
+					peer.dataChannel.close();
+				}
+				peer.dataChannel = undefined;
+			}
+
+			peer.connection.onicecandidate = null;
+			peer.connection.ontrack = null;
+			peer.connection.onconnectionstatechange = null;
+			peer.connection.ondatachannel = null;
+			peer.connection.close();
+			this.pcs.delete(userId);
 		}
 	}
 
-	toggleVideo(enabled: boolean) {
-		if (this.localStream) {
-			this.localStream.getVideoTracks().forEach((track) => {
-				track.enabled = enabled;
-			});
+	public getRemoteStream(userId: id) {
+		return this.pcs.get(userId)?.remoteStream;
+	}
+
+	public getTrack(userId: id, type: MediaType): MediaStreamTrack | undefined {
+		if (userId === this.me.id) {
+			if (!this.localStream) return undefined;
+			return this.localStream.getTracks().find((track) => this.localMediaTypes.get(track.id) === type);
 		}
+
+		const peer = this.pcs.get(userId);
+		if (!peer || !peer.remoteStream) return undefined;
+
+		return peer.remoteStream.getTracks().find((track) => peer.mediaTypes.get(track.id) === type);
 	}
 }
-
-export const getWebRTCService = () => WebRTCService.getInstance();
 
 export const webrtcService: WebRTCService = new Proxy({} as WebRTCService, {
 	get(_target, prop, _receiver) {

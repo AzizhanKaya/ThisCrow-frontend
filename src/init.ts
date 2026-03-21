@@ -18,9 +18,9 @@ export async function initApp() {
 	const me: Me = await websocketService.waitForSessionInit();
 	messageStore.init();
 	meStore.setMe(me);
+	userStore.init(me);
 	meStore.changeStatus(Status.Online);
 
-	userStore.init(me);
 	await Promise.all([
 		friendStore.init(me.friends, me.friend_requests, me.friend_requests_sent),
 		serverStore.init(me.groups),

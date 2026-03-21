@@ -27,14 +27,14 @@
 		color: white;
 		border: none;
 		border-radius: 4px;
-		padding: 8px 16px;
+		padding: 4px 12px;
 		cursor: pointer;
-		font-size: 15px;
+		font-size: 0.9rem;
 		font-weight: 500;
 		transition: background-color 0.2s;
-		align-items: center;
 		display: flex;
-		gap: 6px;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.add-friend:hover {

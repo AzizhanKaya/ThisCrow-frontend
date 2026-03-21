@@ -53,15 +53,15 @@
 		if (action === 'logout') {
 			websocketService.disconnect();
 			meStore.logOut();
-			router.push('/login');
+			router.push({ name: 'login' });
 		}
 		showUserMenu.value = false;
 	};
 </script>
 
 <template>
-	<div class="user-card" ref="userCardRef" @click="handleUserCardClick">
-		<img class="avatar" :src="user.avatar || '/default-user-icon.png'" />
+	<div v-if="user" class="user-card" ref="userCardRef" @click="handleUserCardClick">
+		<img class="avatar" :src="user.avatar || '/default-avatar.png'" />
 
 		<div class="names">
 			<span class="name">{{ user.name }}</span>

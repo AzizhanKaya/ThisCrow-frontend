@@ -12,6 +12,7 @@ class WebSocketService {
 	private messageHandlers: Map<MessageType, Set<MessageCallback>> = new Map();
 	private errorHandlers: Set<(error: Event) => void> = new Set();
 	private connectionStateHandlers: Set<(state: string) => void> = new Set();
+	private pendingRequests = new Map<bigint, { resolve: Function; reject: Function; timer: any }>();
 	private reconnectAttempts = 0;
 	private maxReconnectAttempts = 2;
 	private readonly reconnectDelay = 5000;
@@ -28,23 +29,10 @@ class WebSocketService {
 		return WebSocketService.instance;
 	}
 
-	cleanup() {
-		if (this.ws) {
-			console.log('Cleaned websocket');
-			this.ws.onopen = null;
-			this.ws.onclose = null;
-			this.ws.onerror = null;
-			this.ws.onmessage = null;
-			this.ws.close();
-		}
-	}
-
 	connect() {
 		if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-			return;
+			this.disconnect();
 		}
-
-		this.cleanup();
 
 		this.connectionStateHandlers.forEach((h) => h('CONNECTING'));
 
@@ -60,11 +48,12 @@ class WebSocketService {
 		this.ws.onmessage = this.handleIncomingMessage.bind(this);
 
 		this.ws.onerror = (error) => {
-			this.errorHandlers.forEach((h) => h(error));
 			console.error('WebSocket error:', error);
+			this.errorHandlers.forEach((h) => h(error));
 		};
 
 		this.ws.onclose = (event) => {
+			console.log('WebSocket connection closed');
 			this.connectionStateHandlers.forEach((h) => h('CLOSED'));
 			if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
 				const delay = Math.min(10000, this.reconnectDelay * Math.pow(2, this.reconnectAttempts));
@@ -88,9 +77,19 @@ class WebSocketService {
 		try {
 			let message = decode(new Uint8Array(event.data)) as Message;
 
-			message.time = new Date(Number(message.time));
-
 			console.log(message);
+
+			if (message.type === MessageType.Server && this.pendingRequests.has(message.id)) {
+				const { resolve, reject, timer } = this.pendingRequests.get(message.id)!;
+				clearTimeout(timer);
+				this.pendingRequests.delete(message.id);
+
+				if (message.data.ack === AckType.Error) {
+					reject(new Error(message.data.payload as string));
+				} else {
+					resolve(message);
+				}
+			}
 
 			const handlers = this.messageHandlers.get(message.type);
 			if (handlers && handlers.size > 0) {
@@ -112,11 +111,21 @@ class WebSocketService {
 			throw new Error('WebSocket is not connected. Current state:' + this.getConnectionState());
 		}
 
-		const payload = { ...message, time: BigInt(message.time.getTime()) };
+		console.log(message);
 
-		console.log(payload);
+		this.ws.send(encode(message));
+	}
 
-		this.ws.send(encode(payload));
+	public async request(message: Message<any>, timeoutMs: number = 5000): Promise<any> {
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => {
+				this.pendingRequests.delete(message.id);
+				reject(new Error('Timeout'));
+			}, timeoutMs);
+
+			this.pendingRequests.set(message.id, { resolve, reject, timer });
+			this.sendMessage(message);
+		});
 	}
 
 	onMessage(type: MessageType, callback: MessageCallback): () => void {
@@ -147,11 +156,11 @@ class WebSocketService {
 	}
 
 	disconnect() {
-		this.messageHandlers.forEach((callback) => {
-			callback.clear();
-		});
 		if (this.ws) {
 			this.ws.close(1000, 'Close');
+			this.ws.onopen = null;
+			this.ws.onerror = null;
+			this.ws.onmessage = null;
 			this.ws = null;
 		}
 	}

@@ -27,6 +27,8 @@
 		transition:
 			background-color 0.2s ease-in-out,
 			border-radius 0.2s ease-in-out;
+		margin-top: 8px;
+		margin-bottom: 8px;
 	}
 
 	.server-add:hover {

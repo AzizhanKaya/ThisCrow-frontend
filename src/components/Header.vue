@@ -1,12 +1,14 @@
 <script setup lang="ts">
 	import WindowControls from './WindowControls.vue';
+	import { useAppStore } from '@/stores/app';
+	const appStore = useAppStore();
 
 	const isTauri = !!(window as any).__TAURI_INTERNALS__;
 </script>
 
 <template>
 	<div class="header" data-tauri-drag-region>
-		<span>ThisCrow</span>
+		<span data-tauri-drag-region>{{ appStore.header }}</span>
 		<WindowControls v-if="isTauri" />
 	</div>
 </template>

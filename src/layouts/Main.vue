@@ -1,18 +1,26 @@
 <script setup lang="ts">
-	import ServerList from '@/components/Group/ServerList.vue';
+	import ServerList from '@/components/Server/ServerList.vue';
 	import UserCard from '@/components/UserCard.vue';
+	import { useAppStore } from '@/stores/app';
+
+	const appStore = useAppStore();
 </script>
 
 <template>
-	<div class="main-layout">
-		<aside class="server-sidebar">
-			<ServerList />
-		</aside>
-		<section class="content-view">
-			<router-view />
-		</section>
-		<UserCard />
-	</div>
+	<Transition name="fade" mode="out-in">
+		<div v-if="appStore.loading" class="splash-screen">
+			<img src="/default-server-icon.png" alt="" />
+		</div>
+		<div v-else class="main-layout">
+			<aside class="server-sidebar">
+				<ServerList />
+			</aside>
+			<section class="content-view">
+				<router-view />
+			</section>
+			<UserCard />
+		</div>
+	</Transition>
 </template>
 
 <style scoped>
@@ -21,17 +29,47 @@
 		grid-template-columns: 70px 1fr;
 		overflow: hidden;
 		height: calc(100% - 30px);
+		width: 100%;
+		position: absolute;
+		overflow: auto;
 	}
 
 	.server-sidebar {
+		height: 100%;
 		padding-top: 5px;
 	}
 
 	.content-view {
-		border-top-left-radius: 15px;
-		min-width: 500px;
+		height: 100%;
+		min-width: 800px;
+		overflow: auto;
 		border-left: 1px solid var(--border);
 		border-top: 1px solid var(--border);
 		border-top-left-radius: 20px;
+	}
+
+	.fade-enter-active,
+	.fade-leave-active {
+		transition: opacity 0.3s ease-out;
+	}
+	.fade-enter-from,
+	.fade-leave-to {
+		opacity: 0;
+	}
+
+	.splash-screen {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.splash-screen img {
+		width: 200px;
+		object-fit: contain;
 	}
 </style>

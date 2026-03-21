@@ -1,7 +1,6 @@
 import { type Message, type User, MessageType, type id } from '@/types';
 import { API_URL } from '@/constants';
-import { msgFetch } from '@/utils/msgpack';
-
+import { msgFetch, encode } from '@/utils/msgpack';
 export async function fetchMessages({
 	from,
 	len,
@@ -30,14 +29,33 @@ export async function fetchMessages({
 
 		const messages = await msgFetch<Message[]>(url, { credentials: 'include' });
 
-		messages.forEach((msg) => {
-			msg.time = new Date(Number(msg.time));
-			msg.sent = true;
-		});
-
 		return messages;
 	} catch (error) {
 		console.error('Failed to get messages:', error);
 		return [];
+	}
+}
+
+export async function overwriteMessage(message: Message): Promise<void> {
+	try {
+		await msgFetch(API_URL + '/message/overwrite', {
+			method: 'POST',
+			body: encode(message),
+			credentials: 'include',
+		});
+	} catch (error) {
+		console.error('Failed to overwrite message:', error);
+	}
+}
+
+export async function deleteMessage(message: Message): Promise<void> {
+	try {
+		await msgFetch(API_URL + '/message/delete', {
+			method: 'POST',
+			body: encode(message),
+			credentials: 'include',
+		});
+	} catch (error) {
+		console.error('Failed to delete message:', error);
 	}
 }

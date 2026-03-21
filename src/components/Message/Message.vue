@@ -1,31 +1,30 @@
-<script lang="ts">
+<script setup lang="ts">
 	import type { PropType } from 'vue';
 	import type { Message, User } from '@/types';
 	import { Icon } from '@iconify/vue';
+	import { is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
 
-	export default {
-		props: {
-			message: {
-				type: Object as PropType<Message>,
-				required: true,
-			},
-			user: {
-				type: Object as PropType<User>,
-				required: false,
-			},
+	defineProps({
+		message: {
+			type: Object as PropType<Message>,
+			required: true,
 		},
-	};
+		user: {
+			type: Object as PropType<User>,
+			required: false,
+		},
+	});
 </script>
 
 <template>
 	<div class="message" :class="{ 'with-user': user }">
-		<img v-if="user" class="avatar" :src="user.avatar || '/default-user-icon.png'" />
+		<img v-if="user" class="avatar" :src="user.avatar || '/default-avatar.png'" />
 
 		<div class="content">
 			<div v-if="user" class="message-header">
 				<span class="name">{{ user.name }}</span>
 				<span class="time-header">
-					{{ message.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+					{{ snowflake_to_date(message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
 			</div>
 
@@ -47,12 +46,12 @@
 					</div>
 				</div>
 
-				<span v-if="message.data.text" class="text" :class="{ sent: message.sent }">
+				<span v-if="message.data.text" class="text" :class="{ sent: is_sent_from_snowflake(message.id) }">
 					{{ message.data.text }}
 				</span>
 
 				<span class="time">
-					{{ message.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+					{{ snowflake_to_date(message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
 			</div>
 		</div>

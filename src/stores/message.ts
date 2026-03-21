@@ -5,16 +5,7 @@ import { useMeStore } from './me';
 import { fetchMessages } from '@/api/message';
 import type { Ack, id } from '@/types';
 import { useDMStore } from './dm';
-
-export function generateTempId(): id {
-	const array = new Uint32Array(2);
-	window.crypto.getRandomValues(array);
-	const high = BigInt(array[0]);
-	const low = BigInt(array[1]);
-	const u64 = (high << 32n) | low;
-
-	return u64 as id;
-}
+import { snowflake_to_date } from '@/utils/snowflake';
 
 export const useMessageStore = defineStore('message', {
 	state: () => ({
@@ -50,7 +41,6 @@ export const useMessageStore = defineStore('message', {
 			const chatMessages = this.messages.get(chat_id)!;
 			const exists = chatMessages.some((m) => m.id === message.id);
 			if (!exists) {
-				message.sent = true;
 				chatMessages.push(message);
 			}
 		},
@@ -63,9 +53,7 @@ export const useMessageStore = defineStore('message', {
 
 				const msg = messages.find((m) => m.id === payload);
 				if (msg) {
-					msg.sent = true;
 					msg.id = message.id;
-					msg.time = message.time;
 				}
 			}
 		},
@@ -104,7 +92,7 @@ export const useMessageStore = defineStore('message', {
 
 			const oldMessages = await fetchMessages({
 				from: id,
-				end: oldestMessage.time,
+				end: snowflake_to_date(oldestMessage.id),
 				len: 20,
 			});
 			if (oldMessages?.length) {

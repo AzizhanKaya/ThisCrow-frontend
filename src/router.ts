@@ -5,10 +5,12 @@ import Register from '@/views/Register.vue';
 import Chats from '@/views/Chats.vue';
 import Chat from '@/views/Chat.vue';
 import Friends from '@/views/Friends.vue';
-import Group from '@/views/Group.vue';
+import Server from '@/views/Server/Server.vue';
 
 import AuthLayout from '@/layouts/Auth.vue';
 import MainLayout from '@/layouts/Main.vue';
+
+import { ModalView, useModalStore } from '@/stores/modal';
 
 const routes = [
 	{
@@ -25,13 +27,35 @@ const routes = [
 					{ path: 'user/:userId', name: 'user', component: Chat },
 				],
 			},
-			{ path: 'server/:groupId', name: 'group', component: Group },
+			{
+				path: 'server/:serverId',
+				name: 'server',
+				component: Server,
+				beforeEnter: (to: any) => {
+					const appStore = useAppStore();
+					if (appStore.loading) return;
+					const serverStore = useServerStore();
+					const server = serverStore.getServerById(Number(to.params.serverId));
+
+					if (!server) return { name: 'chats' };
+				},
+			},
+			{
+				path: 'invite/:code',
+				name: 'invite',
+				beforeEnter: (to: any) => {
+					const modalStore = useModalStore();
+					modalStore.openModal(ModalView.JOIN_INVITE, { code: to.params.code });
+					return { name: 'chats' };
+				},
+				component: Chats,
+			},
 		],
 	},
 	{
-		path: '/',
+		path: '/auth',
 		component: AuthLayout,
-		meta: { guestOnly: true, layout: 'auth' },
+		meta: { layout: 'auth' },
 		children: [
 			{ path: 'login', name: 'login', component: Login },
 			{ path: 'register', name: 'register', component: Register },
@@ -45,6 +69,8 @@ const router = createRouter({
 });
 
 import { useMeStore } from '@/stores/me';
+import { useServerStore } from './stores/server';
+import { useAppStore } from './stores/app';
 
 router.beforeEach((to) => {
 	const meStore = useMeStore();
@@ -53,10 +79,6 @@ router.beforeEach((to) => {
 
 	if (to.meta?.requiresAuth && !meStore.me) {
 		return { name: 'login' };
-	}
-
-	if (to.meta?.guestOnly && meStore.me) {
-		return { name: 'chats' };
 	}
 });
 

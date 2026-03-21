@@ -10,7 +10,6 @@
 
 		const ctx = canvas.getContext('2d')!;
 
-		// 1. Sabit bir iç çözünürlük belirliyoruz.
 		const width = 1920;
 		const height = 1080;
 
@@ -120,7 +119,7 @@
 			];
 
 			stars = [];
-			const numStars = Math.floor((width * height) / 10000); // Yıldız sayısı da artık sabittir
+			const numStars = Math.floor((width * height) / 10000);
 			for (let i = 0; i < numStars; i++) {
 				stars.push({
 					x: Math.random() * width,
@@ -135,7 +134,6 @@
 			}
 		};
 
-		// 2. Elementleri sadece bir kez başlatıyoruz.
 		initElements();
 
 		function draw() {
@@ -182,12 +180,6 @@
 			});
 
 			blobs.forEach((blob) => {
-				blob.x += blob.vx;
-				blob.y += blob.vy;
-
-				if (blob.x <= -blob.rx || blob.x >= width + blob.rx) blob.vx *= -1;
-				if (blob.y <= -blob.ry || blob.y >= height + blob.ry) blob.vy *= -1;
-
 				ctx.save();
 				ctx.translate(blob.x, blob.y);
 				ctx.scale(blob.rx / blob.ry, 1);
@@ -209,7 +201,6 @@
 		draw();
 	});
 
-	// 3. Sadece Animasyon Frame'ini temizliyoruz. Resize handler tamamen kaldırıldı.
 	onUnmounted(() => {
 		if (animationFrameId) cancelAnimationFrame(animationFrameId);
 	});
@@ -226,7 +217,6 @@
 		left: 0;
 		width: 100%;
 		height: 100%;
-		/* 4. En önemli kısım: object-fit cover. Aspect ratio'yu koruyarak ekranı kaplar. */
 		object-fit: cover;
 		z-index: 0;
 		pointer-events: none;

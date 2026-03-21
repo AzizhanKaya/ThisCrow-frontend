@@ -11,7 +11,7 @@
 	const confirmPassword = ref('');
 
 	const error = ref<any>(null);
-	let isLoading = ref(false);
+	const isLoading = ref(false);
 
 	async function submit() {
 		error.value = null;
@@ -34,7 +34,7 @@
 
 <template>
 	<div class="register">
-		<Toast v-if="error" :message="error" />
+		<Toast v-if="error" :message="error" @close="error = null" />
 
 		<form @submit.prevent="submit">
 			<div class="field">

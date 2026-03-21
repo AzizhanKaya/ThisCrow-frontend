@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia';
 import { EventType, MessageType, type Me, type Message, type Status, type Event } from '@/types';
 import { websocketService } from '@/services/websocket';
+import { logOut } from '@/api/state';
+import { generate_uid } from '@/utils/uid';
 
 export const useMeStore = defineStore('me', {
 	state: () => ({
@@ -12,22 +14,21 @@ export const useMeStore = defineStore('me', {
 			this.me = me;
 		},
 
-		logOut() {
+		async logOut() {
+			await logOut();
 			this.me = null;
-			document.cookie = 'session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 		},
 
 		changeStatus(status: Status) {
 			let change_status: Message<Event> = {
-				id: 0n,
+				id: generate_uid(this.me!.id),
 				from: this.me!.id,
-				to: 0n,
+				to: 0,
 				data: {
 					event: EventType.ChangeStatus,
 					payload: status,
 				},
 				type: MessageType.Info,
-				time: new Date(),
 			};
 
 			websocketService.sendMessage(change_status);

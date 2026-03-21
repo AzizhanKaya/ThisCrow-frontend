@@ -47,6 +47,7 @@ export const useUserStore = defineStore('user', {
 
 		async getUsers(ids: id[]): Promise<User[]> {
 			const missingIds = ids.filter((id) => !this.users.has(id));
+
 			if (missingIds.length > 0) {
 				const fetchedUsers = await fetchUsers(missingIds);
 				this.setUsers(fetchedUsers);

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import type { PropType } from 'vue';
 	import type { Server } from '@/types';
-	import { useRouter } from 'vue-router';
+	import { useRoute, useRouter } from 'vue-router';
 
 	const props = defineProps({
 		server: {
@@ -11,14 +11,15 @@
 	});
 
 	const router = useRouter();
+	const route = useRoute();
 
 	const onClick = () => {
-		router.push({ name: 'group', params: { groupId: props.server.id.toString() } });
+		router.push({ name: 'server', params: { serverId: props.server.id.toString() } });
 	};
 </script>
 
 <template>
-	<div class="server" @click="onClick">
+	<div class="server" @click="onClick" :class="{ 'is-active': route.params.serverId === server.id.toString() }">
 		<div class="server-indicator"></div>
 		<div class="server-image">
 			<img :src="server.icon || '/default-server-icon.png'" />
@@ -30,10 +31,9 @@
 	.server {
 		aspect-ratio: 1;
 		width: 100%;
-		padding: 1px;
+		padding: 2px;
 		cursor: pointer;
 		position: relative;
-		margin-bottom: 8px;
 	}
 
 	.server-indicator {

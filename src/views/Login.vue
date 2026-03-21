@@ -5,10 +5,11 @@
 	import Toast from '@/components/Toast.vue';
 	import { useMeStore } from '@/stores/me';
 	import { useRouter } from 'vue-router';
-	import { initApp } from '@/init';
 	import { websocketService } from '@/services/websocket';
 	import { invoke } from '@tauri-apps/api/core';
+	import { useAppStore } from '@/stores/app';
 
+	const appStore = useAppStore();
 	const meStore = useMeStore();
 	const router = useRouter();
 
@@ -24,7 +25,7 @@
 		try {
 			await login(username.value, password.value);
 			websocketService.connect();
-			router.push('/');
+			router.push({ name: 'chats' });
 		} catch (err: any) {
 			console.error(err);
 			error.value = err?.message || 'An error occurred';
@@ -32,23 +33,11 @@
 			isLoading.value = false;
 		}
 	}
-
-	async function launchNetflix() {
-		await invoke('launch_netflix');
-	}
-
-	async function connectToNetflix() {
-		await invoke('connect_to_netflix');
-	}
-
-	async function seekNetflix() {
-		await invoke('seek_netflix', { milliseconds: 100000 });
-	}
 </script>
 
 <template>
 	<div class="login">
-		<Toast v-if="error" :message="error" />
+		<Toast v-if="error" :message="error" @close="error = null" />
 
 		<form @submit.prevent="submit">
 			<div class="field">
@@ -63,9 +52,6 @@
 			</div>
 			<button type="submit">Login</button>
 		</form>
-		<button @click="launchNetflix">Launch Netflix</button>
-		<button @click="connectToNetflix">Connect to Netflix</button>
-		<button @click="seekNetflix">Seek Netflix</button>
 	</div>
 </template>
 
@@ -96,7 +82,7 @@
 
 	input {
 		width: 100%;
-		padding: 0.5rem;
+		padding: 8px;
 		box-sizing: border-box;
 		border-radius: 4px;
 		background-color: var(--bg-darker);
@@ -122,7 +108,7 @@
 
 	button {
 		width: 100%;
-		padding: 1rem;
+		padding: 16px;
 		background: var(--color-light);
 		border: none;
 		margin-top: 12px;

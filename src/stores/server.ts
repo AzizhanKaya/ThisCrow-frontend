@@ -1,22 +1,21 @@
 import { defineStore } from 'pinia';
-import type { Ack, Message, Server, User, id } from '@/types';
+import type { Ack, Channel, Member, Message, Role, Server, User, id } from '@/types';
 import { fetchServers } from '@/api/info';
 import { useUserStore } from './user';
 import { useMeStore } from './me';
 import { websocketService } from '@/services/websocket';
-import { AckType, EventType, MessageType, type Event } from '@/types';
+import { AckType, ChannelType, EventType, MessageType, type Event } from '@/types';
+import { generate_uid } from '@/utils/uid';
 
-export const useServerStore = defineStore('servers', {
+export const useServerStore = defineStore('server', {
 	state: () => ({
 		servers: new Map<id, Server>(),
-		selectedServer: undefined as id | undefined,
-		selectedChannel: undefined as id | undefined,
-		channelMessages: new Map<id, Message[]>(),
+		server: null as Server | null,
 	}),
 	getters: {
-		getServerById: (state) => (id: id) => state.servers.get(id)!,
+		getServerById: (state) => (id: id) => state.servers.get(id),
 		getMembers: (state) => (id: id) => state.servers.get(id)!.members,
-		getServer: (state) => (id: id) => state.servers.get(id)!,
+		getChannel: (state) => (id: id, channel_id: id) => state.servers.get(id)!.channels!.get(channel_id)!,
 	},
 	actions: {
 		setupListeners() {
@@ -26,29 +25,102 @@ export const useServerStore = defineStore('servers', {
 				const target_id = message.to;
 				const server = this.servers.get(server_id)!;
 
+				const userStore = useUserStore();
+				const meStore = useMeStore();
+
 				switch (ack) {
 					case AckType.CreatedGroup: {
-						const max = [...this.servers.values()].reduce((max, s) => (s.position > max ? s.position : max), 0n);
+						const max = [...this.servers.values()].reduce((max, s) => (s.position > max ? s.position : max), 0);
 						const server = {
-							id: message.id,
-							version: 0n,
+							id: server_id,
+							version: 0,
 							...payload,
-							position: max + 1n,
+							position: max + 1,
 						};
-						this.servers.set(message.id, server);
+						this.servers.set(server_id, server);
 						break;
 					}
 
 					case AckType.Subscribed:
-						await this.setMembers(server, payload.members as unknown as id[]);
-						this.setServer(payload);
+						{
+							const {
+								id,
+								version,
+								name,
+								owner,
+								icon,
+								members: members_record,
+								channels: channels_record,
+								roles: roles_record,
+							}: {
+								id: id;
+								version: id;
+								owner: id;
+								name: string;
+								icon?: string;
+								members: Record<id, { id: id; name?: string; roles: id[] }>;
+								channels: Record<
+									id,
+									{
+										id: id;
+										name: string;
+										title: string | null;
+										position: number;
+										type: ChannelType;
+										users?: id[];
+									}
+								>;
+								roles: Record<id, Role>;
+							} = payload;
 
+							const roles = new Map<id, Role>(Object.values(roles_record).map((r: Role) => [r.id, r]));
+
+							const users = new Map((await userStore.getUsers(Object.values(members_record).map((m) => m.id))).map((u) => [u.id, u]));
+
+							const members = new Map<id, Member>(
+								Object.values(members_record).map((m) => [
+									m.id,
+									{
+										user: users.get(m.id)!,
+										roles: m.roles.map((rid) => roles.get(rid)!),
+									},
+								])
+							);
+
+							const channels = new Map<id, Channel>(
+								Object.values(channels_record).map((c) => [
+									c.id,
+									{
+										...c,
+										users: new Set(c.users?.map((uid) => users.get(uid)!)),
+									},
+								])
+							);
+
+							const server = this.servers.get(server_id);
+							if (server) {
+								Object.assign(server, { version, members, channels, roles, owner });
+							} else {
+								this.servers.set(server_id, {
+									id,
+									version,
+									name,
+									icon,
+									position: 0,
+									members,
+									channels,
+									roles,
+									owner,
+								});
+							}
+							this.server = this.servers.get(server_id)!;
+						}
 						break;
 
 					case AckType.Unsubscribed:
+						break;
 					case AckType.DeletedGroup:
 						this.servers.delete(server_id);
-						if (this.selectedServer === server_id) this.selectedServer = undefined;
 						break;
 
 					case AckType.UpdatedGroup:
@@ -56,139 +128,94 @@ export const useServerStore = defineStore('servers', {
 						break;
 
 					case AckType.CreatedChannel:
-						server.channels = [...(server.channels ?? []), { id: target_id, ...payload }];
+						server.channels?.set(target_id, {
+							id: target_id,
+							name: payload.name,
+							title: payload.title || null,
+							position: server.channels.size + 1,
+							type: payload.is_voice ? ChannelType.Voice : ChannelType.Text,
+						});
+
 						break;
 
-					case AckType.UpdatedChannel:
-						if (server.channels) {
-							server.channels = server.channels.map((c) => (c.id === target_id ? { ...c, ...payload } : c));
-						}
-						break;
+					case AckType.UpdatedChannel: {
+						const channel = server.channels?.get(target_id);
+						if (!channel) return;
+						Object.assign(channel, payload);
 
-					case AckType.DeletedChannel:
-						if (server?.channels) {
-							server.channels = server.channels.filter((c) => c.id !== target_id);
-						}
 						break;
+					}
 
-					case AckType.RemovedMember:
-						if (server?.members) {
-							server.members = server.members.filter((m) => m.user.id !== target_id);
-						}
-						break;
+					case AckType.JoinedVoice: {
+						const channel = server.channels?.get(payload);
+						if (!channel) return;
+						if (!channel.users) channel.users = new Set();
+						const user = await userStore.getUser(target_id);
+						channel.users.add(user);
 
-					case AckType.CreatedRole:
-						if (server) {
-							server.roles = [...(server.roles ?? []), { id: target_id, ...payload }];
-						}
 						break;
+					}
 
-					case AckType.DeletedRole:
-						if (server?.roles) {
-							server.roles = server.roles.filter((r) => r.id !== target_id);
-						}
-						break;
+					case AckType.ExitedVoice: {
+						const channel = server.channels?.get(payload);
+						if (!channel || !channel.users) return;
+						const user = await userStore.getUser(target_id);
+						channel.users.delete(user);
 
-					case AckType.Error:
-						console.error('Server Error:', payload);
 						break;
+					}
 				}
 			});
 
-			websocketService.onMessage(MessageType.Group, (message: Message) => {
-				const channel_id = message.to;
-				if (!this.channelMessages.has(channel_id)) {
-					this.channelMessages.set(channel_id, []);
-				}
-				const messages = this.channelMessages.get(channel_id)!;
-				if (!messages.some((m) => m.id === message.id)) {
-					messages.push(message);
-				}
-			});
+			websocketService.onMessage(MessageType.Group, (message: Message) => {});
 		},
 
 		async init(server_ids: id[]) {
+			this.setupListeners();
 			const fetched = await fetchServers(server_ids);
-
 			this.servers = new Map(fetched.map((s) => [s.id, s]));
-
-			server_ids.forEach((id) => {
-				const server = this.servers.get(id);
-				if (server) {
-					this.server_list.push(server);
-				}
-			});
 		},
 
-		setServer(server: Server) {
-			const existing = this.servers.get(server.id);
-			if (existing) {
-				Object.assign(existing, server);
-			} else {
-				this.servers.set(server.id, server);
-			}
-		},
-
-		async setMembers(server: Server, members: id[]) {
-			const userStore = useUserStore();
-			const users = await userStore.getUsers(members);
-			server.members = users.map((user) => ({ user, roles: [] }));
-		},
-
-		selectServer(id: id) {
-			this.selectedServer = id;
-		},
-
-		selectChannel(id: id) {
-			this.selectedChannel = id;
-		},
-
-		getChannelMessages(channelId: id): Message[] {
-			return this.channelMessages.get(channelId) || [];
-		},
-
-		createServer(name: string, description?: string, icon?: string) {
+		async createServer(name: string, description?: string, icon?: string): Promise<any> {
 			const meStore = useMeStore();
-			if (!meStore.me) return;
+
 			const message: Message<Event> = {
-				id: 0n,
-				from: meStore.me.id,
-				to: 0n,
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
 				type: MessageType.Info,
-				time: new Date(),
 				data: { event: EventType.CreateGroup, payload: { name, description, icon } },
 			};
-			websocketService.sendMessage(message);
+
+			return websocketService.request(message);
 		},
 
 		subscribeToServer(server_id: id) {
 			const meStore = useMeStore();
 			if (!meStore.me) return;
 			const message: Message<Event> = {
-				id: 0n,
+				id: generate_uid(meStore.me.id),
 				from: meStore.me.id,
-				to: 0n,
+				to: 0,
 				group_id: server_id,
 				type: MessageType.InfoGroup,
-				time: new Date(),
 				data: { event: EventType.Subscribe },
 			};
 			websocketService.sendMessage(message);
 		},
 
-		unsubscribeFromServer(server_id: id) {
+		async unsubscribeFromServer(server_id: id) {
 			const meStore = useMeStore();
 			if (!meStore.me) return;
-			const message: Message<Event> = {
-				id: 0n,
+			if (websocketService.getConnectionState() !== 'OPEN') return;
+			return websocketService.request({
+				id: generate_uid(meStore.me.id),
 				from: meStore.me.id,
-				to: 0n,
+				to: 0,
 				group_id: server_id,
 				type: MessageType.InfoGroup,
-				time: new Date(),
 				data: { event: EventType.Unsubscribe },
-			};
-			websocketService.sendMessage(message);
+			});
 		},
 	},
 });

@@ -95,7 +95,7 @@
 				<div v-else-if="searchResults.length > 0" class="user-list">
 					<div v-for="user in searchResults" :key="user.id.toString()" class="user-card">
 						<div class="user-info">
-							<img :src="user.avatar || '/default-user-icon.png'" alt="avatar" />
+							<img :src="user.avatar || '/default-avatar.png'" alt="avatar" />
 							<span class="username">{{ user.username }}</span>
 						</div>
 

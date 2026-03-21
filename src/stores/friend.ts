@@ -5,6 +5,7 @@ import { websocketService } from '@/services/websocket';
 import { useMeStore } from '@/stores/me';
 import { useUserStore } from './user';
 import { useDMStore } from './dm';
+import { generate_uid } from '@/utils/uid';
 
 export const useFriendStore = defineStore('friends', {
 	state: () => ({
@@ -81,14 +82,13 @@ export const useFriendStore = defineStore('friends', {
 		sendFriendRequest(user: User) {
 			const meStore = useMeStore();
 			const add_friend: Message<Event> = {
-				id: 0n,
+				id: generate_uid(meStore.me!.id),
 				from: meStore.me!.id,
 				to: user.id,
 				data: {
 					event: EventType.FriendRequest,
 				},
 				type: MessageType.Info,
-				time: new Date(),
 			};
 
 			websocketService.sendMessage(add_friend);
@@ -96,28 +96,26 @@ export const useFriendStore = defineStore('friends', {
 		acceptFriendRequest(user: User) {
 			const meStore = useMeStore();
 			const accept: Message<Event> = {
-				id: 0n,
+				id: generate_uid(meStore.me!.id),
 				from: meStore.me!.id,
 				to: user.id,
 				data: {
 					event: EventType.FriendAccept,
 				},
 				type: MessageType.Info,
-				time: new Date(),
 			};
 			websocketService.sendMessage(accept);
 		},
 		removeFriend(user: User) {
 			const meStore = useMeStore();
 			const remove: Message<Event> = {
-				id: 0n,
+				id: generate_uid(meStore.me!.id),
 				from: meStore.me!.id,
 				to: user.id,
 				data: {
 					event: EventType.FriendRemove,
 				},
 				type: MessageType.Info,
-				time: new Date(),
 			};
 			websocketService.sendMessage(remove);
 		},

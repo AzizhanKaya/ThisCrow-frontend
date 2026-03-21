@@ -3,8 +3,9 @@
 	import { Icon } from '@iconify/vue';
 	import { type Message as MessageType, MessageType as MessageEnum, type id, type User } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
-	import { useMessageStore, generateTempId } from '@/stores/message';
+	import { useMessageStore } from '@/stores/message';
 	import { useMeStore } from '@/stores/me';
+	import { generate_snowflake } from '@/utils/snowflake';
 
 	const props = defineProps<{
 		to: id;
@@ -20,33 +21,42 @@
 	const { fileInput, selectedFiles, hasSelectedFiles, handleFileSelect: onFileSelect, removeFile, clearFiles } = useFiles();
 
 	function onSend() {
-		if (input.value.trim() === '' && !hasSelectedFiles.value) return;
+		const text = input.value.trim();
+		const hasFiles =
+			selectedFiles.value.images.length > 0 || selectedFiles.value.videos.length > 0 || selectedFiles.value.files.length > 0;
 
-		const messageData = {
-			...(input.value.trim() !== '' && { text: input.value }),
-			...(selectedFiles.value.images.length > 0 && {
-				images: selectedFiles.value.images.map((img) => img.url),
-			}),
-			...(selectedFiles.value.videos.length > 0 && {
-				videos: selectedFiles.value.videos.map((vid) => vid.url),
-			}),
-			...(selectedFiles.value.files.length > 0 && {
-				files: selectedFiles.value.files.map((f) => ({ url: f.url, name: f.name, size: f.size })),
-			}),
-		};
+		if (!text && !hasFiles) return;
+
+		const messageData =
+			text && !hasFiles
+				? text
+				: {
+						...(text && { text }),
+						...(selectedFiles.value.images.length > 0 && {
+							images: selectedFiles.value.images.map((img) => img.url),
+						}),
+						...(selectedFiles.value.videos.length > 0 && {
+							videos: selectedFiles.value.videos.map((vid) => vid.url),
+						}),
+						...(selectedFiles.value.files.length > 0 && {
+							files: selectedFiles.value.files.map((f) => ({
+								url: f.url,
+								name: f.name,
+								size: f.size,
+							})),
+						}),
+					};
 
 		const message: MessageType = {
-			id: generateTempId(),
+			id: generate_snowflake(),
 			from: meStore.me!.id,
 			to: props.to,
 			group_id: props.group_id,
 			data: messageData,
 			type: props.type,
-			time: new Date(),
 		};
 
 		messageStore.sendMessage(message);
-
 		input.value = '';
 		clearFiles();
 	}

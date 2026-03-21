@@ -1,0 +1,72 @@
+use serde::Serialize;
+use std::fmt;
+use std::path::PathBuf;
+use thiserror::Error;
+use which::which;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("failed to find path using which")]
+    Which(#[from] which::Error),
+    #[error("unknown error")]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum BrowserKind {
+    Chrome,
+    Chromium,
+    Safari,
+    Brave,
+    Opera,
+}
+
+impl fmt::Display for BrowserKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BrowserKind::Chrome => write!(f, "Chrome"),
+            BrowserKind::Chromium => write!(f, "Chromium"),
+            BrowserKind::Safari => write!(f, "Safari"),
+            BrowserKind::Brave => write!(f, "Brave"),
+            BrowserKind::Opera => write!(f, "Opera"),
+        }
+    }
+}
+
+pub fn get_browser_path(kind: BrowserKind) -> Result<PathBuf, Error> {
+    Ok(match kind {
+        BrowserKind::Chrome => which("chrome")
+            .or_else(|_| which("google-chrome"))
+            .or_else(|_| which("google-chrome-stable")),
+        BrowserKind::Chromium => which("chromium").or_else(|_| which("chromium-browser")),
+        BrowserKind::Safari => which("safari"),
+        BrowserKind::Brave => which("brave").or_else(|_| which("brave-browser")),
+        BrowserKind::Opera => which("opera").or_else(|_| which("opera-browser")),
+    }?)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Browser {
+    pub kind: BrowserKind,
+    pub path: PathBuf,
+}
+
+#[tauri::command]
+pub fn get_browsers() -> Vec<Browser> {
+    let kinds = vec![
+        BrowserKind::Chrome,
+        BrowserKind::Chromium,
+        BrowserKind::Safari,
+        BrowserKind::Brave,
+        BrowserKind::Opera,
+    ];
+
+    kinds
+        .into_iter()
+        .filter_map(|kind| {
+            get_browser_path(kind)
+                .map(|path| Browser { kind, path })
+                .ok()
+        })
+        .collect()
+}

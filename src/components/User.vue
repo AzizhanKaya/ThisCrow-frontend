@@ -28,7 +28,7 @@
 
 <template>
 	<div class="user">
-		<img class="avatar" :src="user.avatar || '/default-user-icon.png'" />
+		<img class="avatar" :src="user.avatar || '/default-avatar.png'" />
 
 		<span class="name">{{ user.name }}</span>
 		<span class="username">@{{ user.username }}</span>

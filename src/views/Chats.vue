@@ -9,9 +9,10 @@
 	import AsideButton from '@/components/AsideButton.vue';
 	import { RouterView } from 'vue-router';
 	import { Icon } from '@iconify/vue';
-	import ContextMenu from '@/components/ContextMenu.vue';
+	import ContextMenu, { type ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import { useFriendStore } from '@/stores/friend';
+	import Search from '@/components/Search.vue';
 
 	const dmStore = useDMStore();
 	const userStore = useUserStore();
@@ -25,7 +26,7 @@
 	watch(
 		user_id,
 		(id) => {
-			if (id) dmStore.ensureUser(BigInt(id));
+			if (id) dmStore.ensureUser(Number(id));
 		},
 		{ immediate: true }
 	);
@@ -38,30 +39,39 @@
 		show: false,
 		x: 0,
 		y: 0,
+		options: [] as ContextMenuOption[],
 		user: null as UserType | null,
 	});
 
-	const contextMenuOptions = [
-		{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
-		{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
-		{ label: 'Call', action: 'call', icon: 'mdi:phone' },
-		{ divider: true },
-		{ label: 'Add Note', action: 'note', icon: 'mdi:pencil', subtext: 'Sadece sana görünür' },
-		{ label: 'Add Nickname', action: 'nickname', icon: 'mdi:account-edit' },
-		{ label: 'Invite to Server', action: 'invite', icon: 'mdi:account-plus', rightIcon: 'mdi:chevron-right' },
-		{ divider: true },
-		{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', danger: true },
-		{ label: 'Block', action: 'block', icon: 'mdi:cancel', danger: true },
-		{ divider: true },
-		{ label: 'Copy Username', action: 'copy_username', icon: 'mdi:content-copy' },
-	];
-
 	function openContextMenu(e: MouseEvent, user: UserType) {
+		const are_friends = friendStore.isFriend(user.id);
+
+		const ContextMenuoptions: ContextMenuOption[] = [
+			{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
+			{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
+			{ label: 'Call', action: 'call', icon: 'mdi:phone' },
+			{ divider: true },
+
+			{ label: 'Add Note', action: 'note', icon: 'mdi:pencil', subtext: 'Sadece sana görünür' },
+			{ label: 'Add Nickname', action: 'nickname', icon: 'mdi:account-edit' },
+			{ label: 'Invite to Server', action: 'invite', icon: 'mdi:account-plus', rightIcon: 'mdi:chevron-right' },
+
+			...(are_friends
+				? [{ divider: true }, { label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' as const }]
+				: [{ label: 'Add Friend', action: 'add_friend', icon: 'mdi:account-plus', variant: 'success' as const }, { divider: true }]),
+
+			{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
+
+			{ divider: true },
+			{ label: 'Copy Username', action: 'copy_username', icon: 'mdi:content-copy' },
+		];
+
 		contextMenu.value = {
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
 			user,
+			options: ContextMenuoptions,
 		};
 	}
 
@@ -91,6 +101,9 @@
 				break;
 			case 'invite':
 				// TODO: Implement invite
+				break;
+			case 'add_friend':
+				friendStore.sendFriendRequest(user);
 				break;
 			case 'unfriend':
 				friendStore.removeFriend(user);
@@ -137,12 +150,13 @@
 			<router-view />
 		</main>
 		<ContextMenu
-			:options="contextMenuOptions"
+			:options="contextMenu.options"
 			:x="contextMenu.x"
 			:y="contextMenu.y"
 			:show="contextMenu.show"
 			@close="contextMenu.show = false"
 			@select="handleContextAction"
+			:min-width="260"
 		/>
 	</div>
 </template>
@@ -157,14 +171,14 @@
 
 	aside {
 		border-right: 1px solid #303030;
-		padding-top: 10px;
+		padding-top: 8px;
 		position: relative;
 	}
 
 	.button-container {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 4px;
 	}
 
 	.direct-messages {
@@ -184,7 +198,7 @@
 	.separator {
 		height: 1px;
 		background-color: var(--border);
-		margin: 10px 0px;
+		margin: 8px 0px;
 	}
 
 	.user-list {

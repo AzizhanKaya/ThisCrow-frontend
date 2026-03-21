@@ -41,7 +41,7 @@ export const useDMStore = defineStore('dm', {
 			});
 		},
 		async init() {
-			const dms = await fetchDms();
+			const dms = (await fetchDms()).map(([a, b]) => a);
 			const userStore = useUserStore();
 			this.dms = await userStore.getUsers(dms);
 		},
@@ -53,19 +53,23 @@ export const useDMStore = defineStore('dm', {
 				return this.loading_user.get(id)!;
 			}
 
-			const addUser = new Promise<User>(async (resolve, reject) => {
+			const addUser = (async () => {
 				try {
 					const userStore = useUserStore();
 					const user = await userStore.getUser(id);
-					this.dms.push(user);
-					resolve(user);
+
+					if (!this.getUser(id)) {
+						this.dms.push(user);
+					}
+
+					return user;
 				} catch (e) {
-					console.error(e);
-					reject(e);
+					console.error('Kullanıcı yüklenirken hata oluştu:', e);
+					throw e;
 				} finally {
 					this.loading_user.delete(id);
 				}
-			});
+			})();
 
 			this.loading_user.set(id, addUser);
 

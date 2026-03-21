@@ -42,20 +42,7 @@
 
 		isLoading.value = true;
 		try {
-			const server_id = new Promise<id>((resolve) => {
-				const offMessage = websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
-					const { ack } = message.data;
-
-					if (ack === AckType.CreatedGroup) {
-						offMessage();
-						resolve(message.id);
-					}
-				});
-			});
-
-			serverStore.createServer(serverName.value, serverDescription.value, serverIcon.value);
-
-			const server = await server_id;
+			const server_id = (await serverStore.createServer(serverName.value, serverDescription.value, serverIcon.value)).from;
 
 			isLoading.value = false;
 			serverName.value = '';
@@ -64,7 +51,7 @@
 			serverIconPreview.value = null;
 			modalStore.closeModal();
 
-			router.push({ name: 'group', params: { groupId: server.toString() } });
+			router.push({ name: 'server', params: { serverId: server_id.toString() } });
 		} catch (e) {
 			console.error(e);
 		} finally {

@@ -1,13 +1,4 @@
-import { decode as msgDecode, encode as msgEncode, ExtensionCodec, type EncoderOptions, type DecoderOptions } from '@msgpack/msgpack';
-
-const convertToBigInt = (obj: any): any => {
-	if (typeof obj === 'number') return BigInt(obj);
-	if (Array.isArray(obj)) return obj.map(convertToBigInt);
-	if (obj !== null && typeof obj === 'object') {
-		return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, convertToBigInt(v)]));
-	}
-	return obj;
-};
+import { decode as msgDecode, encode as msgEncode, type EncoderOptions, type DecoderOptions } from '@msgpack/msgpack';
 
 export const encode = (value: unknown, options?: EncoderOptions) =>
 	msgEncode(value, {
@@ -21,7 +12,7 @@ export const decode = (buffer: ArrayLike<number> | BufferSource, options?: Decod
 		...options,
 	});
 
-	return convertToBigInt(decoded);
+	return decoded;
 };
 
 export async function msgFetch<T>(url: string, init?: RequestInit): Promise<T> {

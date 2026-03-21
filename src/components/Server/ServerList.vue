@@ -1,9 +1,9 @@
 <script setup lang="ts">
-	import Server from '@/components/Group/ServerIcon.vue';
+	import Server from '@/components/Server/ServerIcon.vue';
 	import { useServerStore } from '@/stores/server';
 	import CrowIcon from '@/components/CrowIcon.vue';
 	import { computed } from 'vue';
-	import ServerAdd from '@/components/Group/ServerAdd.vue';
+	import ServerAdd from '@/components/Server/ServerAdd.vue';
 
 	const serverStore = useServerStore();
 	const servers = computed(() => serverStore.servers);

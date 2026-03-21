@@ -3,7 +3,6 @@
 	import { Icon } from '@iconify/vue';
 	import { type Message as MessageType, MessageType as MessageEnum, type id } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
-	import { webrtcService, type Channel } from '@/services/webrtc';
 	import { useMeStore } from '@/stores/me';
 	import { useRoute } from 'vue-router';
 	import { useDMStore } from '@/stores/dm';
@@ -19,8 +18,7 @@
 	const messageStore = useMessageStore();
 
 	const to = computed(() => {
-		console.log(route.params.userId);
-		return BigInt(route.params.userId as string);
+		return Number(route.params.userId as string);
 	});
 
 	const showSkeleton = ref(false);
@@ -53,19 +51,9 @@
 		{ immediate: true }
 	);
 
-	function onCall() {
-		let channel: Channel = { id: to.value, users: [to.value], name: to.value.toString() + '-' + meStore.me!.id.toString() };
-		webrtcService.joinChannel(channel, 'audio').catch((error) => {
-			console.error('Error accessing media devices:', error);
-		});
-	}
+	function onCall() {}
 
-	function onVideo() {
-		let channel: Channel = { id: to.value, users: [to.value], name: to.value.toString() + '-' + meStore.me!.id.toString() };
-		webrtcService.joinChannel(channel, 'both').catch((error) => {
-			console.error('Error accessing media devices:', error);
-		});
-	}
+	function onVideo() {}
 </script>
 
 <template>
@@ -96,17 +84,13 @@
 		position: absolute;
 		width: 100%;
 		height: 100%;
-	}
-
-	main {
-		height: calc(98vh - 55px);
-		overflow: hidden;
-		margin-top: 62px;
+		--header-height: 48px;
+		--message-input-padding: 148px;
 	}
 
 	header {
 		background-color: var(--bg-dark);
-		height: 61px;
+		height: var(--header-height);
 		width: 100%;
 		position: absolute;
 		border-bottom: 1px solid #303030;
@@ -115,6 +99,12 @@
 		align-items: center;
 		padding-left: 10px;
 		gap: 5px;
+	}
+
+	main {
+		height: calc(100% - var(--header-height));
+		overflow: hidden;
+		margin-top: var(--header-height);
 	}
 
 	header img {

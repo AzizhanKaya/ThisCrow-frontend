@@ -8,12 +8,12 @@
 		<div class="card">
 			<h2>ThisCrow</h2>
 			<div class="buttons">
-				<router-link to="/login">Login</router-link>
-				<router-link to="/register">Register</router-link>
+				<router-link to="login">Login</router-link>
+				<router-link to="register">Register</router-link>
 			</div>
-			<router-view v-slot="{ Component }">
+			<router-view v-slot="{ Component, route }">
 				<Transition name="fade" mode="out-in">
-					<component :is="Component" />
+					<component :is="Component" :key="route.path" />
 				</Transition>
 			</router-view>
 		</div>
@@ -22,12 +22,12 @@
 
 <style scoped>
 	.auth-layout {
-		position: relative;
+		position: absolute;
+		width: 100%;
 		height: calc(100% - 30px);
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		color: white;
 		overflow: hidden;
 	}
 	h2 {

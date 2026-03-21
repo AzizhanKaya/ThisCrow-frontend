@@ -4,8 +4,12 @@ import { ref } from 'vue';
 export enum ModalView {
 	ADD_FRIEND = 'ADD_FRIEND',
 	CREATE_SERVER = 'CREATE_SERVER',
+	CREATE_CHANNEL = 'CREATE_CHANNEL',
+	CREATE_CATEGORY = 'CREATE_CATEGORY',
 	USER_SETTINGS = 'USER_SETTINGS',
 	NEW_DM = 'NEW_DM',
+	INVITE = 'INVITE',
+	JOIN_INVITE = 'JOIN_INVITE',
 }
 
 export const useModalStore = defineStore('modal', () => {

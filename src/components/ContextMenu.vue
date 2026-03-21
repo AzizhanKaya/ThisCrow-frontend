@@ -2,20 +2,23 @@
 	import { Icon } from '@iconify/vue';
 	import { ref, watch, nextTick, onUnmounted } from 'vue';
 
+	export type ContextMenuOption = {
+		label?: string;
+		action?: string;
+		icon?: string;
+		variant?: 'danger' | 'success';
+		divider?: boolean;
+		subtext?: string;
+		rightIcon?: string;
+		rightText?: string;
+	};
+
 	const props = defineProps<{
 		show: boolean;
 		x: number;
 		y: number;
-		options: {
-			label?: string;
-			action?: string;
-			icon?: string;
-			danger?: boolean;
-			divider?: boolean;
-			subtext?: string;
-			rightIcon?: string;
-			rightText?: string;
-		}[];
+		options: ContextMenuOption[];
+		minWidth?: number;
 	}>();
 
 	const emit = defineEmits<{
@@ -83,7 +86,7 @@
 				<button
 					v-else
 					class="menu-item"
-					:class="{ danger: option.danger }"
+					:class="option.variant"
 					@click="
 						if (option.action) {
 							emit('select', option.action);
@@ -131,7 +134,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		min-width: 260px;
+		min-width: v-bind('minWidth + "px"');
 		box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
 		pointer-events: auto;
 	}
@@ -225,11 +228,25 @@
 	}
 
 	.menu-item.danger:hover {
-		background-color: var(--error);
+		background-color: var(--error-hover);
 	}
 
 	.menu-item.danger:hover .label,
 	.menu-item.danger:hover .item-icon {
+		color: var(--text);
+	}
+
+	.menu-item.success .label,
+	.menu-item.success .item-icon {
+		color: var(--success);
+	}
+
+	.menu-item.success:hover {
+		background-color: var(--success-hover);
+	}
+
+	.menu-item.success:hover .label,
+	.menu-item.success:hover .item-icon {
 		color: var(--text);
 	}
 </style>

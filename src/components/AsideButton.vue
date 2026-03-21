@@ -28,8 +28,8 @@
 		margin-inline: auto;
 		width: 90%;
 		background-color: var(--bg);
-		border-radius: 10px;
-		height: 40px;
+		border-radius: 8px;
+		height: 36px;
 		display: flex;
 		padding-left: 15px;
 		align-items: center;

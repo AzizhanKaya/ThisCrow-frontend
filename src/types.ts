@@ -1,22 +1,27 @@
-export type id = bigint;
+export type id = number;
+export type snowflake_id = bigint;
 
 export type Server = {
 	id: id;
 	version: id;
 	position: id;
+	owner?: id;
 	name: string;
 	icon?: string;
 	description?: string;
-	members?: Member[];
-	channels?: Channel[];
-	roles?: Role[];
+	members?: Map<id, Member>;
+	channels?: Map<id, Channel>;
+	roles?: Map<id, Role>;
 };
 
 export type Channel = {
 	id: id;
 	name: string;
+	title: string | null;
+	position: number;
 	type: ChannelType;
 	messages?: Message[];
+	users?: Set<User>;
 };
 
 export enum ChannelType {
@@ -32,6 +37,7 @@ export type Member = {
 export type Role = {
 	id: id;
 	name: string;
+	position: number;
 	color: string;
 };
 
@@ -77,14 +83,13 @@ export type MessageData = {
 };
 
 export interface Message<T = any> {
-	id: id;
+	id: snowflake_id;
 	from: id;
 	to: id;
 	data: T;
-	time: Date;
 	type: MessageType;
 	group_id?: id;
-	sent?: boolean;
+	overwrite?: null;
 }
 
 export type MessageBlock = {
@@ -99,7 +104,8 @@ type File = {
 };
 
 export type Event =
-	/* ===== PRESENCE ===== */
+	/* ===== USER ===== */
+	| { event: EventType.UpdateUser; payload: { name?: string; avatar?: string } }
 	| { event: EventType.ChangeStatus; payload: Status }
 
 	/* ===== FRIEND ===== */
@@ -109,21 +115,24 @@ export type Event =
 
 	/* ===== GROUP ===== */
 	| { event: EventType.CreateGroup; payload: { name: string; icon?: string; description?: string } }
-	| { event: EventType.Subscribe }
-	| { event: EventType.Unsubscribe }
 	| {
 			event: EventType.UpdateGroup;
 			payload: {
 				name?: string;
+				description?: string;
 				icon?: string;
 			};
 	  }
+	| { event: EventType.DeleteGroup }
+	| { event: EventType.Subscribe }
+	| { event: EventType.Unsubscribe }
 
 	/* ===== ROLE ===== */
 	| {
 			event: EventType.CreateRole;
 			payload: {
 				name: string;
+				color: string;
 				permissions: number;
 			};
 	  }
@@ -132,6 +141,8 @@ export type Event =
 			payload: {
 				role: id;
 				name?: string;
+				position?: number;
+				color?: string;
 				permissions?: number;
 			};
 	  }
@@ -147,33 +158,35 @@ export type Event =
 			event: EventType.RemoveRole;
 			payload: { user: id; role: id };
 	  }
-	| {
-			event: EventType.ChangeRolePermissions;
-			payload: { role: id; permissions: number };
-	  }
 
 	/* ===== CHANNEL ===== */
 	| {
 			event: EventType.CreateChannel;
-			payload: { name: string; type: ChannelType };
+			payload: { name: string; is_voice: boolean; title?: string };
 	  }
 	| {
 			event: EventType.UpdateChannel;
-			payload: { name?: string; type?: ChannelType };
+			payload: { name?: string; title?: string; position?: number };
 	  }
 	| { event: EventType.DeleteChannel }
 
 	/* ===== VOICE ===== */
-	| { event: EventType.JoinChannel }
-	| { event: EventType.ExitChannel }
-	| { event: EventType.MoveVoice; payload: { to: id } }
+	| { event: EventType.JoinVoice }
+	| { event: EventType.ExitVoice }
+	| { event: EventType.MoveToVoice; payload: id }
 
 	/* ===== MODERATION ===== */
 	| { event: EventType.KickUser }
-	| { type: EventType.BanUser };
+	| { event: EventType.BanUser }
+
+	/* ==== webRTC ==== */
+	| { event: EventType.Offer; payload: string }
+	| { event: EventType.Answer; payload: string }
+	| { event: EventType.IceCandidate; payload: RTCIceCandidateInit };
 
 export enum EventType {
 	/* ===== USER ===== */
+	UpdateUser = 'update_user',
 
 	/* ===== PRESENCE ===== */
 	ChangeStatus = 'change_status',
@@ -185,9 +198,10 @@ export enum EventType {
 
 	/* ===== Group ===== */
 	CreateGroup = 'create_group',
+	UpdateGroup = 'update_group',
+	DeleteGroup = 'delete_group',
 	Subscribe = 'subscribe',
 	Unsubscribe = 'unsubscribe',
-	UpdateGroup = 'update_group',
 
 	/* ===== ROLE ===== */
 	CreateRole = 'create_role',
@@ -195,7 +209,6 @@ export enum EventType {
 	DeleteRole = 'delete_role',
 	AssignRole = 'assign_role',
 	RemoveRole = 'remove_role',
-	ChangeRolePermissions = 'change_role_permissions',
 
 	/* ===== CHANNEL ===== */
 	CreateChannel = 'create_channel',
@@ -203,23 +216,34 @@ export enum EventType {
 	DeleteChannel = 'delete_channel',
 
 	/* ===== VOICE ===== */
-	JoinChannel = 'join_channel',
-	ExitChannel = 'exit_channel',
-	MoveVoice = 'move_voice',
+	JoinVoice = 'join_voice',
+	ExitVoice = 'exit_voice',
+	MoveToVoice = 'move_to_voice',
 
 	/* ===== MODERATION ===== */
 	KickUser = 'kick_user',
 	BanUser = 'ban_user',
+
+	/* ==== webRTC ==== */
+	Offer = 'offer',
+	Answer = 'answer',
+	IceCandidate = 'ice_candidate',
 }
 
 export type Ack =
 	| { ack: AckType.None; payload: undefined }
 	| { ack: AckType.Error; payload: string }
-	| { ack: AckType.Received; payload: id }
+
+	// MESSAGE
+	| { ack: AckType.Received; payload: snowflake_id }
+	| { ack: AckType.Deleted; payload: snowflake_id }
+	| { ack: AckType.Overwritten; payload: Message }
 
 	/* ===== USER ===== */
 	| { ack: AckType.Initialized; payload: Me }
 	| { ack: AckType.ChangedStatus; payload: Status }
+	| { ack: AckType.CreatedRole; payload: { name: string; permissions: number; color: string } }
+	| { ack: AckType.AssignedRole; payload: { role_id: id } }
 	| { ack: AckType.AddedFriend; payload: undefined }
 	| { ack: AckType.ReceivedFriendRequest; payload: undefined }
 	| { ack: AckType.SentFriendRequest; payload: undefined }
@@ -233,7 +257,7 @@ export type Ack =
 	  }
 
 	/* ===== GROUP / GUILD ===== */
-	| { ack: AckType.Subscribed; payload: Server }
+	| { ack: AckType.Subscribed; payload: any }
 	| { ack: AckType.Unsubscribed; payload: undefined }
 	| { ack: AckType.AddedMember; payload: undefined }
 	| { ack: AckType.RemovedMember; payload: undefined }
@@ -241,29 +265,32 @@ export type Ack =
 			ack: AckType.CreatedGroup;
 			payload: {
 				name: string;
-				description?: string;
 				icon?: string;
+				description?: string;
 			};
 	  }
 	| {
 			ack: AckType.CreatedChannel;
 			payload: {
 				name: string;
-				type: ChannelType;
+				position: number;
+				is_voice: boolean;
+				title?: string;
 			};
 	  }
 	| {
 			ack: AckType.CreatedRole;
 			payload: {
 				name: string;
+				permissions: number;
 				color: string;
 			};
 	  }
-	| { ack: AckType.AssignedRole; payload: undefined }
 	| {
 			ack: AckType.UpdatedGroup;
 			payload: {
 				name?: string;
+				description?: string;
 				icon?: string;
 			};
 	  }
@@ -271,37 +298,43 @@ export type Ack =
 			ack: AckType.UpdatedChannel;
 			payload: {
 				name?: string;
+				title: string | null;
 				position?: number;
-				title?: string;
 			};
 	  }
 	| {
 			ack: AckType.UpdatedRole;
 			payload: {
 				name?: string;
-				position?: number;
 				permissions?: number;
 				color?: string;
 			};
 	  }
 	| { ack: AckType.DeletedGroup; payload: undefined }
 	| { ack: AckType.DeletedChannel; payload: undefined }
-	| { ack: AckType.DeletedRole; payload: undefined };
+	| { ack: AckType.DeletedRole; payload: undefined }
+
+	/* ===== VOICE ===== */
+	| { ack: AckType.JoinedVoice; payload: id }
+	| { ack: AckType.ExitedVoice; payload: id }
+	| { ack: AckType.MovedToVoice; payload: id };
 
 export enum AckType {
 	None = 'none',
 	Error = 'error',
 	// MESSAGE
 	Received = 'received',
+	Deleted = 'deleted',
+	Overwritten = 'overwritten',
 	// USER
 	Initialized = 'initialized',
 	ChangedStatus = 'changed_status',
-	UpdatedUser = 'updated_user',
-	// FRIEND
+	AssignedRole = 'assigned_role',
 	AddedFriend = 'added_friend',
 	ReceivedFriendRequest = 'received_friend_request',
 	SentFriendRequest = 'sent_friend_request',
 	DeletedFriend = 'deleted_friend',
+	UpdatedUser = 'updated_user',
 	// GROUP
 	Subscribed = 'subscribed',
 	Unsubscribed = 'unsubscribed',
@@ -310,11 +343,14 @@ export enum AckType {
 	CreatedGroup = 'created_group',
 	CreatedChannel = 'created_channel',
 	CreatedRole = 'created_role',
-	AssignedRole = 'assigned_role',
 	UpdatedGroup = 'updated_group',
 	UpdatedChannel = 'updated_channel',
 	UpdatedRole = 'updated_role',
 	DeletedGroup = 'deleted_group',
 	DeletedChannel = 'deleted_channel',
 	DeletedRole = 'deleted_role',
+	// VOICE
+	JoinedVoice = 'joined_voice',
+	ExitedVoice = 'exited_voice',
+	MovedToVoice = 'moved_to_voice',
 }

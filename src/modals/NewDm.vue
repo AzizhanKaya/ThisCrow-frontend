@@ -96,8 +96,8 @@
 		<div class="modal-container" @click.stop>
 			<header class="modal-header">
 				<div class="title-group">
-					<h2>Select User</h2>
-					<span class="subtitle">Search for a friend to start a direct message.</span>
+					<h2>Direct Message</h2>
+					<span class="subtitle">Search for a user to start a direct message.</span>
 				</div>
 				<button class="close-btn" @click="modalStore.closeModal">
 					<Icon icon="mdi:close" />
@@ -119,7 +119,7 @@
 				<div v-else-if="displayedResults.length > 0" class="user-list">
 					<div v-for="user in displayedResults" :key="user.id.toString()" class="user-card" @click="handleMessage(user)">
 						<div class="user-info">
-							<img :src="user.avatar || '/default-user-icon.png'" alt="avatar" />
+							<img :src="user.avatar || '/default-avatar.png'" alt="avatar" />
 							<div class="user-text">
 								<span class="name">{{ user.name }}</span>
 								<span class="username">@{{ user.username }}</span>

@@ -1,59 +1,24 @@
 <script setup lang="ts">
-	import { onMounted, ref } from 'vue';
-	import { useMeStore } from '@/stores/me';
+	import { onMounted } from 'vue';
 	import { useRouter, useRoute } from 'vue-router';
-	import { initApp } from '@/init';
-	import { websocketService } from '@/services/websocket';
-	import { getMe } from '@/api/state';
+	import { useAppStore } from '@/stores/app';
 	import Header from './components/Header.vue';
 	import Modals from './components/Modals.vue';
 
 	const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
-	const meStore = useMeStore();
+	const appStore = useAppStore();
 	const router = useRouter();
 	const route = useRoute();
-
-	const loading = ref(true);
-
-	websocketService.onConnectionStateChange(async (state) => {
-		if (state === 'CLOSED') {
-			loading.value = true;
-		} else if (state === 'CONNECTING') {
-			loading.value = true;
-			try {
-				await initApp();
-			} catch (error) {
-				console.error('initApp hatası:', error);
-				meStore.logOut();
-				websocketService.disconnect();
-				router.push('/login');
-			}
-			loading.value = false;
-		}
-	});
-
-	const handleBeforeUnload = () => {
-		websocketService.disconnect();
-	};
 
 	onMounted(async () => {
 		if (isTauri) {
 			document.documentElement.classList.add('tauri');
 		}
 
-		window.addEventListener('beforeunload', handleBeforeUnload);
+		window.addEventListener('beforeunload', appStore.handleBeforeUnload);
 
-		try {
-			loading.value = true;
-			await getMe();
-			websocketService.connect();
-		} catch (error) {
-			console.error(error);
-			meStore.logOut();
-			router.push('/login');
-			loading.value = false;
-		}
+		await appStore.init(router);
 	});
 </script>
 
@@ -61,10 +26,7 @@
 	<Header></Header>
 	<router-view v-slot="{ Component }">
 		<Transition name="fade" mode="out-in">
-			<div v-if="loading" class="splash-screen">
-				<img src="/default-server-icon.png" alt="" />
-			</div>
-			<component v-else :is="Component" :key="route.meta.layout" />
+			<component :is="Component" :key="route.meta.layout" />
 		</Transition>
 	</router-view>
 	<Modals />
@@ -81,7 +43,7 @@
 	}
 
 	.tauri body,
-	html {
+	html.tauri {
 		background-color: transparent;
 	}
 
@@ -93,11 +55,13 @@
 	}
 
 	:root {
+		--bg-darkest: hsl(216, 7%, 7%);
 		--bg-darker: hsl(216, 7%, 10%);
 		--bg-dark: hsl(216, 7%, 14%);
 		--bg: hsl(216, 7%, 23%);
 		--bg-light: hsl(216, 7%, 28%);
 		--bg-lighter: hsl(216, 7%, 35%);
+		--bg-lightest: hsl(216, 7%, 40%);
 
 		--text: hsl(0 0% 95%);
 		--text-muted: hsl(0 0% 75%);
@@ -106,9 +70,13 @@
 		--border: hsl(0, 0%, 19%);
 		--border-muted: hsl(0, 0%, 15%);
 
+		--color-darkest: hsl(261, 68%, 30%);
+		--color-darker: hsl(261, 68%, 35%);
 		--color-dark: hsl(261, 68%, 40%);
 		--color: hsl(261, 68%, 45%);
 		--color-light: hsl(261, 68%, 50%);
+		--color-lighter: hsl(261, 68%, 55%);
+		--color-lightest: hsl(261, 68%, 60%);
 
 		--success: hsl(145, 65%, 39%);
 		--success-hover: hsl(145, 65%, 34%);
@@ -125,6 +93,26 @@
 		-webkit-user-select: none;
 		user-select: none;
 		-webkit-user-drag: none;
+		scrollbar-width: thin;
+		scrollbar-color: var(--bg) transparent;
+	}
+
+	::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	::-webkit-scrollbar-thumb {
+		background-color: var(--bg);
+		border-radius: 10px;
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background-color: var(--bg-light);
 	}
 
 	input,
@@ -164,22 +152,14 @@
 <style scoped>
 	.fade-enter-active,
 	.fade-leave-active {
-		transition: opacity 0.3s ease-out;
+		transition:
+			opacity 0.3s ease-in-out,
+			transform 0.3s ease-in;
+		transform: translateY(0px);
 	}
 	.fade-enter-from,
 	.fade-leave-to {
+		transform: translateY(10px);
 		opacity: 0;
-	}
-
-	.splash-screen {
-		height: 100vh;
-		display: flex;
-		justify-content: center;
-		align-items: center;
-	}
-
-	.splash-screen img {
-		width: 200px;
-		object-fit: contain;
 	}
 </style>

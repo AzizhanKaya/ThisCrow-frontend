@@ -6,6 +6,7 @@
 	import ContextMenu from '@/components/ContextMenu.vue';
 	import { Icon } from '@iconify/vue';
 	import { useRouter } from 'vue-router';
+	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 
 	const friendStore = useFriendStore();
 	const router = useRouter();
@@ -40,10 +41,9 @@
 		show: false,
 		x: 0,
 		y: 0,
-		user: null as User | null,
 	});
 
-	const contextMenuOptions = [
+	const contextMenuOptions: ContextMenuOption[] = [
 		{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
 		{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
 		{ label: 'Call', action: 'call', icon: 'mdi:phone' },
@@ -52,25 +52,23 @@
 		{ label: 'Add Nickname', action: 'nickname', icon: 'mdi:account-edit' },
 		{ label: 'Invite to Server', action: 'invite', icon: 'mdi:account-plus', rightIcon: 'mdi:chevron-right' },
 		{ divider: true },
-		{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', danger: true },
-		{ label: 'Block', action: 'block', icon: 'mdi:cancel', danger: true },
+		{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' },
+		{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
 		{ divider: true },
 		{ label: 'Copy Username', action: 'copy_username', icon: 'mdi:content-copy' },
 	];
 
-	function openContextMenu(e: MouseEvent, user: User) {
+	function openContextMenu(e: MouseEvent) {
 		if (props.request || props.request_sent) return;
 		contextMenu.value = {
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
-			user,
 		};
 	}
 
 	function handleContextAction(action: string) {
-		const user = contextMenu.value.user;
-		if (!user) return;
+		const user = props.user;
 
 		switch (action) {
 			case 'message':
@@ -94,10 +92,10 @@
 </script>
 
 <template>
-	<div class="user-card" @contextmenu.prevent="openContextMenu($event, user)">
+	<div class="user-card" @contextmenu.prevent="openContextMenu($event)">
 		<div class="user-info">
 			<div class="avatar-container">
-				<img :src="user.avatar || '/default-user-icon.png'" alt="avatar" class="avatar loaded" />
+				<img :src="user.avatar || '/default-avatar.png'" alt="avatar" class="avatar loaded" />
 				<div :class="['state', getState(user)]"></div>
 			</div>
 			<div class="user-text">
@@ -123,16 +121,15 @@
 			</button>
 		</div>
 
-		<Teleport to="#app">
-			<ContextMenu
-				:show="contextMenu.show"
-				:x="contextMenu.x"
-				:y="contextMenu.y"
-				:options="contextMenuOptions"
-				@select="handleContextAction"
-				@close="closeContextMenu"
-			/>
-		</Teleport>
+		<ContextMenu
+			:show="contextMenu.show"
+			:x="contextMenu.x"
+			:y="contextMenu.y"
+			:options="contextMenuOptions"
+			@select="handleContextAction"
+			@close="closeContextMenu"
+			:min-width="260"
+		/>
 	</div>
 </template>
 
