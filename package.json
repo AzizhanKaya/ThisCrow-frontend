@@ -5,9 +5,9 @@
   "type": "module",
  "scripts": {
     "dev:frontend": "vite",
-    "dev:wasm": "cargo watch -w ./wasm-lib/src -s \"wasm-pack build ./wasm-lib --target web --out-dir ../pkg\"",
+    "dev:wasm": "cd wasm-lib && cargo watch -w src -s \"wasm-pack build . --target web --out-dir ../pkg\"",
     "dev": "concurrently -c \"cyan,magenta\" \"pnpm run dev:frontend\" \"pnpm run dev:wasm\"",
-    "build:wasm": "wasm-pack build ./wasm-lib --target web --out-dir ../pkg",
+    "build:wasm": "cd wasm-lib && wasm-pack build . --target web --out-dir ../pkg",
     "prebuild": "pnpm run build:wasm",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",

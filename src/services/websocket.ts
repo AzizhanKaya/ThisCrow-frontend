@@ -1,9 +1,9 @@
-import type { Me, Message } from '@/types';
-import { AckType, EventType, MessageType } from '@/types';
+import type { Me, Message, MessageData } from '@/types';
+import { type Ack, AckType, EventType, MessageType } from '@/types';
 import { WS_URL } from '@/constants';
 import { decode, encode } from '@/utils/msgpack';
 
-type MessageCallback = (message: Message) => void;
+type MessageCallback<T = any> = (message: Message<T>) => void;
 
 class WebSocketService {
 	private static instance: WebSocketService;
@@ -75,17 +75,18 @@ class WebSocketService {
 
 	private handleIncomingMessage(event: MessageEvent) {
 		try {
-			let message = decode(new Uint8Array(event.data)) as Message;
+			let message = decode(new Uint8Array(event.data)) as Message<MessageData>;
 
 			console.log(message);
 
 			if (message.type === MessageType.Server && this.pendingRequests.has(message.id)) {
+				const data = message.data as Ack;
 				const { resolve, reject, timer } = this.pendingRequests.get(message.id)!;
 				clearTimeout(timer);
 				this.pendingRequests.delete(message.id);
 
-				if (message.data.ack === AckType.Error) {
-					reject(new Error(message.data.payload as string));
+				if (data.ack === AckType.Error) {
+					reject(new Error(data.payload as string));
 				} else {
 					resolve(message);
 				}
@@ -128,19 +129,18 @@ class WebSocketService {
 		});
 	}
 
-	onMessage(type: MessageType, callback: MessageCallback): () => void {
+	onMessage<T>(type: MessageType, callback: MessageCallback<T>): () => void {
 		const handlers = this.messageHandlers.get(type);
 		if (!handlers) {
-			console.error(`Invalid message type: ${type}`);
 			throw new Error(`Invalid message type: ${type}`);
 		}
 
-		handlers.add(callback);
+		handlers.add(callback as MessageCallback<any>);
+
 		return () => {
-			handlers.delete(callback);
+			handlers.delete(callback as MessageCallback<any>);
 		};
 	}
-
 	offMessage(type: MessageType, callback: MessageCallback) {
 		const handlers = this.messageHandlers.get(type);
 		if (!handlers) {
@@ -191,17 +191,15 @@ class WebSocketService {
 
 	public waitForSessionInit(): Promise<Me> {
 		return new Promise((resolve, reject) => {
-			const handler = (message: Message) => {
+			const unsubscribe = this.onMessage<Ack>(MessageType.Server, (message) => {
 				if (message.type === MessageType.Server && message.data.ack === AckType.Initialized) {
-					this.offMessage(MessageType.Server, handler);
+					unsubscribe();
 					resolve(message.data.payload as Me);
 				} else if (message.type === MessageType.Server && message.data.ack === AckType.Error) {
-					this.offMessage(MessageType.Server, handler);
+					unsubscribe();
 					reject(new Error(message.data.payload || 'Session initialization failed'));
 				}
-			};
-
-			this.onMessage(MessageType.Server, handler);
+			});
 		});
 	}
 }

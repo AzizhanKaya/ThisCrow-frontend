@@ -3,6 +3,7 @@ import { websocketService } from '@/services/websocket';
 import { initApp } from '@/init';
 import { getMe } from '@/api/state';
 import { useMeStore } from './me';
+import initWasm from '@/../pkg/wasm_lib';
 
 export const useAppStore = defineStore('app', {
 	state: () => ({
@@ -34,6 +35,7 @@ export const useAppStore = defineStore('app', {
 		},
 
 		async init(router: any) {
+			await initWasm();
 			this.setupConnectionListener(router);
 
 			try {

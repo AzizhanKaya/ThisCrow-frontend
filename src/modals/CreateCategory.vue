@@ -5,7 +5,7 @@
 	import { websocketService } from '@/services/websocket';
 	import { AckType, ChannelType, EventType, MessageType, type Ack, type Event, type Message, type id } from '@/types';
 	import { useMeStore } from '@/stores/me';
-	import { generate_snowflake } from '@/utils/snowflake';
+	import { generate_uid } from '@/utils/uid';
 
 	const modalStore = useModalStore();
 	const meStore = useMeStore();
@@ -24,7 +24,7 @@
 
 		try {
 			const msg: Message<Event> = {
-				id: generate_snowflake(),
+				id: generate_uid(meStore.me.id),
 				from: meStore.me!.id,
 				to: server_id.value,
 				group_id: server_id.value,

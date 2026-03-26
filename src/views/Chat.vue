@@ -2,7 +2,6 @@
 	import { ref, onMounted, reactive, type Reactive, watch, computed } from 'vue';
 	import { Icon } from '@iconify/vue';
 	import { type Message as MessageType, MessageType as MessageEnum, type id } from '@/types';
-	import { useFiles } from '@/composables/useFiles';
 	import { useMeStore } from '@/stores/me';
 	import { useRoute } from 'vue-router';
 	import { useDMStore } from '@/stores/dm';

@@ -11,9 +11,7 @@ export async function fetchServers(server_ids: id[]): Promise<Server[]> {
 }
 
 export async function fetchUser(id: id): Promise<User> {
-	const params = new URLSearchParams();
-	params.append('id', id.toString());
-	const url = API_URL + `/info/user?${params.toString()}`;
+	const url = API_URL + `/info/user/${id}`;
 
 	return await msgFetch<User>(url, { credentials: 'include' });
 }
@@ -35,4 +33,10 @@ export async function searchUser(username: string): Promise<User[]> {
 	return msgFetch<User[]>(API_URL + `/info/search_user?${params.toString()}`, {
 		credentials: 'include',
 	});
+}
+
+export async function fetchPublicKey(id: id): Promise<Uint8Array> {
+	const url = API_URL + `/info/public_key/${id}`;
+
+	return await msgFetch<Uint8Array>(url, { credentials: 'include' });
 }

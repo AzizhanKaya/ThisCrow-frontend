@@ -75,21 +75,28 @@ export enum MessageType {
 	InfoGroup = 'info_group',
 }
 
-export type MessageData = {
+export type MultiData = {
 	text?: string;
 	images?: string[];
 	videos?: string[];
 	files?: File[];
 };
 
-export interface Message<T = any> {
+export type EncryptedData = {
+	nonce: Uint8Array;
+	cipher: Uint8Array;
+};
+
+export type MessageData = string | EncryptedData | MultiData | Event | Ack;
+
+export interface Message<T = MessageData> {
 	id: snowflake_id;
 	from: id;
 	to: id;
 	data: T;
 	type: MessageType;
 	group_id?: id;
-	overwrite?: null;
+	overwrited?: null;
 }
 
 export type MessageBlock = {
@@ -97,7 +104,7 @@ export type MessageBlock = {
 	user: User;
 };
 
-type File = {
+export type File = {
 	url: string;
 	name: string;
 	size: string;
@@ -182,7 +189,7 @@ export type Event =
 	/* ==== webRTC ==== */
 	| { event: EventType.Offer; payload: string }
 	| { event: EventType.Answer; payload: string }
-	| { event: EventType.IceCandidate; payload: RTCIceCandidateInit };
+	| { event: EventType.IceCandidate; payload: string };
 
 export enum EventType {
 	/* ===== USER ===== */

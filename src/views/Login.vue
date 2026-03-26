@@ -3,14 +3,11 @@
 	import { login } from '@/api/auth';
 	import { Icon } from '@iconify/vue';
 	import Toast from '@/components/Toast.vue';
-	import { useMeStore } from '@/stores/me';
-	import { useRouter } from 'vue-router';
 	import { websocketService } from '@/services/websocket';
-	import { invoke } from '@tauri-apps/api/core';
-	import { useAppStore } from '@/stores/app';
+	import { useKeyStore } from '@/stores/key';
+	import { useRouter } from 'vue-router';
 
-	const appStore = useAppStore();
-	const meStore = useMeStore();
+	const keyStore = useKeyStore();
 	const router = useRouter();
 
 	const username = ref('');
@@ -24,6 +21,7 @@
 		isLoading.value = true;
 		try {
 			await login(username.value, password.value);
+			keyStore.init(password.value);
 			websocketService.connect();
 			router.push({ name: 'chats' });
 		} catch (err: any) {

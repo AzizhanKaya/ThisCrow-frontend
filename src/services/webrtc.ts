@@ -3,7 +3,7 @@ import { EventType, MessageType, type Event } from '@/types';
 import { useMeStore } from '@/stores/me';
 import type { Message, User, id } from '@/types';
 import { generate_uid } from '@/utils/uid';
-import { generate_snowflake } from '@/utils/snowflake';
+import { markRaw, reactive } from 'vue';
 
 interface PeerConnection {
 	connection: RTCPeerConnection;
@@ -21,9 +21,9 @@ export enum MediaType {
 
 class WebRTCService {
 	private static instance: WebRTCService;
-	private pcs: Map<id, PeerConnection> = new Map();
+	private pcs: Map<id, PeerConnection> = reactive(new Map());
 	localStream?: MediaStream;
-	private localMediaTypes: Map<string, MediaType> = new Map();
+	private localMediaTypes: Map<string, MediaType> = reactive(new Map());
 	private readonly me: User;
 	private readonly configuration: RTCConfiguration = {
 		iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
@@ -42,7 +42,7 @@ class WebRTCService {
 	}
 
 	private setupWebSocketHandlers() {
-		websocketService.onMessage(MessageType.Info, async (message: Message<Event>) => {
+		websocketService.onMessage<Event>(MessageType.Info, async (message) => {
 			try {
 				const { from, data } = message;
 				switch (data.event) {
@@ -53,44 +53,49 @@ class WebRTCService {
 						await this.handleAnswer(from, { sdp: data.payload, type: 'answer' } as RTCSessionDescriptionInit);
 						break;
 					case EventType.IceCandidate:
-						await this.handleIceCandidate(from, data.payload as RTCIceCandidateInit);
+						const candidateObj = JSON.parse(data.payload);
+						await this.handleIceCandidate(from, candidateObj as RTCIceCandidateInit);
 						break;
 				}
-			} catch (error) {
-				console.error(error);
-			}
+			} catch (error) {}
 		});
 	}
 
 	private async handleOffer(userId: id, offer: RTCSessionDescriptionInit) {
-		const connection = new RTCPeerConnection(this.configuration);
-		connection.setRemoteDescription(new RTCSessionDescription(offer));
+		let peer = this.pcs.get(userId);
+		let connection: RTCPeerConnection;
 
-		const peer: PeerConnection = {
-			connection,
-			userId,
-			mediaTypes: new Map<string, MediaType>(),
-		};
+		if (peer) {
+			connection = peer.connection;
+		} else {
+			connection = new RTCPeerConnection(this.configuration);
+			peer = {
+				connection: markRaw(connection),
+				userId,
+				mediaTypes: reactive(new Map<string, MediaType>()),
+			};
+			this.pcs.set(userId, peer);
 
-		this.pcs.set(userId, peer);
+			this.setupPeerConnectionHandlers(userId, connection);
 
-		this.setupPeerConnectionHandlers(userId, connection);
-
-		if (this.localStream) {
-			this.localStream.getTracks().forEach((track) => {
-				connection.addTrack(track, this.localStream!);
-			});
+			if (this.localStream) {
+				this.localStream.getTracks().forEach((track) => {
+					connection.addTrack(track, this.localStream!);
+				});
+			}
 		}
+
+		await connection.setRemoteDescription(new RTCSessionDescription(offer));
 
 		const answer = await peer.connection.createAnswer();
 		await peer.connection.setLocalDescription(answer);
 
 		websocketService.sendMessage({
-			id: generate_snowflake(),
+			id: generate_uid(this.me.id),
 			type: MessageType.Info,
 			from: this.me.id,
 			to: userId,
-			data: { event: EventType.Answer, payload: answer.sdp },
+			data: { event: EventType.Answer, payload: answer.sdp! },
 		});
 	}
 
@@ -108,30 +113,36 @@ class WebRTCService {
 		}
 	}
 
-	public async initPeerConnections(userIds: id[]) {
-		this.disconnectAll();
-
+	public async connectPeers(userIds: id[]) {
 		await Promise.all(
 			userIds.map(async (userId) => {
+				if (this.pcs.has(userId)) return;
+
 				const connection = new RTCPeerConnection(this.configuration);
+
+				this.setupPeerConnectionHandlers(userId, connection);
+
+				const peer: PeerConnection = { connection: markRaw(connection), userId, mediaTypes: reactive(new Map<string, MediaType>()) };
+				this.pcs.set(userId, peer);
 
 				const dataChannel = connection.createDataChannel('media-metadata');
 				this.handleDataChannel(userId, dataChannel);
 
-				this.setupPeerConnectionHandlers(userId, connection);
-
-				const peer: PeerConnection = { connection, userId, mediaTypes: new Map<string, MediaType>() };
-				this.pcs.set(userId, peer);
+				if (this.localStream) {
+					this.localStream.getTracks().forEach((track) => {
+						connection.addTrack(track, this.localStream!);
+					});
+				}
 
 				const offer = await connection.createOffer();
 				await connection.setLocalDescription(offer);
 
 				websocketService.sendMessage({
-					id: generate_snowflake(),
+					id: generate_uid(this.me.id),
 					type: MessageType.Info,
 					from: this.me.id,
 					to: userId,
-					data: { event: EventType.Offer, payload: offer.sdp },
+					data: { event: EventType.Offer, payload: offer.sdp! },
 				});
 			})
 		);
@@ -141,11 +152,11 @@ class WebRTCService {
 		connection.onicecandidate = (event) => {
 			if (event.candidate) {
 				websocketService.sendMessage({
-					id: generate_snowflake(),
+					id: generate_uid(this.me.id),
 					type: MessageType.Info,
 					from: this.me.id,
 					to: userId,
-					data: { event: EventType.IceCandidate, payload: event.candidate },
+					data: { event: EventType.IceCandidate, payload: JSON.stringify(event.candidate.toJSON()) },
 				});
 			}
 		};
@@ -158,9 +169,10 @@ class WebRTCService {
 			const peer = this.pcs.get(userId);
 			if (peer) {
 				if (!peer.remoteStream) {
-					peer.remoteStream = new MediaStream();
+					peer.remoteStream = markRaw(new MediaStream());
 				}
 				peer.remoteStream.addTrack(event.track);
+				this.pcs.set(userId, { ...peer });
 			}
 		};
 
@@ -178,14 +190,46 @@ class WebRTCService {
 		channel.onmessage = (event) => {
 			const data = JSON.parse(event.data);
 			if (data.type === 'TRACK_META') {
-				peer?.mediaTypes.set(data.trackId, data.mediaType);
+				peer?.mediaTypes.set(data.mid, data.mediaType);
+			} else if (data.type === 'TRACK_REMOVED') {
+				peer?.mediaTypes.delete(data.mid);
+			}
+
+			if (peer) {
+				this.pcs.set(userId, { ...peer });
 			}
 		};
+
+		const sendMeta = () => {
+			if (!peer) return;
+			peer.connection.getTransceivers().forEach((tc) => {
+				if (tc.sender.track && tc.mid !== null) {
+					const mediaType = this.localMediaTypes.get(tc.sender.track.id);
+					if (mediaType) {
+						channel.send(
+							JSON.stringify({
+								type: 'TRACK_META',
+								mid: tc.mid,
+								mediaType,
+							})
+						);
+					}
+				}
+			});
+		};
+
+		if (channel.readyState === 'open') {
+			sendMeta();
+		} else {
+			channel.onopen = () => {
+				sendMeta();
+			};
+		}
 	}
 
 	public async addTrack(type: MediaType) {
 		if (!this.localStream) {
-			this.localStream = new MediaStream();
+			this.localStream = markRaw(new MediaStream());
 		}
 
 		let track: MediaStreamTrack;
@@ -206,18 +250,34 @@ class WebRTCService {
 		this.localStream.addTrack(track);
 		this.localMediaTypes.set(track.id, type);
 
-		this.pcs.forEach((peer) => {
-			peer.connection.addTrack(track, this.localStream!);
+		this.pcs.forEach(async (peer) => {
+			const sender = peer.connection.addTrack(track, this.localStream!);
 
-			if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
-				peer.dataChannel.send(
-					JSON.stringify({
-						type: 'TRACK_META',
-						trackId: track.id,
-						mediaType: type,
-					})
-				);
-			}
+			try {
+				const offer = await peer.connection.createOffer();
+				await peer.connection.setLocalDescription(offer);
+
+				if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+					const tc = peer.connection.getTransceivers().find((t) => t.sender === sender);
+					if (tc && tc.mid !== null) {
+						peer.dataChannel.send(
+							JSON.stringify({
+								type: 'TRACK_META',
+								mid: tc.mid,
+								mediaType: type,
+							})
+						);
+					}
+				}
+
+				websocketService.sendMessage({
+					id: generate_uid(this.me.id),
+					type: MessageType.Info,
+					from: this.me.id,
+					to: peer.userId,
+					data: { event: EventType.Offer, payload: offer.sdp! },
+				});
+			} catch (e) {}
 		});
 	}
 
@@ -226,6 +286,50 @@ class WebRTCService {
 			?.getTracks()
 			.filter((t) => this.localMediaTypes.get(t.id) === type)
 			.forEach((t) => (t.enabled = enabled));
+	}
+
+	public async removeTrack(type: MediaType) {
+		if (!this.localStream) return;
+
+		const tracksToRemove = this.localStream.getTracks().filter((t) => this.localMediaTypes.get(t.id) === type);
+
+		for (const track of tracksToRemove) {
+			track.stop();
+			this.localStream.removeTrack(track);
+			this.localMediaTypes.delete(track.id);
+
+			this.pcs.forEach(async (peer) => {
+				const sender = peer.connection.getSenders().find((s) => s.track === track);
+				if (sender) {
+					peer.connection.removeTrack(sender);
+
+					if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+						const tc = peer.connection.getTransceivers().find((t) => t.sender === sender);
+						if (tc && tc.mid !== null) {
+							peer.dataChannel.send(
+								JSON.stringify({
+									type: 'TRACK_REMOVED',
+									mid: tc.mid,
+								})
+							);
+						}
+					}
+
+					try {
+						const offer = await peer.connection.createOffer();
+						await peer.connection.setLocalDescription(offer);
+
+						websocketService.sendMessage({
+							id: generate_uid(this.me.id),
+							type: MessageType.Info,
+							from: this.me.id,
+							to: peer.userId,
+							data: { event: EventType.Offer, payload: offer.sdp! },
+						});
+					} catch (e) {}
+				}
+			});
+		}
 	}
 
 	public disconnectAll() {
@@ -272,9 +376,22 @@ class WebRTCService {
 		}
 
 		const peer = this.pcs.get(userId);
-		if (!peer || !peer.remoteStream) return undefined;
+		if (!peer) return undefined;
 
-		return peer.remoteStream.getTracks().find((track) => peer.mediaTypes.get(track.id) === type);
+		let targetMid: string | undefined;
+		for (const [mid, mediaType] of peer.mediaTypes.entries()) {
+			if (mediaType === type) {
+				targetMid = mid;
+				break;
+			}
+		}
+
+		if (targetMid !== undefined) {
+			const tc = peer.connection.getTransceivers().find((t) => t.mid === targetMid);
+			return tc?.receiver.track;
+		}
+
+		return undefined;
 	}
 }
 

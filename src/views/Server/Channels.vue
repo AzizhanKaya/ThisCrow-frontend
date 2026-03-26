@@ -9,7 +9,6 @@
 	import { websocketService } from '@/services/websocket';
 	import ChannelComponent from '@/components/Server/Channel.vue';
 	import { webrtcService } from '@/services/webrtc';
-	import { generate_snowflake } from '@/utils/snowflake';
 	import { useMeStore } from '@/stores/me';
 	import { generate_uid } from '@/utils/uid';
 	import { useVoiceStore } from '@/stores/voice';

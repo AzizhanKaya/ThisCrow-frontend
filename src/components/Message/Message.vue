@@ -1,10 +1,16 @@
 <script setup lang="ts">
-	import type { PropType } from 'vue';
-	import type { Message, User } from '@/types';
+	import { computed, type PropType } from 'vue';
+	import type { Message, MessageData, MultiData, User } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import { is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
+	import { decrypt_message } from '@/../pkg/wasm_lib';
+	import { useKeyStore } from '@/stores/key';
+	import { decode } from '@msgpack/msgpack';
+	import { computedAsync } from '@vueuse/core';
 
-	defineProps({
+	const keyStore = useKeyStore();
+
+	const props = defineProps({
 		message: {
 			type: Object as PropType<Message>,
 			required: true,
@@ -13,6 +19,39 @@
 			type: Object as PropType<User>,
 			required: false,
 		},
+	});
+
+	const message = computedAsync(async () => {
+		const data = props.message.data;
+		if (typeof data !== 'object' || data === null || !('cipher' in data)) {
+			return props.message;
+		}
+
+		const private_key = await keyStore.get_private_key(props.message.from);
+
+		const decrypted = decrypt_message(private_key, data.cipher, data.nonce);
+		const decoded = decode(decrypted) as MessageData;
+
+		return { ...props.message, data: decoded } as Message;
+	}, undefined);
+
+	const multiData = $computed<MultiData | undefined>(() => {
+		const data = message.value?.data;
+		if (typeof data === 'object') {
+			return data as MultiData;
+		}
+		return undefined;
+	});
+
+	const messageText = $computed<string | undefined>(() => {
+		const data = message.value?.data;
+		if (typeof data === 'string') {
+			return data;
+		}
+		if (multiData?.text) {
+			return multiData.text;
+		}
+		return undefined;
 	});
 </script>
 
@@ -24,34 +63,60 @@
 			<div v-if="user" class="message-header">
 				<span class="name">{{ user.name }}</span>
 				<span class="time-header">
-					{{ snowflake_to_date(message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+					{{ snowflake_to_date(props.message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
 			</div>
 
 			<div class="data">
-				<div v-if="message.data.images" class="media-container">
-					<img v-for="img in message.data.images" :key="img" :src="img" class="image" />
+				<div v-if="multiData?.images" class="media-container">
+					<img v-for="img in multiData.images" :key="img" :src="img" class="image" />
 				</div>
 
-				<div v-if="message.data.videos" class="media-container">
-					<video v-for="video in message.data.videos" :key="video" class="video" controls>
-						<source :src="video" type="video/mp4" />
-					</video>
+				<div v-if="multiData?.videos" class="media-container">
+					<video v-for="video in multiData.videos" :key="video" :src="video" class="video" controls />
 				</div>
 
-				<div v-if="message.data.files" class="files-container">
-					<div v-for="file in message.data.files" :key="file.name" class="file">
-						<span class="file-name">{{ file.name }}</span>
-						<span class="file-size">{{ file.size }}</span>
+				<div v-if="multiData?.files && multiData.files.length > 0" class="files-container">
+					<div
+						v-for="file in multiData.files"
+						:key="file.url"
+						class="file-item"
+						style="
+							display: flex;
+							justify-content: space-between;
+							align-items: center;
+							padding: 8px;
+							border: 1px solid #ccc;
+							border-radius: 4px;
+							margin-bottom: 4px;
+						"
+					>
+						<div class="file-info" style="display: flex; flex-direction: column">
+							<span class="file-name" style="font-weight: bold">{{ file.name }}</span>
+							<span class="file-meta" style="font-size: 0.85em; color: gray">
+								{{ file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : 'BİLİNMEYEN' }} • {{ file.size }}
+							</span>
+						</div>
+
+						<a
+							:href="file.url"
+							target="_blank"
+							rel="noopener noreferrer"
+							download
+							class="download-link"
+							style="display: flex; align-items: center; gap: 4px; text-decoration: none; color: #007bff"
+						>
+							<Icon icon="mdi:download" /> İndir
+						</a>
 					</div>
 				</div>
 
-				<span v-if="message.data.text" class="text" :class="{ sent: is_sent_from_snowflake(message.id) }">
-					{{ message.data.text }}
+				<span v-if="messageText" class="text" :class="{ sent: is_sent_from_snowflake(props.message.id) }">
+					{{ messageText }}
 				</span>
 
 				<span class="time">
-					{{ snowflake_to_date(message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+					{{ snowflake_to_date(props.message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
 			</div>
 		</div>

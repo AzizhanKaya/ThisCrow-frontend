@@ -18,6 +18,7 @@
 
 	const userStore = useUserStore();
 	const meStore = useMeStore();
+	const me = $computed(() => meStore.me!);
 
 	const scroller = ref<HTMLElement | null>(null);
 
@@ -34,7 +35,7 @@
 			{ action: 'reply', label: 'Reply', icon: 'mdi:reply' },
 		];
 
-		if (meStore.me?.id === message.from) {
+		if (me.id === message.from) {
 			options.push(
 				{ action: 'edit', label: 'Edit', icon: 'mdi:pencil' },
 				{ action: 'delete', label: 'Delete', icon: 'mdi:delete', danger: true }
@@ -120,7 +121,7 @@
 			/>
 			<div class="message-actions">
 				<Icon icon="mdi:reply" class="action-icon" @click="handleReply(message)" title="Yanıtla" />
-				<template v-if="meStore.me?.id === message.from">
+				<template v-if="me.id === message.from">
 					<Icon icon="mdi:pencil" class="action-icon" @click="handleOverwrite(message)" title="Düzenle" />
 					<Icon icon="mdi:delete" class="action-icon action-delete" @click="handleDelete(message)" title="Sil" />
 				</template>

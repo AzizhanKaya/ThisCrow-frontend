@@ -64,7 +64,7 @@ export const useDMStore = defineStore('dm', {
 
 					return user;
 				} catch (e) {
-					console.error('Kullanıcı yüklenirken hata oluştu:', e);
+					console.error('Error while loading user:', e);
 					throw e;
 				} finally {
 					this.loading_user.delete(id);

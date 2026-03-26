@@ -6,6 +6,13 @@ interface SelectedFiles {
 	files: Array<{ url: string; name: string; size: string; file: File }>;
 }
 
+export interface FileInfo {
+	name: string;
+	size: number | string;
+	extension: string;
+	url: string;
+}
+
 export function useFiles() {
 	const fileInput = ref<HTMLInputElement | null>(null);
 	const selectedFiles = ref<SelectedFiles>({

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { watch } from 'vue';
 import {
 	EventType,
 	MessageType,
@@ -20,6 +21,10 @@ export const useVoiceStore = defineStore('voice', {
 		voice_channel: undefined as Channel | undefined,
 		group_id: undefined as id | undefined,
 		voice_direct: undefined as User | undefined,
+		unwatch: null as (() => void) | null,
+		isMuted: false,
+		isVideoOn: false,
+		isScreenSharing: false,
 	}),
 
 	actions: {
@@ -58,21 +63,71 @@ export const useVoiceStore = defineStore('voice', {
 			this.voice_direct = user;
 			this.group_id = group_id;
 
-			await webrtcService.addTrack(MediaType.Audio);
+			if (this.unwatch) {
+				this.unwatch();
+				this.unwatch = null;
+			}
 
 			if (channel) {
-				const userIds = Array.from(channel?.users ?? [])
-					.map((user) => user.id)
-					.filter((id) => id !== me.id);
-				await webrtcService.initPeerConnections(userIds);
+				this.unwatch = watch(
+					() => this.voice_channel?.users,
+					async (newUsers, oldUsers) => {
+						const addedIds: id[] = [];
+						const removedIds: id[] = [];
+
+						newUsers?.forEach((u) => {
+							if (u.id !== me.id && (!oldUsers || !oldUsers.has(u))) {
+								addedIds.push(u.id);
+							}
+						});
+
+						if (oldUsers) {
+							oldUsers.forEach((u) => {
+								if (u.id !== me.id && !newUsers?.has(u)) {
+									removedIds.push(u.id);
+								}
+							});
+						}
+
+						if (addedIds.length > 0) {
+							await webrtcService.connectPeers(addedIds);
+						}
+
+						if (removedIds.length > 0) {
+							removedIds.forEach((id) => webrtcService.removePeerConnection(id));
+						}
+					},
+					{ immediate: true }
+				);
 			}
 
 			if (user) {
-				await webrtcService.initPeerConnections([user.id]);
+				this.unwatch = watch(
+					() => this.voice_direct,
+					async (newUser, oldUser) => {
+						if (newUser?.id === oldUser?.id) return;
+
+						if (oldUser?.id) {
+							webrtcService.removePeerConnection(oldUser.id);
+						}
+
+						if (newUser?.id) {
+							await webrtcService.connectPeers([newUser.id]);
+						}
+					},
+					{ immediate: true }
+				);
 			}
+
+			await webrtcService.addTrack(MediaType.Audio);
 		},
 
 		async leaveVoice() {
+			if (this.unwatch) {
+				this.unwatch();
+				this.unwatch = null;
+			}
+
 			const meStore = useMeStore();
 			const me = meStore.me!;
 			webrtcService.disconnectAll();
@@ -98,6 +153,61 @@ export const useVoiceStore = defineStore('voice', {
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;
+			}
+		},
+
+		toggleMute() {
+			this.isMuted = !this.isMuted;
+			webrtcService.toggleTrack(MediaType.Audio, !this.isMuted);
+		},
+
+		async toggleVideo() {
+			try {
+				const meStore = useMeStore();
+				const me = meStore.me!;
+				const existingTrack = webrtcService.getTrack(me.id, MediaType.Video);
+				if (!existingTrack) {
+					await webrtcService.addTrack(MediaType.Video);
+					this.isVideoOn = true;
+
+					const track = webrtcService.getTrack(me.id, MediaType.Video);
+					if (track) {
+						track.onended = () => {
+							this.isVideoOn = false;
+							webrtcService.removeTrack(MediaType.Video);
+						};
+					}
+				} else {
+					this.isVideoOn = false;
+					webrtcService.removeTrack(MediaType.Video);
+				}
+			} catch (error) {
+				console.error('Camera error:', error);
+			}
+		},
+
+		async toggleScreen() {
+			try {
+				const meStore = useMeStore();
+				const me = meStore.me!;
+				const existingTrack = webrtcService.getTrack(me.id, MediaType.Screen);
+				if (!existingTrack) {
+					await webrtcService.addTrack(MediaType.Screen);
+					this.isScreenSharing = true;
+
+					const track = webrtcService.getTrack(me.id, MediaType.Screen);
+					if (track) {
+						track.onended = () => {
+							this.isScreenSharing = false;
+							webrtcService.removeTrack(MediaType.Screen);
+						};
+					}
+				} else {
+					this.isScreenSharing = false;
+					webrtcService.removeTrack(MediaType.Screen);
+				}
+			} catch (error) {
+				console.error('Screen share error:', error);
 			}
 		},
 	},

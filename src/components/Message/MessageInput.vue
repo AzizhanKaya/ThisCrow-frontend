@@ -1,11 +1,14 @@
 <script setup lang="ts">
 	import { ref } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import { type Message as MessageType, MessageType as MessageEnum, type id, type User } from '@/types';
+	import { type Message as MessageType, MessageType as MessageEnum, type id, type User, type MessageData } from '@/types';
 	import { useFiles } from '@/composables/useFiles';
 	import { useMessageStore } from '@/stores/message';
 	import { useMeStore } from '@/stores/me';
+	import { useKeyStore } from '@/stores/key';
 	import { generate_snowflake } from '@/utils/snowflake';
+	import { generate_nonce, encrypt_message } from '@/../pkg/wasm_lib';
+	import { encode } from '@msgpack/msgpack';
 
 	const props = defineProps<{
 		to: id;
@@ -15,19 +18,20 @@
 
 	const messageStore = useMessageStore();
 	const meStore = useMeStore();
+	const keyStore = useKeyStore();
 
 	const input = ref('');
 
 	const { fileInput, selectedFiles, hasSelectedFiles, handleFileSelect: onFileSelect, removeFile, clearFiles } = useFiles();
 
-	function onSend() {
+	async function onSend() {
 		const text = input.value.trim();
 		const hasFiles =
 			selectedFiles.value.images.length > 0 || selectedFiles.value.videos.length > 0 || selectedFiles.value.files.length > 0;
 
 		if (!text && !hasFiles) return;
 
-		const messageData =
+		let messageData: MessageData =
 			text && !hasFiles
 				? text
 				: {
@@ -46,6 +50,17 @@
 							})),
 						}),
 					};
+
+		if (!props.group_id) {
+			const privateKey = await keyStore.get_private_key(props.to);
+			const nonce = generate_nonce();
+			const cipher = encrypt_message(privateKey, encode(messageData), nonce);
+
+			messageData = {
+				nonce,
+				cipher,
+			};
+		}
 
 		const message: MessageType = {
 			id: generate_snowflake(),
