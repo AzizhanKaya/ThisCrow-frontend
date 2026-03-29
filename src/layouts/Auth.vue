@@ -8,8 +8,8 @@
 		<div class="card">
 			<h2>ThisCrow</h2>
 			<div class="buttons">
-				<router-link to="login">Login</router-link>
-				<router-link to="register">Register</router-link>
+				<router-link to="/auth/login">Login</router-link>
+				<router-link to="/auth/register">Register</router-link>
 			</div>
 			<router-view v-slot="{ Component, route }">
 				<Transition name="fade" mode="out-in">

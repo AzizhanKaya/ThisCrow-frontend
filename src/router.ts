@@ -28,12 +28,26 @@ const routes = [
 				],
 			},
 			{
-				path: 'server/:serverId',
+				path: 'server/:serverId/:channelId?',
 				name: 'server',
 				component: Server,
-				beforeEnter: (to: any) => {
+				beforeEnter: async (to: any) => {
 					const appStore = useAppStore();
-					if (appStore.loading) return;
+
+					if (appStore.loading) {
+						await new Promise<void>((resolve) => {
+							const unwatch = watch(
+								() => appStore.loading,
+								(isLoading) => {
+									if (!isLoading) {
+										unwatch();
+										resolve();
+									}
+								}
+							);
+						});
+					}
+
 					const serverStore = useServerStore();
 					const server = serverStore.getServerById(Number(to.params.serverId));
 
@@ -71,6 +85,7 @@ const router = createRouter({
 import { useMeStore } from '@/stores/me';
 import { useServerStore } from './stores/server';
 import { useAppStore } from './stores/app';
+import { watch } from 'vue';
 
 router.beforeEach((to) => {
 	const meStore = useMeStore();

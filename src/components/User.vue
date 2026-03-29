@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PropType } from 'vue';
 	import { type User, Status } from '@/types';
+	import { getDefaultAvatar } from '@/utils/avatar';
 
 	export default {
 		props: {
@@ -8,6 +9,9 @@
 				type: Object as PropType<User>,
 				required: true,
 			},
+		},
+		methods: {
+			getDefaultAvatar,
 		},
 		computed: {
 			getStatus(): string {
@@ -28,7 +32,7 @@
 
 <template>
 	<div class="user">
-		<img class="avatar" :src="user.avatar || '/default-avatar.png'" />
+		<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
 
 		<span class="name">{{ user.name }}</span>
 		<span class="username">@{{ user.username }}</span>

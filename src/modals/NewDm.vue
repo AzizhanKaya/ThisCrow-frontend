@@ -8,6 +8,7 @@
 	import { useDMStore } from '@/stores/dm';
 	import { searchUser } from '@/api/info';
 	import type { id, User } from '@/types';
+	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const modalStore = useModalStore();
 	const meStore = useMeStore();
@@ -119,7 +120,7 @@
 				<div v-else-if="displayedResults.length > 0" class="user-list">
 					<div v-for="user in displayedResults" :key="user.id.toString()" class="user-card" @click="handleMessage(user)">
 						<div class="user-info">
-							<img :src="user.avatar || '/default-avatar.png'" alt="avatar" />
+							<img :src="user.avatar || getDefaultAvatar(user.username)" alt="avatar" />
 							<div class="user-text">
 								<span class="name">{{ user.name }}</span>
 								<span class="username">@{{ user.username }}</span>

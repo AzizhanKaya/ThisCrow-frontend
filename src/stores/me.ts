@@ -16,6 +16,7 @@ export const useMeStore = defineStore('me', {
 
 		async logOut() {
 			await logOut();
+			websocketService.disconnect();
 			this.me = null;
 		},
 

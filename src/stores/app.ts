@@ -10,6 +10,7 @@ export const useAppStore = defineStore('app', {
 		header: 'ThisCrow' as string,
 		loading: true as boolean,
 		onBeforeUnloadHandlers: new Set<() => Promise<void>>(),
+		onLoadHandlers: new Set<() => Promise<void>>(),
 	}),
 
 	actions: {
@@ -21,6 +22,7 @@ export const useAppStore = defineStore('app', {
 					this.loading = true;
 					try {
 						await initApp();
+						await this.handleLoad();
 					} catch (error) {
 						console.error('initApp hatası:', error);
 						router.push({ name: 'login' });
@@ -45,6 +47,21 @@ export const useAppStore = defineStore('app', {
 			} catch (error) {
 				router.push({ name: 'login' });
 			}
+		},
+
+		onLoad(handler: () => Promise<void>) {
+			this.onLoadHandlers.add(handler);
+
+			return () => {
+				this.onLoadHandlers.delete(handler);
+			};
+		},
+
+		async handleLoad() {
+			const tasks = Array.from(this.onLoadHandlers).map(async (handler) => {
+				await handler();
+			});
+			await Promise.all(tasks);
 		},
 
 		onBeforeUnload(handler: () => Promise<void>) {

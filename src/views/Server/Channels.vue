@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, ref, watch } from 'vue';
+	import { computed, ref, watch, onUnmounted } from 'vue';
 	import { Icon } from '@iconify/vue';
 	import ContextMenu from '@/components/ContextMenu.vue';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
@@ -12,17 +12,23 @@
 	import { useMeStore } from '@/stores/me';
 	import { generate_uid } from '@/utils/uid';
 	import { useVoiceStore } from '@/stores/voice';
+	import { useRoute, useRouter } from 'vue-router';
 
 	// Props & Models
 	const props = defineProps<{ server_id: id }>();
 	const channels = defineModel<Map<id, Channel>>('channels', { required: true });
-	const channel_id = defineModel<id | null>();
 
 	// Stores
 	const modalStore = useModalStore();
+	const router = useRouter();
+	const route = useRoute();
 
 	// State
 	const isDragging = ref(false);
+	const channel_id = computed(() => {
+		return route.query.channel ? Number(route.query.channel) : null;
+	});
+
 	const dragOverCategory = ref<string | null>(null);
 	const channelContextMenu = ref({ show: false, x: 0, y: 0 });
 	const collapsedCategories = ref(new Set<string | null>());
@@ -124,8 +130,11 @@
 		collapsedCategories.value.has(title) ? collapsedCategories.value.delete(title) : collapsedCategories.value.add(title);
 	}
 
-	async function joinVoice(channel: Channel) {
-		channel_id.value = channel.id;
+	async function selectChannel(channel: Channel) {
+		router.push({
+			name: 'server',
+			params: { serverId: props.server_id, channelId: channel.id },
+		});
 
 		if (channel.type === ChannelType.Voice) {
 			const voiceStore = useVoiceStore();
@@ -191,7 +200,7 @@
 						@end="onDragEnd"
 					>
 						<template #item="{ element: channel }">
-							<ChannelComponent :channel="channel" :active="channel_id === channel.id" @click="joinVoice" />
+							<ChannelComponent :channel="channel" :active="channel_id === channel.id" @click="selectChannel" />
 						</template>
 					</draggable>
 				</div>
@@ -290,15 +299,6 @@
 		box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
 		border-radius: 4px !important;
 		opacity: 0.9 !important;
-		display: flex;
-		align-items: start;
-		justify-content: left;
-	}
-
-	.drag {
-		display: flex !important;
-		align-items: center !important;
-		padding: 6px 8px !important;
 	}
 
 	.channel-list:not(.is-dragging) :deep(.channel-item:hover) {
@@ -325,7 +325,7 @@
 	:deep(.channel-wrapper.ghost-line::before) {
 		content: '';
 		position: absolute;
-		top: 10px;
+		top: calc(50% - 2px);
 		left: 0;
 		right: 0;
 		height: 4px;

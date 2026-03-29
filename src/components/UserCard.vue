@@ -7,6 +7,7 @@
 	import { useRouter } from 'vue-router';
 	import { Icon } from '@iconify/vue';
 	import { websocketService } from '@/services/websocket';
+	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const meStore = useMeStore();
 	const voiceStore = useVoiceStore();
@@ -67,11 +68,11 @@
 		<div v-if="voiceStore.voice_channel || voiceStore.voice_direct" class="voice-panel">
 			<div class="voice-info">
 				<div class="voice-connection">
-					<Icon icon="mdi:connection" class="icon-green" />
-					<span>RTC Connected</span>
+					<Icon icon="mdi:signal-cellular-3" class="icon-green" />
+					<span>Voice Connected</span>
 				</div>
 				<div class="voice-channel-name">
-					#{{ voiceStore.voice_channel ? voiceStore.voice_channel.name : voiceStore.voice_direct?.name }}
+					# {{ voiceStore.voice_channel ? voiceStore.voice_channel.name : voiceStore.voice_direct?.name }}
 				</div>
 			</div>
 			<div class="voice-actions">
@@ -88,7 +89,7 @@
 		</div>
 
 		<div class="user-card" ref="userCardRef" @click="handleUserCardClick">
-			<img class="avatar" :src="user.avatar || '/default-avatar.png'" />
+			<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
 
 			<div class="names">
 				<span class="name">{{ user.name }}</span>
@@ -150,7 +151,7 @@
 		z-index: 30;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 0;
 	}
 
 	.user-card {
@@ -186,12 +187,12 @@
 	.name {
 		font-weight: bold;
 		font-size: 1.2rem;
-		color: #dbdbdb;
+		color: var(--text);
 	}
 
 	.username {
 		font-size: 0.9em;
-		color: #bebebe;
+		color: var(--text-muted);
 	}
 
 	.status-container {
@@ -208,8 +209,12 @@
 		height: 20px;
 		aspect-ratio: 1;
 		border-radius: 50%;
-		border: 2px #333 solid;
+		border: 2px var(--bg) solid;
 		transition: transform 0.2s ease;
+	}
+
+	.user-card:hover .status {
+		border-color: var(--bg-light);
 	}
 
 	.status-container:hover .status {
@@ -228,7 +233,7 @@
 		flex-direction: column;
 		gap: 4px;
 		z-index: 100;
-		border: 1px solid #333;
+		border: 1px solid var(--border);
 	}
 
 	.status-option {
@@ -237,7 +242,7 @@
 		gap: 12px;
 		padding: 8px 12px;
 		border-radius: 8px;
-		color: #dbdbdb;
+		color: var(--text);
 		cursor: pointer;
 		transition:
 			background-color 0.2s,
@@ -247,8 +252,8 @@
 	}
 
 	.status-option:hover {
-		background-color: #333;
-		color: #fff;
+		background-color: var(--bg);
+		color: var(--text);
 	}
 
 	.status-indicator {
@@ -313,13 +318,13 @@
 	.label {
 		font-size: 14px;
 		font-weight: 500;
-		color: #dbdbdb;
+		color: var(--text);
 	}
 
 	.item-icon {
 		font-size: 18px;
 		flex-shrink: 0;
-		color: #dbdbdb;
+		color: var(--text);
 	}
 
 	.menu-item:hover {
@@ -328,7 +333,7 @@
 
 	.menu-item:hover .label,
 	.menu-item:hover .item-icon {
-		color: #fff;
+		color: var(--text);
 	}
 
 	.menu-item.danger .label,
@@ -342,7 +347,7 @@
 
 	.menu-item.danger:hover .label,
 	.menu-item.danger:hover .item-icon {
-		color: #fff;
+		color: var(--text);
 	}
 
 	.slide-up-enter-active,
@@ -373,26 +378,27 @@
 	}
 
 	.online {
-		background-color: #43b581;
+		background-color: var(--success);
 	}
 	.dnd {
-		background-color: #f04747;
+		background-color: var(--error);
 	}
 	.idle {
 		background-color: #e2e446;
 	}
 	.offline {
-		background-color: #72767d;
+		background-color: var(--text-muted);
 	}
 
 	.voice-panel {
-		background-color: var(--bg-dark);
-		border-radius: 10px;
+		background-color: var(--bg-darker);
+		border-radius: 10px 10px 0 0;
 		padding: 10px;
-		border: 1px solid var(--border);
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+		position: relative;
+		bottom: -4px;
 	}
 
 	.voice-info {
@@ -405,18 +411,18 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		color: #43b581;
+		color: var(--success);
 		font-weight: 600;
 		font-size: 0.9rem;
 	}
 
 	.icon-green {
-		color: #43b581;
+		color: var(--success);
 	}
 
 	.voice-channel-name {
 		font-size: 0.85rem;
-		color: #bebebe;
+		color: var(--text-muted);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -433,7 +439,7 @@
 	.action-btn {
 		background: none;
 		border: none;
-		color: #bebebe;
+		color: var(--text-muted);
 		cursor: pointer;
 		display: flex;
 		align-items: center;
@@ -447,8 +453,8 @@
 	}
 
 	.action-btn:hover {
-		color: #fff;
-		background-color: #333;
+		color: var(--text);
+		background-color: var(--bg-light);
 	}
 
 	.action-btn.is-active {
@@ -461,6 +467,6 @@
 
 	.action-btn.danger:hover {
 		background-color: var(--error);
-		color: #fff;
+		color: var(--text);
 	}
 </style>

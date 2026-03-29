@@ -9,28 +9,36 @@
 	import { ChannelType, MessageType, type Member, type Role, type id, type Server } from '@/types';
 	import Channels from './Channels.vue';
 	import Members from './Members.vue';
-	import { useRoute } from 'vue-router';
+	import { useRoute, useRouter } from 'vue-router';
 	import { useAppStore } from '@/stores/app';
 	import Voice from './Voice.vue';
 	import ContextMenu, { type ContextMenuOption } from '@/components/ContextMenu.vue';
+	import { useVoiceStore } from '@/stores/voice';
 
 	const appStore = useAppStore();
 	const serverStore = useServerStore();
 	const modalStore = useModalStore();
 	const route = useRoute();
+	const router = useRouter();
 
 	const server_id = computed(() => {
 		return Number(route.params.serverId as string);
 	});
+
 	const server = $computed(() => serverStore.getServerById(server_id.value)!);
 
-	const channel_id = ref<id | null>(null);
+	const channel_id = computed(() => {
+		return Number(route.params.channelId as string);
+	});
+
 	const channel = $computed(() => server.channels?.get(channel_id.value ?? 0));
 
 	watch(
 		server_id,
 		(newId, oldId, onCleanup) => {
 			if (!newId || newId === 0) return;
+
+			console.log(newId, oldId);
 
 			serverStore.subscribeToServer(newId);
 
@@ -40,7 +48,10 @@
 
 			onCleanup(async () => {
 				removeHandler();
-				await unsubscribe();
+				const voiceStore = useVoiceStore();
+				if (voiceStore.group_id !== newId) {
+					await unsubscribe();
+				}
 			});
 		},
 		{ immediate: true }
@@ -87,7 +98,7 @@
 				<Icon @click="openServerMenu" icon="fluent:chevron-down-16-filled" />
 			</div>
 
-			<Channels v-model="channel_id" :server_id="server_id" v-model:channels="server.channels!" />
+			<Channels :server_id="server_id" v-model:channels="server.channels!" />
 		</div>
 
 		<div class="main-content">
@@ -99,7 +110,7 @@
 				</h3>
 			</div>
 
-			<MessageList v-if="channel?.type === ChannelType.Text" :messages="channel.messages || []" />
+			<MessageList v-if="channel?.type === ChannelType.Text" :to="channel_id!" :group_id="server_id" />
 			<Voice v-else-if="channel?.type === ChannelType.Voice" :channel="channel" />
 
 			<div v-if="channel?.type === ChannelType.Text">

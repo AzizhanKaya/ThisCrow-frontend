@@ -1,12 +1,13 @@
 <script setup>
-	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 	import { Icon } from '@iconify/vue';
 	import { websocketService } from '@/services/websocket';
 
-	const appWindow = getCurrentWindow();
+	const appWindow = await WebviewWindow.getByLabel('app');
 
 	const minimize = () => appWindow.minimize();
 	const toggleMaximize = () => {
+		console.log(appWindow);
 		document.documentElement.classList.toggle('maximized');
 		appWindow.toggleMaximize();
 	};

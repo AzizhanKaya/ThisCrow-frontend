@@ -7,6 +7,7 @@
 	import NewDm from '@/modals/NewDm.vue';
 	import Invite from '@/modals/Invite.vue';
 	import JoinInvite from '@/modals/JoinInvite.vue';
+	import Calling from '@/modals/Calling.vue';
 
 	const modalStore = useModalStore();
 </script>
@@ -21,6 +22,7 @@
 			<NewDm v-else-if="modalStore.view === ModalView.NEW_DM" />
 			<Invite v-else-if="modalStore.view === ModalView.INVITE" />
 			<JoinInvite v-else-if="modalStore.view === ModalView.JOIN_INVITE" />
+			<Calling v-else-if="modalStore.view === ModalView.CALLING" />
 		</Transition>
 	</div>
 </template>

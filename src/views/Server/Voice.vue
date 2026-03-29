@@ -1,30 +1,57 @@
 <script setup lang="ts">
-	import { computed, ref } from 'vue';
+	import { computed, reactive } from 'vue';
 	import { useMeStore } from '@/stores/me';
 	import { useVoiceStore } from '@/stores/voice';
 	import { MediaType, webrtcService } from '@/services/webrtc';
 	import { Icon } from '@iconify/vue';
 	import type { Channel, id } from '@/types';
+	import { useRouter } from 'vue-router';
 
 	const props = defineProps<{
 		channel: Channel;
 	}>();
 
 	const meStore = useMeStore();
-	const me = $computed(() => meStore.me!);
-
 	const voiceStore = useVoiceStore();
+	const router = useRouter();
+
+	const me = $computed(() => meStore.me!);
 
 	const getTrack = (userId: id, type: MediaType) => {
 		return webrtcService.getTrack(userId, type);
 	};
 
+	const isTrackActive = (userId: id, type: MediaType) => {
+		const track = getTrack(userId, type);
+		return track ? webrtcService.activeTracks.has(track.id) : false;
+	};
+
+	const loadedVideos = reactive(new Set<string>());
+
+	const onVideoLoaded = (userId: id, type: MediaType) => {
+		const track = getTrack(userId, type);
+		if (track) {
+			loadedVideos.add(track.id);
+		}
+	};
+
+	const isVideoVisible = (userId: id, type: MediaType) => {
+		const track = getTrack(userId, type);
+		return track ? webrtcService.activeTracks.has(track.id) && loadedVideos.has(track.id) : false;
+	};
+
+	const streamCache = new Map<string, MediaStream>();
+
 	const Stream = (track: MediaStreamTrack | undefined) => {
 		if (!track) return null;
-		return new MediaStream([track]);
+		if (!streamCache.has(track.id)) {
+			streamCache.set(track.id, new MediaStream([track]));
+		}
+		return streamCache.get(track.id)!;
 	};
 
 	const leaveVoice = () => {
+		router.back();
 		voiceStore.leaveVoice();
 	};
 </script>
@@ -34,7 +61,7 @@
 		<div class="participants-area">
 			<div class="participants">
 				<!-- Local Screen Share -->
-				<div v-if="getTrack(me.id, MediaType.Screen)?.enabled && voiceStore.isScreenSharing" class="user-card screen-share-card">
+				<div v-if="voiceStore.isScreenSharing && me" class="user-card screen-share-card">
 					<video :srcObject="Stream(getTrack(me.id, MediaType.Screen))" autoplay muted class="video-element" />
 					<div class="card-overlay">
 						<Icon icon="ic:round-screen-share" />
@@ -44,8 +71,14 @@
 
 				<!-- Remote Screen Shares -->
 				<template v-for="user in props.channel.users" :key="'screen-' + user.id">
-					<div v-if="user.id !== me.id && getTrack(user.id, MediaType.Screen)?.enabled" class="user-card screen-share-card">
-						<video :srcObject="Stream(getTrack(user.id, MediaType.Screen))" autoplay playsinline class="video-element" />
+					<div v-show="me && user.id !== me.id && isVideoVisible(user.id, MediaType.Screen)" class="user-card screen-share-card">
+						<video
+							:srcObject="Stream(getTrack(user.id, MediaType.Screen))"
+							autoplay
+							playsinline
+							class="video-element"
+							@loadeddata="onVideoLoaded(user.id, MediaType.Screen)"
+						/>
 						<div class="card-overlay">
 							<Icon icon="ic:round-screen-share" />
 							<span>{{ user.name }}'s screen</span>
@@ -54,9 +87,9 @@
 				</template>
 
 				<!-- Local User -->
-				<div class="user-card normal-card" v-if="props.channel.users?.has(me)">
+				<div class="user-card normal-card" v-if="me && props.channel.users?.has(me)">
 					<video
-						v-if="getTrack(me.id, MediaType.Video) && voiceStore.isVideoOn"
+						v-if="voiceStore.isVideoOn"
 						:srcObject="Stream(getTrack(me.id, MediaType.Video))"
 						autoplay
 						muted
@@ -78,22 +111,26 @@
 
 				<!-- Remote Users -->
 				<template v-for="user in props.channel.users" :key="user.id">
-					<div v-if="user.id !== me.id" class="user-card normal-card">
+					<div v-if="me && user.id !== me.id" class="user-card normal-card">
 						<video
-							v-if="getTrack(user.id, MediaType.Video)"
+							v-show="isVideoVisible(user.id, MediaType.Video)"
 							:srcObject="Stream(getTrack(user.id, MediaType.Video))"
 							autoplay
 							playsinline
 							class="video-element"
+							@loadeddata="onVideoLoaded(user.id, MediaType.Video)"
 						/>
-						<div v-else-if="user.avatar" class="avatar-wrapper">
+						<div v-show="!isVideoVisible(user.id, MediaType.Video) && user.avatar" class="avatar-wrapper">
 							<img :src="user.avatar" alt="" class="avatar-circle" />
 						</div>
-						<div v-else class="avatar-wrapper">
+						<div v-show="!isVideoVisible(user.id, MediaType.Video) && !user.avatar" class="avatar-wrapper">
 							<div class="avatar-circle">{{ user.name.charAt(0).toUpperCase() }}</div>
 						</div>
 						<div class="card-overlay">
 							<span>{{ user.name }}</span>
+							<div v-if="!isTrackActive(user.id, MediaType.Audio)" class="status-icons">
+								<Icon icon="mdi:microphone-off" class="status-icon text-red" />
+							</div>
 						</div>
 					</div>
 				</template>
@@ -101,7 +138,7 @@
 		</div>
 
 		<!-- Control Bar -->
-		<div class="voice-controls">
+		<div v-if="voiceStore.voice_channel" class="voice-controls">
 			<button class="control-btn" :class="{ 'is-active': voiceStore.isVideoOn }" @click="voiceStore.toggleVideo()">
 				<Icon :icon="voiceStore.isVideoOn ? 'mdi:video' : 'mdi:video-off'" />
 			</button>

@@ -9,7 +9,9 @@
 <template>
 	<div class="header" data-tauri-drag-region>
 		<span data-tauri-drag-region>{{ appStore.header }}</span>
-		<WindowControls v-if="isTauri" />
+		<Suspense>
+			<WindowControls v-if="isTauri" />
+		</Suspense>
 	</div>
 </template>
 

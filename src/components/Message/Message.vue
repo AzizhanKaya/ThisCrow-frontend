@@ -4,11 +4,8 @@
 	import { Icon } from '@iconify/vue';
 	import { is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
 	import { decrypt_message } from '@/../pkg/wasm_lib';
-	import { useKeyStore } from '@/stores/key';
 	import { decode } from '@msgpack/msgpack';
-	import { computedAsync } from '@vueuse/core';
-
-	const keyStore = useKeyStore();
+	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const props = defineProps({
 		message: {
@@ -19,24 +16,37 @@
 			type: Object as PropType<User>,
 			required: false,
 		},
+		privateKey: {
+			type: Object as PropType<Uint8Array>,
+			required: false,
+		},
 	});
 
-	const message = computedAsync(async () => {
+	const message = $computed(() => {
 		const data = props.message.data;
 		if (typeof data !== 'object' || data === null || !('cipher' in data)) {
 			return props.message;
 		}
 
-		const private_key = await keyStore.get_private_key(props.message.from);
+		if (!props.privateKey) {
+			return props.message;
+		}
 
-		const decrypted = decrypt_message(private_key, data.cipher, data.nonce);
-		const decoded = decode(decrypted) as MessageData;
+		if (props.message.overwrited) console.log(props.message.overwrited);
 
-		return { ...props.message, data: decoded } as Message;
-	}, undefined);
+		try {
+			const decrypted = decrypt_message(props.privateKey, data.cipher, data.nonce);
+			const decoded = decode(decrypted) as MessageData;
+
+			return { ...props.message, data: decoded } as Message;
+		} catch (e) {
+			console.error('Failed to decrypt message:', e);
+			return props.message;
+		}
+	});
 
 	const multiData = $computed<MultiData | undefined>(() => {
-		const data = message.value?.data;
+		const data = message?.data;
 		if (typeof data === 'object') {
 			return data as MultiData;
 		}
@@ -44,7 +54,7 @@
 	});
 
 	const messageText = $computed<string | undefined>(() => {
-		const data = message.value?.data;
+		const data = message?.data;
 		if (typeof data === 'string') {
 			return data;
 		}
@@ -57,7 +67,7 @@
 
 <template>
 	<div class="message" :class="{ 'with-user': user }">
-		<img v-if="user" class="avatar" :src="user.avatar || '/default-avatar.png'" />
+		<img v-if="user" class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
 
 		<div class="content">
 			<div v-if="user" class="message-header">
@@ -210,7 +220,6 @@
 		word-break: break-word;
 		-webkit-user-select: auto;
 		user-select: auto;
-		-webkit-user-drag: none;
 	}
 
 	.sent {

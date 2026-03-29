@@ -8,6 +8,7 @@
 	import { useRouter } from 'vue-router';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useServerStore } from '@/stores/server';
+	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const friendStore = useFriendStore();
 	const serverStore = useServerStore();
@@ -91,7 +92,7 @@
 	<div class="user-card" @contextmenu.prevent="openContextMenu($event)">
 		<div class="user-info">
 			<div class="avatar-container">
-				<img :src="member.user.avatar || '/default-avatar.png'" alt="avatar" class="avatar loaded" />
+				<img :src="member.user.avatar || getDefaultAvatar(member.user.username)" alt="avatar" class="avatar loaded" />
 				<div :class="['state', getState(member.user)]"></div>
 			</div>
 			<div class="user-text">

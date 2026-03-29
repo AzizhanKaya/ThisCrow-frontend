@@ -4,51 +4,69 @@ import { websocketService } from '@/services/websocket';
 import { useMeStore } from './me';
 import { fetchMessages } from '@/api/message';
 import type { Ack, id } from '@/types';
-import { useDMStore } from './dm';
 import { snowflake_to_date } from '@/utils/snowflake';
+
+export type ChatTarget = { kind: 'user'; user_id: id } | { kind: 'channel'; channel_id: id; group_id: id };
+
+export function chatKey(target: ChatTarget): string {
+	return target.kind === 'user' ? `u:${target.user_id}` : `c:${target.channel_id}`;
+}
+
+function mergeUnique(...arrays: Message[][]): Message[] {
+	const seen = new Set<Message['id']>();
+	const result: Message[] = [];
+	for (const arr of arrays) {
+		for (const msg of arr) {
+			if (!seen.has(msg.id)) {
+				seen.add(msg.id);
+				result.push(msg);
+			}
+		}
+	}
+	return result;
+}
 
 export const useMessageStore = defineStore('message', {
 	state: () => ({
-		messages: new Map<id, Message[]>(),
-		loadingChats: new Map<id, boolean>(),
-		hasMore: new Map<id, boolean>(),
-		isInitialized: false,
+		messages: new Map<string, Message[]>(),
+		loadingChats: new Map<string, boolean>(),
+		hasMore: new Map<string, boolean>(),
 	}),
 
 	getters: {
-		isLoadingChat: (state) => (id: id) => {
-			return state.loadingChats.get(id);
+		isLoadingChat: (state) => (target: ChatTarget) => {
+			return state.loadingChats.get(chatKey(target));
 		},
 	},
 
 	actions: {
 		init() {
-			if (this.isInitialized) return;
-
 			websocketService.onMessage(MessageType.Direct, this.handleIncomingMessage);
+			websocketService.onMessage(MessageType.Group, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Server, this.handleAck);
-
-			this.isInitialized = true;
 		},
 
 		handleIncomingMessage(message: Message) {
-			const chat_id = this.getChatId(message);
+			const key = this.getChatKey(message);
 
-			if (!this.messages.has(chat_id)) {
-				this.messages.set(chat_id, []);
+			if (!this.messages.has(key)) {
+				this.messages.set(key, []);
 			}
 
-			const chatMessages = this.messages.get(chat_id)!;
+			const chatMessages = this.messages.get(key)!;
 			const exists = chatMessages.some((m) => m.id === message.id);
 			if (!exists) {
 				chatMessages.push(message);
 			}
 		},
 
-		handleAck(message: Message<Ack>) {
+		async handleAck(message: Message<Ack>) {
 			const { ack, payload } = message.data;
 			if (ack == AckType.Received) {
-				const messages = this.messages.get(message.to);
+				const key = message.from
+					? chatKey({ kind: 'channel', channel_id: message.to, group_id: message.from })
+					: chatKey({ kind: 'user', user_id: message.to });
+				const messages = this.messages.get(key);
 				if (!messages) return;
 
 				const msg = messages.find((m) => m.id === payload);
@@ -58,17 +76,14 @@ export const useMessageStore = defineStore('message', {
 			}
 		},
 
-		getMessages(id: id) {
-			return this.messages.get(id) || [];
+		getMessages(target: ChatTarget) {
+			return this.messages.get(chatKey(target)) || [];
 		},
 
 		sendMessage(message: Message) {
-			const chatId = message.to;
-
-			if (!this.messages.has(chatId)) {
-				this.messages.set(chatId, []);
-			}
-			this.messages.get(chatId)!.push(message);
+			const key = this.getChatKey(message);
+			const current = this.messages.get(key) || [];
+			this.messages.set(key, mergeUnique(current, [message]));
 
 			try {
 				websocketService.sendMessage(message);
@@ -77,43 +92,66 @@ export const useMessageStore = defineStore('message', {
 			}
 		},
 
-		getChatId(message: Message): id {
+		getChatKey(message: Message): string {
+			if (message.group_id) {
+				return chatKey({ kind: 'channel', channel_id: message.to, group_id: message.group_id });
+			}
 			const meStore = useMeStore();
-			return (message.from === meStore.me!.id ? message.to : message.from) as id;
+			const user_id = (message.from === meStore.me!.id ? message.to : message.from) as id;
+			return chatKey({ kind: 'user', user_id });
 		},
 
-		async loadMore(id: id) {
-			if (!this.messages.has(id) || this.loadingChats.get(id) || !this.hasMore.get(id)) return;
+		async loadMore(target: ChatTarget) {
+			const key = chatKey(target);
+			if (!this.messages.has(key) || this.loadingChats.get(key) || this.hasMore.get(key) === false) return;
 
-			const currentMessages = this.messages.get(id)!;
-			const oldestMessage = currentMessages[0];
+			const currentMessages = this.messages.get(key)!;
+			const oldestMessage = currentMessages.reduce(
+				(min, curr) => (Number(curr.id) < Number(min.id) ? curr : min),
+				currentMessages[0]
+			);
 
-			this.loadingChats.set(id, true);
+			if (!oldestMessage) return;
+
+			this.loadingChats.set(key, true);
+
+			const isChannel = target.kind === 'channel';
 
 			const oldMessages = await fetchMessages({
-				from: id,
+				from: isChannel ? target.channel_id : target.user_id,
+				group_id: isChannel ? target.group_id : undefined,
 				end: snowflake_to_date(oldestMessage.id),
-				len: 20,
+				len: 50,
 			});
+
 			if (oldMessages?.length) {
-				this.messages.set(id, [...oldMessages, ...currentMessages]);
+				this.messages.set(key, mergeUnique(oldMessages, currentMessages));
 			} else {
-				this.hasMore.set(id, false);
+				this.hasMore.set(key, false);
 			}
-			this.loadingChats.set(id, false);
+			this.loadingChats.set(key, false);
 		},
 
-		async initChat(id: id) {
-			if ((this.messages.has(id) && this.messages.get(id)!.length > 0) || this.loadingChats.get(id)) return;
-			this.loadingChats.set(id, true);
+		async initChat(target: ChatTarget) {
+			const key = chatKey(target);
+			if (this.hasMore.has(key) || this.loadingChats.get(key)) return;
+			this.loadingChats.set(key, true);
+
+			const oldestMessageId = this.messages.get(key)?.[0]?.id;
+			const oldest_date = oldestMessageId ? snowflake_to_date(oldestMessageId) : undefined;
+
+			const isChannel = target.kind === 'channel';
 
 			const msgs = await fetchMessages({
-				from: id,
-				end: new Date(),
+				from: isChannel ? target.channel_id : target.user_id,
+				group_id: isChannel ? target.group_id : undefined,
+				end: oldest_date || new Date(),
 			});
-			this.messages.set(id, msgs);
-			this.loadingChats.set(id, false);
-			this.hasMore.set(id, msgs.length > 0);
+
+			const current = this.messages.get(key) || [];
+			this.messages.set(key, mergeUnique(msgs, current));
+			this.loadingChats.set(key, false);
+			this.hasMore.set(key, msgs.length > 0);
 		},
 	},
 });

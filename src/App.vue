@@ -4,6 +4,7 @@
 	import { useAppStore } from '@/stores/app';
 	import Header from './components/Header.vue';
 	import Modals from './components/Modals.vue';
+	import VoiceAudioRenderer from './components/Voice/VoiceAudioRenderer.vue';
 
 	const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
@@ -30,6 +31,7 @@
 		</Transition>
 	</router-view>
 	<Modals />
+	<VoiceAudioRenderer />
 </template>
 
 <style>

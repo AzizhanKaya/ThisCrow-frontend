@@ -10,40 +10,99 @@ import {
 	type Channel,
 	type id,
 	type User,
+	AckType,
+	type Ack,
 } from '@/types';
 import { websocketService } from '@/services/websocket';
 import { generate_uid } from '@/utils/uid';
 import { useMeStore } from './me';
+import { useAppStore } from './app';
 import { webrtcService, MediaType } from '@/services/webrtc';
+import { useUserStore } from './user';
+import { useModalStore, ModalView } from './modal';
 
 export const useVoiceStore = defineStore('voice', {
 	state: () => ({
 		voice_channel: undefined as Channel | undefined,
 		group_id: undefined as id | undefined,
 		voice_direct: undefined as User | undefined,
+		on_voice_direct: [] as id[],
 		unwatch: null as (() => void) | null,
 		isMuted: false,
 		isVideoOn: false,
 		isScreenSharing: false,
+		cleanupUnload: null as (() => void) | null,
 	}),
 
 	actions: {
+		setupListeners() {
+			websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
+				const { ack, payload } = message.data;
+				if (message.from !== 0) return;
+				const me = useMeStore().me!;
+				const usersStore = useUserStore();
+
+				switch (ack) {
+					case AckType.JoinedVoice: {
+						if (message.to === me.id) {
+							this.voice_direct = await usersStore.getUser(payload);
+						} else {
+							this.on_voice_direct.push(message.to);
+							const modalStore = useModalStore();
+							if (this.voice_direct?.id !== message.to) {
+								const user = await usersStore.getUser(message.to);
+								if (user) {
+									modalStore.openModal(ModalView.CALLING, {
+										user,
+									});
+								}
+							}
+						}
+						break;
+					}
+					case AckType.ExitedVoice: {
+						if (message.to === me.id) {
+							this.voice_direct = undefined;
+						} else {
+							this.on_voice_direct = this.on_voice_direct.filter((id) => id !== message.to);
+						}
+						break;
+					}
+				}
+			});
+		},
+		init() {
+			this.voice_channel = undefined;
+			this.group_id = undefined;
+			this.voice_direct = undefined;
+			this.on_voice_direct = [];
+			this.isMuted = false;
+			this.isVideoOn = false;
+			this.isScreenSharing = false;
+			this.unwatch = null;
+			this.cleanupUnload = null;
+			this.setupListeners();
+		},
+
 		async joinVoice(channel?: Channel, group_id?: id, user?: User): Promise<void> {
-			const meStore = useMeStore();
-			const me = meStore.me!;
-			if (this.voice_channel) {
+			const me = useMeStore().me!;
+
+			if (this.voice_channel || this.voice_direct) {
+				if (channel?.id === this.voice_channel?.id && user?.id === this.voice_direct?.id) return;
 				await this.leaveVoice();
+			}
+
+			const appStore = useAppStore();
+			if (!this.cleanupUnload) {
+				this.cleanupUnload = appStore.onBeforeUnload(this.leaveVoice);
 			}
 
 			const to = user?.id || channel?.id;
 
-			if (user) this.voice_direct = user;
-			if (channel) this.voice_channel = channel;
-
 			try {
 				await websocketService.request({
 					id: generate_uid(me.id),
-					type: MessageType.InfoGroup,
+					type: group_id ? MessageType.InfoGroup : MessageType.Info,
 					from: me.id,
 					to: to!,
 					group_id,
@@ -70,24 +129,13 @@ export const useVoiceStore = defineStore('voice', {
 
 			if (channel) {
 				this.unwatch = watch(
-					() => this.voice_channel?.users,
-					async (newUsers, oldUsers) => {
-						const addedIds: id[] = [];
-						const removedIds: id[] = [];
+					() => (this.voice_channel?.users ? Array.from(this.voice_channel.users).map((u) => u.id) : []),
+					async (newIds, oldIds) => {
+						const oldSet = new Set(oldIds || []);
+						const addedIds = newIds.filter((id) => id !== me.id && !oldSet.has(id));
 
-						newUsers?.forEach((u) => {
-							if (u.id !== me.id && (!oldUsers || !oldUsers.has(u))) {
-								addedIds.push(u.id);
-							}
-						});
-
-						if (oldUsers) {
-							oldUsers.forEach((u) => {
-								if (u.id !== me.id && !newUsers?.has(u)) {
-									removedIds.push(u.id);
-								}
-							});
-						}
+						const newSet = new Set(newIds);
+						const removedIds = (oldIds || []).filter((id) => id !== me.id && !newSet.has(id));
 
 						if (addedIds.length > 0) {
 							await webrtcService.connectPeers(addedIds);
@@ -97,7 +145,7 @@ export const useVoiceStore = defineStore('voice', {
 							removedIds.forEach((id) => webrtcService.removePeerConnection(id));
 						}
 					},
-					{ immediate: true }
+					{ immediate: true, deep: true }
 				);
 			}
 
@@ -107,11 +155,11 @@ export const useVoiceStore = defineStore('voice', {
 					async (newUser, oldUser) => {
 						if (newUser?.id === oldUser?.id) return;
 
-						if (oldUser?.id) {
+						if (oldUser) {
 							webrtcService.removePeerConnection(oldUser.id);
 						}
 
-						if (newUser?.id) {
+						if (newUser) {
 							await webrtcService.connectPeers([newUser.id]);
 						}
 					},
@@ -123,6 +171,12 @@ export const useVoiceStore = defineStore('voice', {
 		},
 
 		async leaveVoice() {
+			if (this.cleanupUnload) {
+				const cleanup = this.cleanupUnload;
+				this.cleanupUnload = null;
+				cleanup();
+			}
+
 			if (this.unwatch) {
 				this.unwatch();
 				this.unwatch = null;
@@ -132,13 +186,13 @@ export const useVoiceStore = defineStore('voice', {
 			const me = meStore.me!;
 			webrtcService.disconnectAll();
 
-			const to = this.voice_direct ? this.voice_direct.id : this.voice_channel?.id;
+			const to = this.voice_direct?.id || this.voice_channel?.id;
 
 			try {
 				if (to) {
 					await websocketService.request({
 						id: generate_uid(me.id),
-						type: MessageType.InfoGroup,
+						type: this.group_id ? MessageType.InfoGroup : MessageType.Info,
 						from: me.id,
 						to,
 						group_id: this.group_id,
@@ -153,33 +207,41 @@ export const useVoiceStore = defineStore('voice', {
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;
+				this.isVideoOn = false;
+				this.isScreenSharing = false;
 			}
 		},
 
-		toggleMute() {
-			this.isMuted = !this.isMuted;
-			webrtcService.toggleTrack(MediaType.Audio, !this.isMuted);
+		async toggleMute() {
+			try {
+				if (this.isMuted) {
+					const track = await webrtcService.addTrack(MediaType.Audio);
+					this.isMuted = false;
+					track.onended = () => {
+						this.isMuted = true;
+						webrtcService.removeTrack(MediaType.Audio);
+					};
+				} else {
+					await webrtcService.removeTrack(MediaType.Audio);
+					this.isMuted = true;
+				}
+			} catch (error) {
+				console.error('Microphone error:', error);
+			}
 		},
 
 		async toggleVideo() {
 			try {
-				const meStore = useMeStore();
-				const me = meStore.me!;
-				const existingTrack = webrtcService.getTrack(me.id, MediaType.Video);
-				if (!existingTrack) {
-					await webrtcService.addTrack(MediaType.Video);
+				if (!this.isVideoOn) {
+					const track = await webrtcService.addTrack(MediaType.Video);
 					this.isVideoOn = true;
-
-					const track = webrtcService.getTrack(me.id, MediaType.Video);
-					if (track) {
-						track.onended = () => {
-							this.isVideoOn = false;
-							webrtcService.removeTrack(MediaType.Video);
-						};
-					}
+					track.onended = () => {
+						this.isVideoOn = false;
+						webrtcService.removeTrack(MediaType.Video);
+					};
 				} else {
+					await webrtcService.removeTrack(MediaType.Video);
 					this.isVideoOn = false;
-					webrtcService.removeTrack(MediaType.Video);
 				}
 			} catch (error) {
 				console.error('Camera error:', error);
@@ -188,23 +250,16 @@ export const useVoiceStore = defineStore('voice', {
 
 		async toggleScreen() {
 			try {
-				const meStore = useMeStore();
-				const me = meStore.me!;
-				const existingTrack = webrtcService.getTrack(me.id, MediaType.Screen);
-				if (!existingTrack) {
-					await webrtcService.addTrack(MediaType.Screen);
+				if (!this.isScreenSharing) {
+					const track = await webrtcService.addTrack(MediaType.Screen);
 					this.isScreenSharing = true;
-
-					const track = webrtcService.getTrack(me.id, MediaType.Screen);
-					if (track) {
-						track.onended = () => {
-							this.isScreenSharing = false;
-							webrtcService.removeTrack(MediaType.Screen);
-						};
-					}
+					track.onended = () => {
+						this.isScreenSharing = false;
+						webrtcService.removeTrack(MediaType.Screen);
+					};
 				} else {
+					await webrtcService.removeTrack(MediaType.Screen);
 					this.isScreenSharing = false;
-					webrtcService.removeTrack(MediaType.Screen);
 				}
 			} catch (error) {
 				console.error('Screen share error:', error);

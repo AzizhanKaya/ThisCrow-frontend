@@ -9,6 +9,7 @@ export const useKeyStore = defineStore('keys', {
 		private_key: new Uint8Array(32),
 		public_keys: new Map<id, Uint8Array>(),
 		private_keys: new Map<id, Uint8Array>(),
+		pendingRequests: new Map<id, Promise<Uint8Array>>(),
 	}),
 
 	actions: {
@@ -19,7 +20,27 @@ export const useKeyStore = defineStore('keys', {
 		},
 
 		async get_public_key(id: id) {
-			return this.public_keys.get(id) ?? (this.public_keys.set(id, await fetchPublicKey(id)), this.public_keys.get(id)!);
+			if (this.public_keys.has(id)) {
+				return this.public_keys.get(id)!;
+			}
+			if (this.pendingRequests.has(id)) {
+				return this.pendingRequests.get(id)!;
+			}
+
+			const requestPromise = fetchPublicKey(id)
+				.then((key) => {
+					this.public_keys.set(id, key);
+					this.pendingRequests.delete(id);
+					return key;
+				})
+				.catch((error) => {
+					this.pendingRequests.delete(id);
+					throw error;
+				});
+
+			this.pendingRequests.set(id, requestPromise);
+
+			return requestPromise;
 		},
 
 		async init_private_key(id: id) {

@@ -22,6 +22,7 @@ export const useServerStore = defineStore('server', {
 			websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
 				const { ack, payload } = message.data;
 				const server_id = message.from;
+				if (server_id === 0) return;
 				const target_id = message.to;
 				const server = this.servers.get(server_id)!;
 
@@ -166,8 +167,6 @@ export const useServerStore = defineStore('server', {
 					}
 				}
 			});
-
-			websocketService.onMessage(MessageType.Group, (message: Message) => {});
 		},
 
 		async init(server_ids: id[]) {
@@ -190,7 +189,7 @@ export const useServerStore = defineStore('server', {
 			return websocketService.request(message);
 		},
 
-		subscribeToServer(server_id: id) {
+		async subscribeToServer(server_id: id) {
 			const meStore = useMeStore();
 			if (!meStore.me) return;
 			const message: Message<Event> = {
@@ -201,7 +200,7 @@ export const useServerStore = defineStore('server', {
 				type: MessageType.InfoGroup,
 				data: { event: EventType.Subscribe },
 			};
-			websocketService.sendMessage(message);
+			return websocketService.request(message);
 		},
 
 		async unsubscribeFromServer(server_id: id) {

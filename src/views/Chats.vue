@@ -13,6 +13,7 @@
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import { useFriendStore } from '@/stores/friend';
 	import Search from '@/components/Search.vue';
+	import { removeDM } from '@/api/message';
 
 	const dmStore = useDMStore();
 	const userStore = useUserStore();
@@ -59,9 +60,8 @@
 			...(are_friends
 				? [{ divider: true }, { label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' as const }]
 				: [{ label: 'Add Friend', action: 'add_friend', icon: 'mdi:account-plus', variant: 'success' as const }, { divider: true }]),
-
+			{ label: 'Remove DM', action: 'remove_dm', icon: 'mdi:delete', variant: 'danger' },
 			{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
-
 			{ divider: true },
 			{ label: 'Copy Username', action: 'copy_username', icon: 'mdi:content-copy' },
 		];
@@ -101,6 +101,13 @@
 				break;
 			case 'invite':
 				// TODO: Implement invite
+				break;
+			case 'remove_dm':
+				removeDM(user.id);
+				dmStore.dms = dmStore.dms.filter((u) => u.id !== user.id);
+				if (router.currentRoute.value.params.userId === user.id.toString()) {
+					router.push({ name: 'chats' });
+				}
 				break;
 			case 'add_friend':
 				friendStore.sendFriendRequest(user);

@@ -6,6 +6,7 @@
 	import { useMeStore } from '@/stores/me';
 	import { useFriendStore } from '@/stores/friend';
 	import { useModalStore } from '@/stores/modal';
+	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const friendStore = useFriendStore();
 	const meStore = useMeStore();
@@ -95,7 +96,7 @@
 				<div v-else-if="searchResults.length > 0" class="user-list">
 					<div v-for="user in searchResults" :key="user.id.toString()" class="user-card">
 						<div class="user-info">
-							<img :src="user.avatar || '/default-avatar.png'" alt="avatar" />
+							<img :src="user.avatar || getDefaultAvatar(user.username)" alt="avatar" />
 							<span class="username">{{ user.username }}</span>
 						</div>
 
