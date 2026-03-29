@@ -33,14 +33,22 @@ jobs:
    - name: Setup Node.js
      uses: actions/setup-node@v4
      with:
-      node-version: 20
+      node-version: 25
       cache: 'pnpm'
+
+   - name: Install Rust stable
+     uses: dtolnay/rust-toolchain@stable
+
+   - name: Install wasm-pack
+     uses: jetli/wasm-pack-action@v0.4.0
+     with:
+      version: 'latest'
 
    - name: Install dependencies
      run: pnpm install
 
    - name: Build Web
-     run: pnpm run build
+     run: pnpm build --base=/ThisCrow-frontend/
 
    - name: Setup GitHub Pages
      uses: actions/configure-pages@v5

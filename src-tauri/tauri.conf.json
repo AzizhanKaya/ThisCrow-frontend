@@ -2,12 +2,12 @@
 	"$schema": "https://schema.tauri.app/config/2",
 	"productName": "thiscrow",
 	"version": "0.1.0",
-	"identifier": "com.thiscrow.app",
+	"identifier": "com.thiscrow.desktop",
 	"build": {
 		"frontendDist": "../dist",
 		"devUrl": "http://localhost:5173",
 		"beforeDevCommand": "pnpm dev",
-		"beforeBuildCommand": "pnpm build-only"
+		"beforeBuildCommand": "pnpm build"
 	},
 	"app": {
 		"windows": [
@@ -21,7 +21,8 @@
 				"resizable": true,
 				"decorations": false,
 				"transparent": true,
-				"shadow": true
+				"shadow": true,
+				"visible": false
 			}
 		],
 		"security": {
