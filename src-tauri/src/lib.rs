@@ -6,19 +6,27 @@ use tauri_plugin_updater::UpdaterExt;
 mod error;
 pub use error::Result;
 
+mod activity;
+
 mod party;
-use party::browsers::get_browsers;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            let handle = app.handle().clone();
+            let handle_update = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
-                let main_window = handle.get_webview_window("app");
+                let main_window = handle_update.get_webview_window("app");
 
-                match handle.updater() {
+                if let Some(ref win) = main_window {
+                    println!("Main window found: {}", win.label());
+                } else {
+                    println!("Main window 'app' not found!");
+                }
+
+                match handle_update.updater() {
                     Ok(updater) => match updater.check().await {
                         Ok(Some(update)) => {
                             println!("Update available: {}", update.version);
@@ -28,7 +36,7 @@ pub fn run() {
                             }
 
                             let _ = WebviewWindowBuilder::new(
-                                &handle,
+                                &handle_update,
                                 "updater",
                                 WebviewUrl::App("updater.html".into()),
                             )
@@ -44,24 +52,26 @@ pub fn run() {
                         Ok(None) => {
                             println!("Application is already up to date.");
                             if let Some(ref win) = main_window {
-                                let _ = win.show();
+                                if let Err(e) = win.show() {
+                                    println!("Failed to show main window: {}", e);
+                                }
                             }
                         }
-                        Err(e) => {
-                            eprintln!("Update check failed: {}", e);
-                            if let Some(ref win) = main_window {
-                                let _ = win.show();
-                            }
-                        }
+                        Err(e) => println!("Update check failed: {}", e),
                     },
-                    Err(e) => {
-                        eprintln!("Updater plugin error: {}", e);
-                        if let Some(ref win) = main_window {
-                            let _ = win.show();
-                        }
-                    }
+                    Err(e) => println!("Updater plugin error: {}", e),
                 }
             });
+
+            #[cfg(target_os = "linux")]
+            {
+                let handle_music = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = activity::music::monitor_music(handle_music).await {
+                        println!("Music monitoring failed: {:#?}", e);
+                    }
+                });
+            }
 
             Ok(())
         })

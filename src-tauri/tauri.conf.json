@@ -10,6 +10,7 @@
 		"beforeBuildCommand": "pnpm build"
 	},
 	"app": {
+		"withGlobalTauri": true,
 		"windows": [
 			{
 				"label": "app",
@@ -22,7 +23,7 @@
 				"decorations": false,
 				"transparent": true,
 				"shadow": true,
-				"visible": false
+				"visible": true
 			}
 		],
 		"security": {

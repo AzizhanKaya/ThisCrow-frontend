@@ -1,6 +1,5 @@
 use crate::Result;
 use anyhow::{Context, anyhow};
-use browsers::{Browser, get_browsers};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::process::Command;
@@ -84,7 +83,7 @@ pub async fn connect_to_netflix(state: State<'_, CdpState>) -> Result<String> {
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             if let Err(e) = write.send(Message::Text(msg)).await {
-                eprintln!("Failed to send message to WebSocket: {}", e);
+                println!("Failed to send message to WebSocket: {}", e);
                 break;
             }
         }

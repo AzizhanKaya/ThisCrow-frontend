@@ -117,12 +117,6 @@
             try {
                 const update = await check();
                 
-                if (!update) {
-                    statusEl.innerText = "Already up to date!";
-                    setTimeout(() => relaunch(), 1500);
-                    return;
-                }
-
                 let downloaded = 0;
                 let contentLength = 0;
 
