@@ -94,7 +94,6 @@ export const useWatchStore = defineStore('watch', {
 								type: MessageType.InfoGroup,
 								data: {
 									event: EventType.UnWatch,
-									payload: undefined,
 								},
 							});
 							break;

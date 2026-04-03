@@ -102,7 +102,6 @@
 			});
 
 			const watchStore = useWatchStore();
-			watchStore.watch_party = {};
 
 			modalStore.closeModal();
 		} catch (err) {
