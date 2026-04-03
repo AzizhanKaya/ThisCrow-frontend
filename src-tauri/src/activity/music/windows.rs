@@ -40,9 +40,9 @@ fn encode_base64(input: &[u8]) -> String {
 
 pub async fn monitor_music<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-        .map_err(|e| anyhow!(e))?
+        .map_err(|e| anyhow::anyhow!("RequestAsync failed: {:#?}", e))?
         .await
-        .map_err(|e| anyhow!(e))?;
+        .map_err(|e| anyhow::anyhow!("RequestAsync await failed: {:#?}", e))?;
 
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
 
@@ -52,7 +52,7 @@ pub async fn monitor_music<R: Runtime>(app: AppHandle<R>) -> Result<()> {
             let _ = tx_clone1.send(());
             Ok(())
         }))
-        .map_err(|e| anyhow!(e))?;
+        .map_err(|e| anyhow::anyhow!("CurrentSessionChanged failed: {:#?}", e))?;
 
     let tx_clone2 = tx.clone();
     let _sessions_changed_token = manager
@@ -60,7 +60,7 @@ pub async fn monitor_music<R: Runtime>(app: AppHandle<R>) -> Result<()> {
             let _ = tx_clone2.send(());
             Ok(())
         }))
-        .map_err(|e| anyhow!(e))?;
+        .map_err(|e| anyhow::anyhow!("SessionsChanged failed: {:#?}", e))?;
 
     let _ = tx.send(());
 
@@ -97,22 +97,22 @@ pub async fn monitor_music<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 
             if let Some(session) = &new_session {
                 let tx_playback = tx.clone();
-                if let Ok(token) = session.PlaybackInfoChanged(&TypedEventHandler::new(
-                    move |_, _| {
+                if let Ok(token) =
+                    session.PlaybackInfoChanged(&TypedEventHandler::new(move |_, _| {
                         let _ = tx_playback.send(());
                         Ok(())
-                    },
-                )) {
+                    }))
+                {
                     playback_token = Some(token);
                 }
 
                 let tx_properties = tx.clone();
-                if let Ok(token) = session.MediaPropertiesChanged(&TypedEventHandler::new(
-                    move |_, _| {
+                if let Ok(token) =
+                    session.MediaPropertiesChanged(&TypedEventHandler::new(move |_, _| {
                         let _ = tx_properties.send(());
                         Ok(())
-                    },
-                )) {
+                    }))
+                {
                     properties_token = Some(token);
                 }
 
@@ -138,22 +138,31 @@ pub async fn monitor_music<R: Runtime>(app: AppHandle<R>) -> Result<()> {
                                     if let Ok(stream_op) = thumbnail_ref.OpenReadAsync() {
                                         if let Ok(stream) = stream_op.await {
                                             if let Ok(size) = stream.Size() {
-                                                if let Ok(reader) = DataReader::CreateDataReader(&stream) {
+                                                if let Ok(reader) =
+                                                    DataReader::CreateDataReader(&stream)
+                                                {
                                                     if let Ok(op) = reader.LoadAsync(size as u32) {
                                                         if let Ok(_) = op.await {
-                                                            let mut buffer = vec![0u8; size as usize];
-                                                            if let Ok(_) = reader.ReadBytes(&mut buffer) {
+                                                            let mut buffer =
+                                                                vec![0u8; size as usize];
+                                                            if let Ok(_) =
+                                                                reader.ReadBytes(&mut buffer)
+                                                            {
                                                                 let b64 = encode_base64(&buffer);
                                                                 let content_type = stream
                                                                     .ContentType()
                                                                     .unwrap_or_default()
                                                                     .to_string();
-                                                                let mime = if content_type.is_empty() {
-                                                                    "image/jpeg".to_string()
-                                                                } else {
-                                                                    content_type
-                                                                };
-                                                                album_url = format!("data:{};base64,{}", mime, b64);
+                                                                let mime =
+                                                                    if content_type.is_empty() {
+                                                                        "image/jpeg".to_string()
+                                                                    } else {
+                                                                        content_type
+                                                                    };
+                                                                album_url = format!(
+                                                                    "data:{};base64,{}",
+                                                                    mime, b64
+                                                                );
                                                             }
                                                         }
                                                     }

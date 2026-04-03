@@ -80,7 +80,7 @@ pub fn run() {
                 }
             });
 
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
                 let handle_music = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
