@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { Ack, Channel, Member, Message, Role, Server, User, id } from '@/types';
+import type { Ack, Channel, Member, Message, Role, Server, User, WatchParty, id } from '@/types';
 import { fetchServers } from '@/api/info';
 import { useUserStore } from './user';
 import { useMeStore } from './me';
@@ -69,6 +69,7 @@ export const useServerStore = defineStore('server', {
 										position: number;
 										type: ChannelType;
 										users?: id[];
+										watch_party?: WatchParty;
 									}
 								>;
 								roles: Record<id, Role>;
@@ -120,6 +121,7 @@ export const useServerStore = defineStore('server', {
 
 					case AckType.Unsubscribed:
 						break;
+
 					case AckType.DeletedGroup:
 						this.servers.delete(server_id);
 						break;
@@ -162,6 +164,66 @@ export const useServerStore = defineStore('server', {
 						if (!channel || !channel.users) return;
 						const user = await userStore.getUser(target_id);
 						channel.users.delete(user);
+
+						const watchParty = channel.watch_party;
+						if (!watchParty) return;
+
+						const userIndex = watchParty.users.indexOf(target_id);
+						if (userIndex === -1) return;
+						watchParty.users.splice(userIndex, 1);
+
+						if (watchParty.users.length === 0) {
+							channel.watch_party = undefined;
+							break;
+						}
+
+						if (watchParty.host === target_id) {
+							watchParty.host = watchParty.users[0];
+						}
+
+						break;
+					}
+
+					case AckType.CreatedParty: {
+						const channel = server.channels?.get(payload);
+						if (!channel) return;
+						channel.watch_party = {
+							video: 0,
+							title: '',
+							host: target_id,
+							users: [target_id],
+							offset: 0,
+							playing: false,
+						};
+						break;
+					}
+
+					case AckType.JoinedParty: {
+						const channel = server.channels?.get(payload);
+						if (!channel || !channel.watch_party) return;
+						channel.watch_party.users.push(target_id);
+						break;
+					}
+
+					case AckType.LeftParty: {
+						const channel = server.channels?.get(payload);
+						if (!channel?.watch_party) return;
+
+						const watchParty = channel.watch_party;
+						const userIndex = watchParty.users.indexOf(target_id);
+
+						if (userIndex === -1) return;
+
+						watchParty.users.splice(userIndex, 1);
+
+						if (watchParty.users.length === 0) {
+							channel.watch_party = undefined;
+							break;
+						}
+
+						if (watchParty.host === target_id) {
+							watchParty.host = watchParty.users[0];
+						}
 
 						break;
 					}

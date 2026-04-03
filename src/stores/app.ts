@@ -4,6 +4,7 @@ import { initApp } from '@/init';
 import { getMe } from '@/api/state';
 import { useMeStore } from './me';
 import initWasm from '@/../pkg/wasm_lib';
+import { isTauri } from '@tauri-apps/api/core';
 
 export const useAppStore = defineStore('app', {
 	state: () => ({
@@ -11,6 +12,7 @@ export const useAppStore = defineStore('app', {
 		loading: true as boolean,
 		onBeforeUnloadHandlers: new Set<() => Promise<void>>(),
 		onLoadHandlers: new Set<() => Promise<void>>(),
+		isTauri: isTauri(),
 	}),
 
 	actions: {

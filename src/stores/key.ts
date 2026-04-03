@@ -13,10 +13,26 @@ export const useKeyStore = defineStore('keys', {
 	}),
 
 	actions: {
-		init(password: string) {
+		storeKeys(password: string) {
 			const keypair = generate_keypair(password);
 			this.public_key = new Uint8Array(keypair.public_key);
 			this.private_key = new Uint8Array(keypair.private_key);
+
+			localStorage.setItem('public_key', JSON.stringify(Array.from(this.public_key)));
+			localStorage.setItem('private_key', JSON.stringify(Array.from(this.private_key)));
+		},
+
+		init() {
+			const stored_public = localStorage.getItem('public_key');
+			const stored_private = localStorage.getItem('private_key');
+
+			if (stored_public && stored_private) {
+				this.public_key = new Uint8Array(JSON.parse(stored_public));
+				this.private_key = new Uint8Array(JSON.parse(stored_private));
+				return;
+			}
+
+			throw new Error('Keys not found');
 		},
 
 		async get_public_key(id: id) {

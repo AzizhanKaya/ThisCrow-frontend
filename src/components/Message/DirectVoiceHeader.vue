@@ -5,6 +5,7 @@
 	import { useVoiceStore } from '@/stores/voice';
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import { MediaType, webrtcService } from '@/services/webrtc';
+	import { getDefaultAvatar } from '@/utils/avatar';
 	import type { User } from '@/types';
 
 	const props = defineProps<{
@@ -27,30 +28,10 @@
 		return webrtcService.getTrack(userId, type);
 	};
 
-	const trackStates = reactive(new Map<string, boolean>());
-
 	const isTrackActive = (userId: number, type: MediaType) => {
 		const track = getTrack(userId, type);
 		if (!track) return false;
-
-		const trackId = track.id;
-
-		if (!(track as any)._hasListener) {
-			(track as any)._hasListener = true;
-
-			const updateState = (e?: globalThis.Event) => {
-				const active = !track.muted && track.readyState === 'live' && track.enabled;
-				trackStates.set(trackId, active);
-			};
-
-			track.addEventListener('mute', updateState);
-			track.addEventListener('unmute', updateState);
-			track.addEventListener('ended', updateState);
-
-			updateState();
-		}
-
-		return trackStates.get(trackId) || false;
+		return track.readyState === 'live' && track.enabled && webrtcService.activeTracks.has(track.id);
 	};
 
 	const activeVideos = reactive(new Set<string>());
@@ -92,7 +73,11 @@
 		<div class="participants-area">
 			<div class="participants">
 				<!-- Local Screen Share -->
-				<div v-if="voiceStore.isScreenSharing && meStore.me" class="user-card screen-share-card">
+				<div
+					v-if="voiceStore.isScreenSharing && meStore.me"
+					class="user-card screen-share-card"
+					:class="{ 'is-speaking': webrtcService.speakingUsers.has(meStore.me.id) }"
+				>
 					<video :srcObject="Stream(getTrack(meStore.me.id, MediaType.Screen))" autoplay muted class="video-element" />
 					<div class="card-overlay">
 						<Icon icon="ic:round-screen-share" />
@@ -101,7 +86,11 @@
 				</div>
 
 				<!-- Remote Screen Share -->
-				<div v-show="targetUser && isVideoVisible(targetUser.id, MediaType.Screen)" class="user-card screen-share-card">
+				<div
+					v-show="targetUser && isVideoVisible(targetUser.id, MediaType.Screen)"
+					class="user-card screen-share-card"
+					:class="{ 'is-speaking': webrtcService.speakingUsers.has(targetUser.id) }"
+				>
 					<video
 						:srcObject="Stream(getTrack(targetUser.id, MediaType.Screen))"
 						autoplay
@@ -116,46 +105,64 @@
 				</div>
 
 				<!-- Local User -->
-				<div v-if="isCalling" class="user-card normal-card">
-					<video
-						v-if="voiceStore.isVideoOn && meStore.me"
-						:srcObject="Stream(getTrack(meStore.me.id, MediaType.Video))"
-						autoplay
-						muted
-						class="video-element"
-					/>
-					<div v-else-if="meStore.me?.avatar" class="avatar-wrapper">
-						<img :src="meStore.me.avatar" alt="" class="avatar-circle" />
-					</div>
-					<div v-else class="avatar-wrapper">
-						<div class="avatar-circle">{{ meStore.me?.name.charAt(0).toUpperCase() }}</div>
-					</div>
-					<div class="card-overlay">
-						<span>{{ meStore.me?.name }} (You)</span>
-						<div v-if="voiceStore.isMuted" class="status-icons">
-							<Icon icon="mdi:microphone-off" class="status-icon text-red" />
+				<div
+					v-if="isCalling"
+					:class="[
+						voiceStore.isVideoOn ? 'user-card normal-card' : 'voice-avatar-container',
+						{ 'is-speaking': voiceStore.isVideoOn && webrtcService.speakingUsers.has(meStore.me!.id) },
+					]"
+				>
+					<template v-if="voiceStore.isVideoOn">
+						<video
+							v-if="meStore.me"
+							:srcObject="Stream(getTrack(meStore.me.id, MediaType.Video))"
+							autoplay
+							muted
+							class="video-element"
+						/>
+						<div class="card-overlay">
+							<span>{{ meStore.me?.name }} (You)</span>
+							<div v-if="voiceStore.isMuted" class="status-icons">
+								<Icon icon="mdi:microphone-off" class="status-icon text-red" />
+							</div>
 						</div>
-					</div>
+					</template>
+					<template v-else>
+						<div class="voice-avatar" :class="{ 'is-speaking': webrtcService.speakingUsers.has(meStore.me!.id) }">
+							<img :src="meStore.me?.avatar || getDefaultAvatar(meStore.me?.username)" alt="" class="avatar-circle" />
+
+							<div v-if="voiceStore.isMuted" class="avatar-mute-badge">
+								<Icon icon="mdi:microphone-off" />
+							</div>
+						</div>
+					</template>
 				</div>
 
 				<!-- Remote User -->
-				<div v-if="isRinging" class="user-card normal-card">
-					<video
+				<div v-if="isRinging">
+					<!-- Video Card -->
+					<div
 						v-show="isVideoVisible(targetUser.id, MediaType.Video)"
-						:srcObject="Stream(getTrack(targetUser.id, MediaType.Video))"
-						autoplay
-						playsinline
-						class="video-element"
-						@loadeddata="onVideoLoaded(targetUser.id, MediaType.Video)"
-					/>
-					<div v-show="!isVideoVisible(targetUser.id, MediaType.Video) && targetUser.avatar" class="avatar-wrapper">
-						<img :src="targetUser.avatar" alt="" class="avatar-circle" />
+						class="user-card normal-card"
+						:class="{ 'is-speaking': webrtcService.speakingUsers.has(targetUser.id) }"
+					>
+						<video
+							v-show="isVideoVisible(targetUser.id, MediaType.Video)"
+							:srcObject="Stream(getTrack(targetUser.id, MediaType.Video))"
+							autoplay
+							playsinline
+							class="video-element"
+							@loadeddata="onVideoLoaded(targetUser.id, MediaType.Video)"
+						/>
+						<!-- Removed username overlay for remote user -->
 					</div>
-					<div v-show="!isVideoVisible(targetUser.id, MediaType.Video) && !targetUser.avatar" class="avatar-wrapper">
-						<div class="avatar-circle">{{ targetUser.name.charAt(0).toUpperCase() }}</div>
-					</div>
-					<div class="card-overlay">
-						<span>{{ targetUser.name }}</span>
+
+					<!-- Voice Avatar Fallback -->
+					<div v-show="!isVideoVisible(targetUser.id, MediaType.Video)" class="voice-avatar-container">
+						<div class="voice-avatar" :class="{ 'is-speaking': webrtcService.speakingUsers.has(targetUser.id) }">
+							<img :src="targetUser.avatar || getDefaultAvatar(targetUser.username)" alt="" class="avatar-circle" />
+						</div>
+						<!-- Removed username label for remote user -->
 					</div>
 				</div>
 			</div>
@@ -227,11 +234,33 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		flex: 1 1 200px;
-		max-width: 300px;
+		flex: 1 1 300px;
+		max-width: 450px;
 		aspect-ratio: 16 / 9;
 		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(255, 255, 255, 0.05);
+		border: 2px solid rgba(255, 255, 255, 0.05);
+		transition:
+			transform 0.2s ease,
+			border-color 0.2s ease,
+			box-shadow 0.2s ease;
+	}
+
+	.user-card.is-speaking {
+		box-shadow:
+			0 0 16px var(--success),
+			0 8px 16px rgba(0, 0, 0, 0.4);
+		border-color: var(--success);
+	}
+
+	.user-card:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 12px 20px rgba(0, 0, 0, 0.5);
+	}
+
+	.user-card.is-speaking:hover {
+		box-shadow:
+			0 0 24px var(--success),
+			0 12px 20px rgba(0, 0, 0, 0.5);
 	}
 
 	.screen-share-card {
@@ -251,31 +280,73 @@
 		object-fit: contain;
 	}
 
-	.avatar-wrapper {
-		width: 100%;
-		height: 100%;
+	.voice-avatar-container {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 24px;
+		margin: 0 10px;
+		max-width: 300px;
+	}
+
+	.voice-avatar {
+		width: 120px;
+		height: 120px;
+		border-radius: 50%;
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background-color: var(--bg-dark);
+		border: 3px solid transparent;
+		transition:
+			border-color 0.2s ease,
+			box-shadow 0.2s ease;
 	}
 
 	.avatar-circle {
-		width: 80px;
-		height: 80px;
+		width: 100%;
+		height: 100%;
 		border-radius: 50%;
-		background-color: var(--color, #555);
 		color: var(--text);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 2rem;
+		font-size: 3rem;
 		font-weight: 600;
 		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+		object-fit: cover;
 	}
 
-	img.avatar-circle {
-		object-fit: cover;
+	.voice-avatar.is-speaking {
+		box-shadow:
+			0 0 16px var(--success),
+			0 8px 16px rgba(0, 0, 0, 0.2);
+		border-color: var(--success);
+	}
+
+	.avatar-label {
+		color: var(--text);
+		font-weight: 500;
+		font-size: 1.2rem;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+		white-space: nowrap;
+	}
+
+	.avatar-mute-badge {
+		position: absolute;
+		bottom: 0;
+		right: 0;
+		background-color: var(--bg-dark);
+		color: var(--error);
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1.5rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 	}
 
 	.card-overlay {
@@ -302,22 +373,6 @@
 
 	.text-red {
 		color: var(--error);
-	}
-
-	.calling-avatars {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 40px;
-		width: 100%;
-	}
-
-	.calling-avatars img {
-		width: 120px;
-		height: 120px;
-		border-radius: 50%;
-		object-fit: cover;
-		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
 	}
 
 	.voice-controls {

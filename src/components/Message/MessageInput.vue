@@ -8,7 +8,7 @@
 	import { useKeyStore } from '@/stores/key';
 	import { generate_snowflake } from '@/utils/snowflake';
 	import { generate_nonce, encrypt_message } from '@/../pkg/wasm_lib';
-	import { encode } from '@msgpack/msgpack';
+	import { encode } from '@/utils/msgpack';
 
 	const props = defineProps<{
 		to: id;
@@ -24,56 +24,64 @@
 
 	const { fileInput, selectedFiles, hasSelectedFiles, handleFileSelect: onFileSelect, removeFile, clearFiles } = useFiles();
 
+	let sending = false;
+
 	async function onSend() {
-		const text = input.value.trim();
-		const hasFiles =
-			selectedFiles.value.images.length > 0 || selectedFiles.value.videos.length > 0 || selectedFiles.value.files.length > 0;
+		if (sending) return;
+		sending = true;
 
-		if (!text && !hasFiles) return;
+		try {
+			const text = input.value.trim();
 
-		let messageData: MessageData =
-			text && !hasFiles
-				? text
-				: {
-						...(text && { text }),
-						...(selectedFiles.value.images.length > 0 && {
-							images: selectedFiles.value.images.map((img) => img.url),
-						}),
-						...(selectedFiles.value.videos.length > 0 && {
-							videos: selectedFiles.value.videos.map((vid) => vid.url),
-						}),
-						...(selectedFiles.value.files.length > 0 && {
-							files: selectedFiles.value.files.map((f) => ({
-								url: f.url,
-								name: f.name,
-								size: f.size,
-							})),
-						}),
-					};
+			const hasFiles =
+				selectedFiles.value.images.length > 0 || selectedFiles.value.videos.length > 0 || selectedFiles.value.files.length > 0;
 
-		if (!props.group_id) {
-			const privateKey = await keyStore.get_private_key(props.to);
-			const nonce = generate_nonce();
-			const cipher = encrypt_message(privateKey, encode(messageData), nonce);
+			if (!text && !hasFiles) return;
 
-			messageData = {
-				nonce,
-				cipher,
+			let messageData: MessageData =
+				text && !hasFiles
+					? text
+					: {
+							...(text && { text }),
+							...(selectedFiles.value.images.length > 0 && {
+								images: selectedFiles.value.images.map((img) => img.url),
+							}),
+							...(selectedFiles.value.videos.length > 0 && {
+								videos: selectedFiles.value.videos.map((vid) => vid.url),
+							}),
+							...(selectedFiles.value.files.length > 0 && {
+								files: selectedFiles.value.files.map((f) => ({
+									url: f.url,
+									name: f.name,
+									size: f.size,
+								})),
+							}),
+						};
+
+			if (!props.group_id) {
+				const privateKey = await keyStore.get_private_key(props.to);
+				const nonce = generate_nonce();
+				const cipher = encrypt_message(privateKey, encode(messageData), nonce);
+
+				messageData = { nonce, cipher };
+			}
+
+			const message: MessageType = {
+				id: generate_snowflake(),
+				from: meStore.me!.id,
+				to: props.to,
+				group_id: props.group_id,
+				data: messageData,
+				type: props.type,
 			};
+
+			messageStore.sendMessage(message);
+			input.value = '';
+
+			clearFiles();
+		} finally {
+			sending = false;
 		}
-
-		const message: MessageType = {
-			id: generate_snowflake(),
-			from: meStore.me!.id,
-			to: props.to,
-			group_id: props.group_id,
-			data: messageData,
-			type: props.type,
-		};
-
-		messageStore.sendMessage(message);
-		input.value = '';
-		clearFiles();
 	}
 
 	function onPlus() {

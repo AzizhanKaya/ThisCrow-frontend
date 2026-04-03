@@ -4,7 +4,7 @@
 	import { Icon } from '@iconify/vue';
 	import { is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
 	import { decrypt_message } from '@/../pkg/wasm_lib';
-	import { decode } from '@msgpack/msgpack';
+	import { decode } from '@/utils/msgpack';
 	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const props = defineProps({
@@ -17,7 +17,7 @@
 			required: false,
 		},
 		privateKey: {
-			type: Object as PropType<Uint8Array>,
+			type: Object as PropType<Uint8Array | null>,
 			required: false,
 		},
 	});
@@ -32,7 +32,9 @@
 			return props.message;
 		}
 
-		if (props.message.overwrited) console.log(props.message.overwrited);
+		if (props.message.overwrited) {
+			return props.message;
+		}
 
 		try {
 			const decrypted = decrypt_message(props.privateKey, data.cipher, data.nonce);
@@ -40,7 +42,7 @@
 
 			return { ...props.message, data: decoded } as Message;
 		} catch (e) {
-			console.error('Failed to decrypt message:', e);
+			console.error('Failed to decrypt message:', props.privateKey);
 			return props.message;
 		}
 	});
@@ -146,6 +148,7 @@
 	}
 
 	.message.with-user {
+		margin-top: 10px;
 		padding: 5px 20px 0px 20px;
 	}
 

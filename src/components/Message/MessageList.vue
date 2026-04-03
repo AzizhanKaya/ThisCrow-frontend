@@ -10,7 +10,7 @@
 	import ContextMenu from '@/components/ContextMenu.vue';
 	import { useKeyStore } from '@/stores/key';
 	import { encrypt_message, generate_nonce } from '@/../pkg/wasm_lib';
-	import { encode } from '@msgpack/msgpack';
+	import { encode } from '@/utils/msgpack';
 
 	const props = defineProps<{
 		to: id;
@@ -27,7 +27,7 @@
 		props.group_id ? { kind: 'channel', channel_id: props.to, group_id: props.group_id } : { kind: 'user', user_id: props.to }
 	);
 
-	const privateKey = ref<Uint8Array | undefined>(undefined);
+	const privateKey = ref<Uint8Array | null | undefined>(undefined);
 
 	const messages = computed(() => messageStore.getMessages(chatTarget.value).toSorted((a, b) => Number(a.id - b.id)));
 
@@ -86,21 +86,21 @@
 
 	const handleOverwrite = async (message: MessageType) => {
 		const newText = prompt('Edit message');
-		if (newText !== null) {
-			if (!props.group_id) {
-				const privateKey = await keyStore.get_private_key(props.to);
-				const nonce = generate_nonce();
-				const cipher = encrypt_message(privateKey, encode(newText), nonce);
+		if (!newText) return;
 
-				const messageData = {
-					nonce,
-					cipher,
-				};
+		if (!props.group_id) {
+			const privateKey = await keyStore.get_private_key(props.to);
+			const nonce = generate_nonce();
+			const cipher = encrypt_message(privateKey, encode(newText), nonce);
 
-				await overwriteMessage(message.id, messageData);
-			} else {
-				await overwriteMessage(message.id, newText);
-			}
+			const messageData = {
+				nonce,
+				cipher,
+			};
+
+			await overwriteMessage(message.id, messageData);
+		} else {
+			await overwriteMessage(message.id, newText);
 		}
 	};
 
@@ -168,7 +168,7 @@
 			if (newTarget.kind === 'user') {
 				privateKey.value = await keyStore.get_private_key(newTarget.user_id);
 			} else {
-				privateKey.value = undefined;
+				privateKey.value = null;
 			}
 
 			await messageStore.initChat(newTarget);
@@ -199,11 +199,12 @@
 			<div class="no-messages-icon">
 				<Icon icon="ri:message-2-fill" width="56" height="56" />
 			</div>
-			<h3>Burası çok sessiz...</h3>
-			<p>İlk mesajı göndererek sohbeti başlatabilirsiniz.</p>
+			<h3>It's very quiet in here...</h3>
+			<p>Start the conversation by sending the first message!</p>
 		</div>
 
 		<div
+			v-if="privateKey !== undefined"
 			v-for="(message, index) in messages"
 			:key="message.id.toString()"
 			class="message-wrapper"
@@ -214,7 +215,7 @@
 			<Message
 				:message="message"
 				:user="index === 0 || messages[index - 1].from !== message.from ? userStore.users.get(message.from) : undefined"
-				:private-key="privateKey"
+				:privateKey="privateKey"
 			/>
 			<div v-if="hoveredMessageId === message.id" class="message-actions">
 				<Icon icon="mdi:reply" class="action-icon" @click="handleReply(message)" title="Yanıtla" />
@@ -245,7 +246,7 @@
 		overflow-y: auto;
 		position: relative;
 		scrollbar-width: none;
-		padding-bottom: 90px;
+		padding-bottom: 80px;
 	}
 
 	.message-spacer {
@@ -326,7 +327,7 @@
 	}
 
 	.no-messages-icon {
-		background: linear-gradient(0deg, var(--color-darkest), var(--color-lightest));
+		background: var(--bg-dark);
 		border-radius: 50%;
 		padding: 24px;
 		margin-bottom: 24px;

@@ -46,15 +46,13 @@ export const useVoiceStore = defineStore('voice', {
 					case AckType.JoinedVoice: {
 						if (message.to === me.id) {
 							this.voice_direct = await usersStore.getUser(payload);
-						} else {
+						} else if (!this.on_voice_direct.includes(message.to)) {
 							this.on_voice_direct.push(message.to);
-							const modalStore = useModalStore();
 							if (this.voice_direct?.id !== message.to) {
 								const user = await usersStore.getUser(message.to);
 								if (user) {
-									modalStore.openModal(ModalView.CALLING, {
-										user,
-									});
+									const modalStore = useModalStore();
+									modalStore.openModal(ModalView.CALLING, { user });
 								}
 							}
 						}
@@ -62,7 +60,7 @@ export const useVoiceStore = defineStore('voice', {
 					}
 					case AckType.ExitedVoice: {
 						if (message.to === me.id) {
-							this.voice_direct = undefined;
+							await this.leaveVoice();
 						} else {
 							this.on_voice_direct = this.on_voice_direct.filter((id) => id !== message.to);
 						}
@@ -207,6 +205,7 @@ export const useVoiceStore = defineStore('voice', {
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;
+				this.on_voice_direct = [];
 				this.isVideoOn = false;
 				this.isScreenSharing = false;
 			}

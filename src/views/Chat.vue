@@ -268,23 +268,6 @@
 		flex-direction: column;
 	}
 
-	.input-area {
-		position: absolute;
-		bottom: 30px;
-		width: 100%;
-		padding: 0 20px;
-		z-index: 10;
-	}
-
-	.input-container {
-		width: 100%;
-		background-color: #222;
-		border-radius: 16px;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-	}
-
 	.input-cover {
 		position: absolute;
 		bottom: 0;

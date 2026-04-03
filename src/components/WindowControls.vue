@@ -7,7 +7,6 @@
 
 	const minimize = () => appWindow.minimize();
 	const toggleMaximize = () => {
-		console.log(appWindow);
 		document.documentElement.classList.toggle('maximized');
 		appWindow.toggleMaximize();
 	};

@@ -11,11 +11,11 @@ export async function getMe(): Promise<User> {
 export async function fetchDms(): Promise<[id, snowflake_id][]> {
 	const url = API_URL + `/state/dms`;
 
-	return await msgFetch<[id, snowflake_id][]>(url, { credentials: 'include' });
+	return msgFetch<[id, snowflake_id][]>(url, { credentials: 'include' });
 }
 
 export async function logOut(): Promise<void> {
 	const url = API_URL + `/state/logout`;
 
-	return await msgFetch<void>(url, { credentials: 'include' });
+	return msgFetch<void>(url, { credentials: 'include' });
 }

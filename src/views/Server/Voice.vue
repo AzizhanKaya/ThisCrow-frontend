@@ -6,12 +6,17 @@
 	import { Icon } from '@iconify/vue';
 	import type { Channel, id } from '@/types';
 	import { useRouter } from 'vue-router';
+	import { getDefaultAvatar } from '@/utils/avatar';
+	import { useWatchStore } from '@/stores/watch';
+	import { useAppStore } from '@/stores/app';
 
 	const props = defineProps<{
 		channel: Channel;
 	}>();
 
 	const meStore = useMeStore();
+	const watchStore = useWatchStore();
+	const appStore = useAppStore();
 	const voiceStore = useVoiceStore();
 	const router = useRouter();
 
@@ -23,7 +28,8 @@
 
 	const isTrackActive = (userId: id, type: MediaType) => {
 		const track = getTrack(userId, type);
-		return track ? webrtcService.activeTracks.has(track.id) : false;
+		if (!track) return false;
+		return track.readyState === 'live' && track.enabled && webrtcService.activeTracks.has(track.id);
 	};
 
 	const loadedVideos = reactive(new Set<string>());
@@ -36,8 +42,9 @@
 	};
 
 	const isVideoVisible = (userId: id, type: MediaType) => {
+		if (!isTrackActive(userId, type)) return false;
 		const track = getTrack(userId, type);
-		return track ? webrtcService.activeTracks.has(track.id) && loadedVideos.has(track.id) : false;
+		return track ? loadedVideos.has(track.id) : false;
 	};
 
 	const streamCache = new Map<string, MediaStream>();
@@ -54,6 +61,19 @@
 		router.back();
 		voiceStore.leaveVoice();
 	};
+
+	const toggleFullScreen = (event: Event) => {
+		const videoEl = (event.currentTarget as HTMLElement).closest('.user-card')?.querySelector('video');
+		if (videoEl) {
+			if (!document.fullscreenElement) {
+				videoEl.requestFullscreen().catch((err) => {
+					console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+				});
+			} else {
+				document.exitFullscreen();
+			}
+		}
+	};
 </script>
 
 <template>
@@ -61,17 +81,28 @@
 		<div class="participants-area">
 			<div class="participants">
 				<!-- Local Screen Share -->
-				<div v-if="voiceStore.isScreenSharing && me" class="user-card screen-share-card">
+				<div
+					v-if="voiceStore.isScreenSharing && me"
+					class="user-card screen-share-card"
+					:class="{ 'is-speaking': webrtcService.speakingUsers.has(me.id) }"
+				>
 					<video :srcObject="Stream(getTrack(me.id, MediaType.Screen))" autoplay muted class="video-element" />
 					<div class="card-overlay">
 						<Icon icon="ic:round-screen-share" />
 						<span>Your screen</span>
 					</div>
+					<button class="fullscreen-btn" @click="toggleFullScreen" title="Full screen">
+						<Icon icon="mdi:fullscreen" />
+					</button>
 				</div>
 
 				<!-- Remote Screen Shares -->
 				<template v-for="user in props.channel.users" :key="'screen-' + user.id">
-					<div v-show="me && user.id !== me.id && isVideoVisible(user.id, MediaType.Screen)" class="user-card screen-share-card">
+					<div
+						v-show="me && user.id !== me.id && isVideoVisible(user.id, MediaType.Screen)"
+						class="user-card screen-share-card"
+						:class="{ 'is-speaking': webrtcService.speakingUsers.has(user.id) }"
+					>
 						<video
 							:srcObject="Stream(getTrack(user.id, MediaType.Screen))"
 							autoplay
@@ -83,11 +114,18 @@
 							<Icon icon="ic:round-screen-share" />
 							<span>{{ user.name }}'s screen</span>
 						</div>
+						<button class="fullscreen-btn" @click="toggleFullScreen" title="Full screen">
+							<Icon icon="mdi:fullscreen" />
+						</button>
 					</div>
 				</template>
 
 				<!-- Local User -->
-				<div class="user-card normal-card" v-if="me && props.channel.users?.has(me)">
+				<div
+					class="user-card normal-card"
+					v-if="me && Array.from(props.channel.users || []).some((u) => u.id === me.id)"
+					:class="{ 'is-speaking': webrtcService.speakingUsers.has(me.id) }"
+				>
 					<video
 						v-if="voiceStore.isVideoOn"
 						:srcObject="Stream(getTrack(me.id, MediaType.Video))"
@@ -95,23 +133,28 @@
 						muted
 						class="video-element"
 					/>
-					<div v-else-if="me.avatar" class="avatar-wrapper">
-						<img :src="me.avatar" alt="" class="avatar-circle" />
-					</div>
 					<div v-else class="avatar-wrapper">
-						<div class="avatar-circle">{{ me.name.charAt(0).toUpperCase() }}</div>
+						<img :src="me.avatar || getDefaultAvatar(me.username)" alt="" class="avatar-circle" />
 					</div>
+
 					<div class="card-overlay">
 						<span>{{ me.name }} (You)</span>
 						<div v-if="voiceStore.isMuted" class="status-icons">
 							<Icon icon="mdi:microphone-off" class="status-icon text-red" />
 						</div>
 					</div>
+					<button v-if="voiceStore.isVideoOn" class="fullscreen-btn" @click="toggleFullScreen" title="Full screen">
+						<Icon icon="mdi:fullscreen" />
+					</button>
 				</div>
 
 				<!-- Remote Users -->
 				<template v-for="user in props.channel.users" :key="user.id">
-					<div v-if="me && user.id !== me.id" class="user-card normal-card">
+					<div
+						v-if="me && user.id !== me.id"
+						class="user-card normal-card"
+						:class="{ 'is-speaking': webrtcService.speakingUsers.has(user.id) }"
+					>
 						<video
 							v-show="isVideoVisible(user.id, MediaType.Video)"
 							:srcObject="Stream(getTrack(user.id, MediaType.Video))"
@@ -120,18 +163,24 @@
 							class="video-element"
 							@loadeddata="onVideoLoaded(user.id, MediaType.Video)"
 						/>
-						<div v-show="!isVideoVisible(user.id, MediaType.Video) && user.avatar" class="avatar-wrapper">
-							<img :src="user.avatar" alt="" class="avatar-circle" />
+						<div v-show="!isVideoVisible(user.id, MediaType.Video)" class="avatar-wrapper">
+							<img :src="user.avatar || getDefaultAvatar(user.username)" alt="" class="avatar-circle" />
 						</div>
-						<div v-show="!isVideoVisible(user.id, MediaType.Video) && !user.avatar" class="avatar-wrapper">
-							<div class="avatar-circle">{{ user.name.charAt(0).toUpperCase() }}</div>
-						</div>
+
 						<div class="card-overlay">
 							<span>{{ user.name }}</span>
 							<div v-if="!isTrackActive(user.id, MediaType.Audio)" class="status-icons">
 								<Icon icon="mdi:microphone-off" class="status-icon text-red" />
 							</div>
 						</div>
+						<button
+							v-show="isVideoVisible(user.id, MediaType.Video)"
+							class="fullscreen-btn"
+							@click="toggleFullScreen"
+							title="Full screen"
+						>
+							<Icon icon="mdi:fullscreen" />
+						</button>
 					</div>
 				</template>
 			</div>
@@ -139,6 +188,13 @@
 
 		<!-- Control Bar -->
 		<div v-if="voiceStore.voice_channel" class="voice-controls">
+			<button
+				v-if="appStore.isTauri"
+				class="control-btn"
+				@click="watchStore.createWatchParty(Number($route.params.serverId), props.channel.id)"
+			>
+				<Icon icon="streamline:film-slate-solid" />
+			</button>
 			<button class="control-btn" :class="{ 'is-active': voiceStore.isVideoOn }" @click="voiceStore.toggleVideo()">
 				<Icon :icon="voiceStore.isVideoOn ? 'mdi:video' : 'mdi:video-off'" />
 			</button>
@@ -200,15 +256,29 @@
 		max-width: 500px;
 		aspect-ratio: 16 / 9;
 		box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(255, 255, 255, 0.05);
+		border: 2px solid rgba(255, 255, 255, 0.05);
 		transition:
 			transform 0.2s ease,
+			border-color 0.2s ease,
 			box-shadow 0.2s ease;
+	}
+
+	.user-card.is-speaking {
+		box-shadow:
+			0 0 16px var(--success),
+			0 8px 16px rgba(0, 0, 0, 0.4);
+		border-color: var(--success);
 	}
 
 	.user-card:hover {
 		transform: translateY(-2px);
 		box-shadow: 0 12px 20px rgba(0, 0, 0, 0.5);
+	}
+
+	.user-card.is-speaking:hover {
+		box-shadow:
+			0 0 24px var(--success),
+			0 12px 20px rgba(0, 0, 0, 0.5);
 	}
 
 	.screen-share-card {
@@ -343,5 +413,34 @@
 	.disconnect-btn {
 		width: 64px;
 		border-radius: 24px;
+	}
+
+	.fullscreen-btn {
+		position: absolute;
+		top: 12px;
+		right: 12px;
+		background: rgba(0, 0, 0, 0.5);
+		border: none;
+		color: white;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		font-size: 20px;
+		opacity: 0;
+		transition:
+			opacity 0.2s ease,
+			background 0.2s ease;
+	}
+
+	.user-card:hover .fullscreen-btn {
+		opacity: 1;
+	}
+
+	.fullscreen-btn:hover {
+		background: rgba(0, 0, 0, 0.8);
 	}
 </style>

@@ -41,6 +41,7 @@ export const useDMStore = defineStore('dm', {
 			});
 		},
 		async init() {
+			this.setupListeners();
 			const dms = (await fetchDms()).map(([a, b]) => a);
 			const userStore = useUserStore();
 			this.dms = await userStore.getUsers(dms);

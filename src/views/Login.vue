@@ -21,7 +21,7 @@
 		isLoading.value = true;
 		try {
 			await login(username.value, password.value);
-			keyStore.init(password.value);
+			keyStore.storeKeys(password.value);
 			websocketService.connect();
 			router.push({ name: 'chats' });
 		} catch (err: any) {

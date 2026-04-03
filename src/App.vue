@@ -4,16 +4,14 @@
 	import { useAppStore } from '@/stores/app';
 	import Header from './components/Header.vue';
 	import Modals from './components/Modals.vue';
-	import VoiceAudioRenderer from './components/Voice/VoiceAudioRenderer.vue';
-
-	const isTauri = !!(window as any).__TAURI_INTERNALS__;
+	import GlobalVoiceOverlay from './components/Voice/GlobalVoiceOverlay.vue';
 
 	const appStore = useAppStore();
 	const router = useRouter();
 	const route = useRoute();
 
 	onMounted(async () => {
-		if (isTauri) {
+		if (appStore.isTauri) {
 			document.documentElement.classList.add('tauri');
 		}
 
@@ -31,7 +29,7 @@
 		</Transition>
 	</router-view>
 	<Modals />
-	<VoiceAudioRenderer />
+	<GlobalVoiceOverlay />
 </template>
 
 <style>

@@ -8,6 +8,7 @@
 	import Invite from '@/modals/Invite.vue';
 	import JoinInvite from '@/modals/JoinInvite.vue';
 	import Calling from '@/modals/Calling.vue';
+	import WatchParty from '@/modals/WatchParty.vue';
 
 	const modalStore = useModalStore();
 </script>
@@ -23,6 +24,7 @@
 			<Invite v-else-if="modalStore.view === ModalView.INVITE" />
 			<JoinInvite v-else-if="modalStore.view === ModalView.JOIN_INVITE" />
 			<Calling v-else-if="modalStore.view === ModalView.CALLING" />
+			<WatchParty v-else-if="modalStore.view === ModalView.WATCH_PARTY" />
 		</Transition>
 	</div>
 </template>

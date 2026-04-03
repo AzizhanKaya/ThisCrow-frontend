@@ -22,6 +22,16 @@ export type Channel = {
 	type: ChannelType;
 	messages?: Message[];
 	users?: Set<User>;
+	watch_party?: WatchParty;
+};
+
+export type WatchParty = {
+	video: id;
+	title: string;
+	host: id;
+	users: id[];
+	offset: number;
+	playing: boolean;
 };
 
 export enum ChannelType {
@@ -189,7 +199,14 @@ export type Event =
 	/* ==== webRTC ==== */
 	| { event: EventType.Offer; payload: string }
 	| { event: EventType.Answer; payload: string }
-	| { event: EventType.IceCandidate; payload: string };
+	| { event: EventType.IceCandidate; payload: RTCIceCandidateInit }
+
+	/* ==== WATCH PARTY ==== */
+	| { event: EventType.JoinParty }
+	| { event: EventType.LeaveParty }
+	| { event: EventType.Watch; payload: id }
+	| { event: EventType.UnWatch }
+	| { event: EventType.JumpTo; payload: { offset: number; play: boolean } };
 
 export enum EventType {
 	/* ===== USER ===== */
@@ -235,6 +252,13 @@ export enum EventType {
 	Offer = 'offer',
 	Answer = 'answer',
 	IceCandidate = 'ice_candidate',
+
+	/* ==== WATCH PARTY ==== */
+	JoinParty = 'join_party',
+	LeaveParty = 'leave_party',
+	Watch = 'watch',
+	UnWatch = 'unwatch',
+	JumpTo = 'jump_to',
 }
 
 export type Ack =
@@ -324,7 +348,15 @@ export type Ack =
 	/* ===== VOICE ===== */
 	| { ack: AckType.JoinedVoice; payload: id }
 	| { ack: AckType.ExitedVoice; payload: id }
-	| { ack: AckType.MovedToVoice; payload: id };
+	| { ack: AckType.MovedToVoice; payload: id }
+
+	/* ===== WATCH PARTY ===== */
+	| { ack: AckType.CreatedParty; payload: id }
+	| { ack: AckType.JoinedParty; payload: id }
+	| { ack: AckType.LeftParty; payload: id }
+	| { ack: AckType.Watching; payload: id }
+	| { ack: AckType.UnWatched; payload: undefined }
+	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } };
 
 export enum AckType {
 	None = 'none',
@@ -360,4 +392,11 @@ export enum AckType {
 	JoinedVoice = 'joined_voice',
 	ExitedVoice = 'exited_voice',
 	MovedToVoice = 'moved_to_voice',
+	// WATCH PARTY
+	CreatedParty = 'created_party',
+	JoinedParty = 'joined_party',
+	LeftParty = 'left_party',
+	Watching = 'watching',
+	UnWatched = 'unwatched',
+	JumpedTo = 'jumped_to',
 }

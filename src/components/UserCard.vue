@@ -8,6 +8,7 @@
 	import { Icon } from '@iconify/vue';
 	import { websocketService } from '@/services/websocket';
 	import { getDefaultAvatar } from '@/utils/avatar';
+	import { webrtcService } from '@/services/webrtc';
 
 	const meStore = useMeStore();
 	const voiceStore = useVoiceStore();
@@ -89,7 +90,7 @@
 		</div>
 
 		<div class="user-card" ref="userCardRef" @click="handleUserCardClick">
-			<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
+			<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" :class="{ 'is-speaking': webrtcService.speakingUsers.has(user.id) }" />
 
 			<div class="names">
 				<span class="name">{{ user.name }}</span>
@@ -175,6 +176,11 @@
 		aspect-ratio: 1;
 		height: 100%;
 		border-radius: 50%;
+		transition: box-shadow 0.2s ease;
+	}
+
+	.avatar.is-speaking {
+		box-shadow: 0 0 0 2px var(--success), 0 0 12px var(--success);
 	}
 
 	.names {

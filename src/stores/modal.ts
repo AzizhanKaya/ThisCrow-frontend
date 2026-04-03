@@ -11,6 +11,7 @@ export enum ModalView {
 	INVITE = 'INVITE',
 	JOIN_INVITE = 'JOIN_INVITE',
 	CALLING = 'CALLING',
+	WATCH_PARTY = 'WATCH_PARTY',
 }
 
 export const useModalStore = defineStore('modal', () => {
@@ -19,8 +20,8 @@ export const useModalStore = defineStore('modal', () => {
 	const data = ref<any>(null);
 
 	function openModal(modalView: ModalView, modalData: any = null) {
-		view.value = modalView;
 		data.value = modalData;
+		view.value = modalView;
 		isOpen.value = true;
 	}
 
