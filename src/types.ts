@@ -27,6 +27,7 @@ export type Channel = {
 
 export interface Watch {
 	video: id;
+	title: string;
 	offset: number;
 	playing: boolean;
 }
