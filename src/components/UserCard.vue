@@ -90,7 +90,11 @@
 		</div>
 
 		<div class="user-card" ref="userCardRef" @click="handleUserCardClick">
-			<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" :class="{ 'is-speaking': webrtcService.speakingUsers.has(user.id) }" />
+			<img
+				class="avatar"
+				:src="user.avatar || getDefaultAvatar(user.username)"
+				:class="{ 'is-speaking': webrtcService.speakingUsers.has(user.id) }"
+			/>
 
 			<div class="names">
 				<span class="name">{{ user.name }}</span>
@@ -98,12 +102,12 @@
 			</div>
 
 			<div ref="statusContainer" class="status-container" @click.stop="showStatusMenu = !showStatusMenu">
-				<div class="status" :class="getStatus"></div>
+				<div class="status" :class="'status-' + getStatus"></div>
 
 				<Transition name="fade">
 					<div v-if="showStatusMenu" class="status-menu" @click.stop>
 						<div v-for="status in Object.values(Status)" :key="status" class="status-option" @click="changeStatus(status)">
-							<div class="status-indicator" :class="status.toLowerCase()"></div>
+							<div class="status-indicator" :class="'status-' + status.toLowerCase()"></div>
 							<span>{{ status }}</span>
 						</div>
 					</div>
@@ -180,7 +184,9 @@
 	}
 
 	.avatar.is-speaking {
-		box-shadow: 0 0 0 2px var(--success), 0 0 12px var(--success);
+		box-shadow:
+			0 0 0 2px var(--success),
+			0 0 12px var(--success);
 	}
 
 	.names {
@@ -381,19 +387,6 @@
 	.fade-leave-to {
 		opacity: 0;
 		transform: translate3d(0, 10px, 0) scale(0.95);
-	}
-
-	.online {
-		background-color: var(--success);
-	}
-	.dnd {
-		background-color: var(--error);
-	}
-	.idle {
-		background-color: #e2e446;
-	}
-	.offline {
-		background-color: var(--text-muted);
 	}
 
 	.voice-panel {

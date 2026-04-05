@@ -3,7 +3,8 @@ use serde::Serialize;
 #[derive(Debug, Serialize, Clone)]
 pub enum MusicActivity {
     Playing(Music),
-    Paused(Music),
+    Seek(i64),
+    Paused,
     Stopped,
 }
 
@@ -14,6 +15,7 @@ pub struct Music {
     pub artist: String,
     pub album: String,
     pub album_url: String,
+    pub length: u64,
 }
 
 #[cfg(target_os = "linux")]

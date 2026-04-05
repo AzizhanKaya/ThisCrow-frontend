@@ -24,14 +24,6 @@
 	const route = useRoute();
 	const user_id = computed(() => route.params.userId as string);
 
-	watch(
-		user_id,
-		(id) => {
-			if (id) dmStore.ensureUser(Number(id));
-		},
-		{ immediate: true }
-	);
-
 	function handleUserClick(user: UserType) {
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
@@ -75,8 +67,7 @@
 		};
 	}
 
-	async function handleMessage(user: UserType) {
-		await dmStore.ensureUser(user.id);
+	function handleMessage(user: UserType) {
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
@@ -86,6 +77,7 @@
 
 		switch (action) {
 			case 'profile':
+				modalStore.openModal(ModalView.PROFILE_CARD, { user });
 				break;
 			case 'message':
 				handleMessage(user);

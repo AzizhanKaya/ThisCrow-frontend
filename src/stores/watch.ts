@@ -26,7 +26,7 @@ export const useWatchStore = defineStore('watch', {
 				try {
 					await task();
 				} catch (error) {
-					console.error('[WatchParty] Kuyruk görevi başarısız oldu:', error);
+					console.error('[WatchParty]:', error);
 				}
 			});
 		},

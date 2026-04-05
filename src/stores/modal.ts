@@ -12,6 +12,7 @@ export enum ModalView {
 	JOIN_INVITE = 'JOIN_INVITE',
 	CALLING = 'CALLING',
 	WATCH_PARTY = 'WATCH_PARTY',
+	PROFILE_CARD = 'PROFILE_CARD',
 }
 
 export const useModalStore = defineStore('modal', () => {

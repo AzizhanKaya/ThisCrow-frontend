@@ -100,19 +100,6 @@
 </template>
 
 <style scoped>
-	.modal-backdrop {
-		position: fixed;
-		top: 0;
-		left: 0;
-		width: 100vw;
-		height: 100vh;
-		background-color: var(--overlay);
-		z-index: 1000;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
 	.modal-container {
 		background-color: var(--bg-darker);
 		width: 400px;

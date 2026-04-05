@@ -24,7 +24,31 @@ const routes = [
 				component: Chats,
 				children: [
 					{ path: 'friends', name: 'friends', component: Friends },
-					{ path: 'user/:userId', name: 'user', component: Chat },
+					{
+						path: 'user/:userId',
+						name: 'user',
+						component: Chat,
+						beforeEnter: async (to: any) => {
+							const appStore = useAppStore();
+
+							if (appStore.loading) {
+								await new Promise<void>((resolve) => {
+									const unwatch = watch(
+										() => appStore.loading,
+										(isLoading) => {
+											if (!isLoading) {
+												unwatch();
+												resolve();
+											}
+										}
+									);
+								});
+							}
+
+							const dmStore = useDMStore();
+							await dmStore.ensureUser(Number(to.params.userId));
+						},
+					},
 				],
 			},
 			{
@@ -85,6 +109,7 @@ const router = createRouter({
 import { useMeStore } from '@/stores/me';
 import { useServerStore } from './stores/server';
 import { useAppStore } from './stores/app';
+import { useDMStore } from './stores/dm';
 import { watch } from 'vue';
 
 router.beforeEach((to) => {

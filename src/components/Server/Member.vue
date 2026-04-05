@@ -4,14 +4,17 @@
 	import { type Member, type User, Status } from '@/types';
 	import { ref } from 'vue';
 	import ContextMenu from '@/components/ContextMenu.vue';
+	import ProfileCard from '@/components/ProfileCard.vue';
 	import { Icon } from '@iconify/vue';
 	import { useRouter } from 'vue-router';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useServerStore } from '@/stores/server';
 	import { getDefaultAvatar } from '@/utils/avatar';
+	import { useModalStore, ModalView } from '@/stores/modal';
 
 	const friendStore = useFriendStore();
 	const serverStore = useServerStore();
+	const modalStore = useModalStore();
 	const router = useRouter();
 
 	const props = defineProps<{
@@ -31,13 +34,17 @@
 		}
 	}
 
-	async function handleMessage(user: User) {
-		const dmStore = useDMStore();
-		await dmStore.ensureUser(user.id);
+	function handleMessage(user: User) {
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
 	const contextMenu = ref({
+		show: false,
+		x: 0,
+		y: 0,
+	});
+
+	const profileCard = ref({
 		show: false,
 		x: 0,
 		y: 0,
@@ -64,6 +71,22 @@
 			y: rect.bottom + 4,
 		};
 	}
+
+	function openProfileCard(e: MouseEvent) {
+		if (profileCard.value.show) {
+			profileCard.value.show = false;
+			return;
+		}
+		document.dispatchEvent(new Event('click'));
+		const target = ((e.currentTarget as HTMLElement).querySelector('.name') || e.currentTarget) as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		profileCard.value = {
+			show: true,
+			x: rect.right + 14,
+			y: rect.top - 10,
+		};
+	}
+
 	function handleContextAction(action: string) {
 		const user = props.member.user;
 
@@ -72,7 +95,7 @@
 				handleMessage(user);
 				break;
 			case 'profile':
-				console.log('Open profile for', user.username);
+				modalStore.openModal(ModalView.PROFILE_CARD, { user });
 				break;
 			case 'unfriend':
 				friendStore.removeFriend(user);
@@ -89,7 +112,7 @@
 </script>
 
 <template>
-	<div class="user-card" @contextmenu.prevent="openContextMenu($event)">
+	<div class="user-card" @click.stop="openProfileCard($event)" @contextmenu.prevent="openContextMenu($event)">
 		<div class="user-info">
 			<div class="avatar-container">
 				<img :src="member.user.avatar || getDefaultAvatar(member.user.username)" alt="avatar" class="avatar loaded" />
@@ -113,6 +136,14 @@
 			@select="handleContextAction"
 			@close="closeContextMenu"
 			:min-width="260"
+		/>
+
+		<ProfileCard
+			:user="member.user"
+			:show="profileCard.show"
+			:x="profileCard.x"
+			:y="profileCard.y"
+			@close="profileCard.show = false"
 		/>
 	</div>
 </template>

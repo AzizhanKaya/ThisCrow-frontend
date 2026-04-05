@@ -1,11 +1,12 @@
 <script setup lang="ts">
-	import { computed, type PropType } from 'vue';
+	import { computed, type PropType, ref } from 'vue';
 	import type { Message, MessageData, MultiData, User } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import { is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
 	import { decrypt_message } from '@/../pkg/wasm_lib';
 	import { decode } from '@/utils/msgpack';
 	import { getDefaultAvatar } from '@/utils/avatar';
+	import ProfileCard from '@/components/ProfileCard.vue';
 
 	const props = defineProps({
 		message: {
@@ -65,15 +66,36 @@
 		}
 		return undefined;
 	});
+
+	const profileCard = ref({
+		show: false,
+		x: 0,
+		y: 0,
+	});
+
+	function openProfileCard(e: MouseEvent) {
+		if (!props.user) return;
+		if (profileCard.value.show) {
+			profileCard.value.show = false;
+			return;
+		}
+		document.dispatchEvent(new Event('click'));
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		profileCard.value = {
+			show: true,
+			x: rect.right + 10,
+			y: rect.top,
+		};
+	}
 </script>
 
 <template>
 	<div class="message" :class="{ 'with-user': user }">
-		<img v-if="user" class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
+		<img v-if="user" class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" @click.stop="openProfileCard($event)" style="cursor: pointer" />
 
 		<div class="content">
 			<div v-if="user" class="message-header">
-				<span class="name">{{ user.name }}</span>
+				<span class="name" @click.stop="openProfileCard($event)">{{ user.name }}</span>
 				<span class="time-header">
 					{{ snowflake_to_date(props.message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
@@ -132,6 +154,15 @@
 				</span>
 			</div>
 		</div>
+
+		<ProfileCard
+			v-if="user"
+			:user="user"
+			:show="profileCard.show"
+			:x="profileCard.x"
+			:y="profileCard.y"
+			@close="profileCard.show = false"
+		/>
 	</div>
 </template>
 

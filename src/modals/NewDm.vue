@@ -85,9 +85,8 @@
 		}, 600);
 	});
 
-	const handleMessage = async (user: User) => {
+	const handleMessage = (user: User) => {
 		modalStore.closeModal();
-		await dmStore.ensureUser(user.id);
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	};
 </script>
@@ -148,19 +147,6 @@
 </template>
 
 <style scoped>
-	.modal-backdrop {
-		position: fixed;
-		top: 0;
-		left: 0;
-		width: 100vw;
-		height: 100vh;
-		background-color: var(--overlay);
-		z-index: 1000;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
 	.modal-container {
 		background-color: var(--bg);
 		width: 460px;

@@ -38,8 +38,6 @@
 		(newId, oldId, onCleanup) => {
 			if (!newId || newId === 0) return;
 
-			console.log(newId, oldId);
-
 			serverStore.subscribeToServer(newId);
 
 			const unsubscribe = async () => serverStore.unsubscribeFromServer(newId);

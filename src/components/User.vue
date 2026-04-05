@@ -2,16 +2,34 @@
 	import type { PropType } from 'vue';
 	import { type User, Status } from '@/types';
 	import { getDefaultAvatar } from '@/utils/avatar';
+	import ProfileCard from '@/components/ProfileCard.vue';
 
 	export default {
+		components: {
+			ProfileCard,
+		},
 		props: {
 			user: {
 				type: Object as PropType<User>,
 				required: true,
 			},
 		},
+		data() {
+			return {
+				profileCard: { show: false, x: 0, y: 0 },
+			};
+		},
 		methods: {
 			getDefaultAvatar,
+			openProfileCard(e: MouseEvent) {
+				if (this.profileCard.show) {
+					this.profileCard.show = false;
+					return;
+				}
+				document.dispatchEvent(new Event('click')); // Close any other open popovers
+				const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+				this.profileCard = { show: true, x: rect.right + 10, y: rect.top };
+			},
 		},
 		computed: {
 			getStatus(): string {
@@ -34,9 +52,17 @@
 	<div class="user">
 		<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
 
-		<span class="name">{{ user.name }}</span>
+		<span class="name" @click.stop="openProfileCard($event)">{{ user.name }}</span>
 		<span class="username">@{{ user.username }}</span>
-		<div class="status" :class="getStatus"></div>
+		<div class="status" :class="'status-' + getStatus"></div>
+
+		<ProfileCard
+			:user="user"
+			:show="profileCard.show"
+			:x="profileCard.x"
+			:y="profileCard.y"
+			@close="profileCard.show = false"
+		/>
 	</div>
 </template>
 
@@ -70,6 +96,11 @@
 		left: 60px;
 	}
 
+	.name:hover {
+		text-decoration: underline;
+		cursor: pointer;
+	}
+
 	.username {
 		font-size: 0.8rem;
 		color: #bebebe;
@@ -87,18 +118,5 @@
 		border: 2px #333 solid;
 		left: 40px;
 		bottom: 5px;
-	}
-
-	.online {
-		background-color: #43b581;
-	}
-	.dnd {
-		background-color: #f04747;
-	}
-	.idle {
-		background-color: #e2e446;
-	}
-	.offline {
-		background-color: #72767d;
 	}
 </style>

@@ -147,6 +147,19 @@
 	.tauri.maximized #app {
 		border-radius: 0;
 	}
+
+	.status-online {
+		background-color: #43b581;
+	}
+	.status-idle {
+		background-color: #e2e446;
+	}
+	.status-dnd {
+		background-color: #f04747;
+	}
+	.status-offline {
+		background-color: #72767d;
+	}
 </style>
 
 <style scoped>

@@ -4,12 +4,15 @@
 	import { type User, Status } from '@/types';
 	import { ref } from 'vue';
 	import ContextMenu from '@/components/ContextMenu.vue';
+	import ProfileCard from '@/components/ProfileCard.vue';
 	import { Icon } from '@iconify/vue';
 	import { useRouter } from 'vue-router';
+	import { useModalStore, ModalView } from '@/stores/modal';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const friendStore = useFriendStore();
+	const modalStore = useModalStore();
 	const router = useRouter();
 
 	const props = defineProps<{
@@ -32,13 +35,17 @@
 		}
 	}
 
-	async function handleMessage(user: User) {
-		const dmStore = useDMStore();
-		await dmStore.ensureUser(user.id);
+	function handleMessage(user: User) {
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
 	const contextMenu = ref({
+		show: false,
+		x: 0,
+		y: 0,
+	});
+
+	const profileCard = ref({
 		show: false,
 		x: 0,
 		y: 0,
@@ -68,6 +75,21 @@
 		};
 	}
 
+	function openProfileCard(e: MouseEvent) {
+		if (profileCard.value.show) {
+			profileCard.value.show = false;
+			return;
+		}
+		document.dispatchEvent(new Event('click'));
+		const target = ((e.currentTarget as HTMLElement).querySelector('.name') || e.currentTarget) as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		profileCard.value = {
+			show: true,
+			x: rect.right + 14,
+			y: rect.top - 10,
+		};
+	}
+
 	function handleContextAction(action: string) {
 		const user = props.user;
 
@@ -76,7 +98,7 @@
 				handleMessage(user);
 				break;
 			case 'profile':
-				console.log('Open profile for', user.username);
+				modalStore.openModal(ModalView.PROFILE_CARD, { user });
 				break;
 			case 'unfriend':
 				friendStore.removeFriend(user);
@@ -93,11 +115,11 @@
 </script>
 
 <template>
-	<div class="user-card" @contextmenu.prevent="openContextMenu($event)">
+	<div class="user-card" @click.stop="openProfileCard($event)" @contextmenu.prevent="openContextMenu($event)">
 		<div class="user-info">
 			<div class="avatar-container">
 				<img :src="user.avatar || getDefaultAvatar(user.username)" alt="avatar" class="avatar loaded" />
-				<div :class="['state', getState(user)]"></div>
+				<div :class="['state', 'status-' + getState(user)]"></div>
 			</div>
 			<div class="user-text">
 				<div class="names">
@@ -111,13 +133,18 @@
 			<button v-if="friend" class="icon-btn" @click.stop="handleMessage(user)" title="Send message">
 				<Icon icon="mdi:message" />
 			</button>
-			<button v-if="friend" class="icon-btn" title="More options">
+			<button v-if="friend" class="icon-btn" title="More options" @click.stop="openContextMenu($event)">
 				<Icon icon="mdi:dots-vertical" />
 			</button>
-			<button v-if="request" @click="friendStore.acceptFriendRequest(user)" class="icon-btn success" title="Accept request">
+			<button v-if="request" @click.stop="friendStore.acceptFriendRequest(user)" class="icon-btn success" title="Accept request">
 				<Icon icon="mdi:check" />
 			</button>
-			<button v-if="request || request_sent" @click="friendStore.removeFriend(user)" class="icon-btn danger" title="Cancel request">
+			<button
+				v-if="request || request_sent"
+				@click.stop="friendStore.removeFriend(user)"
+				class="icon-btn danger"
+				title="Cancel request"
+			>
 				<Icon icon="mdi:close" />
 			</button>
 		</div>
@@ -131,6 +158,8 @@
 			@close="closeContextMenu"
 			:min-width="260"
 		/>
+
+		<ProfileCard :user="user" :show="profileCard.show" :x="profileCard.x" :y="profileCard.y" @close="profileCard.show = false" />
 	</div>
 </template>
 
@@ -182,19 +211,6 @@
 		left: 29px;
 		bottom: 5px;
 		flex-shrink: 0;
-	}
-
-	.state.online {
-		background-color: #43b581;
-	}
-	.state.dnd {
-		background-color: #f04747;
-	}
-	.state.idle {
-		background-color: #e2e446;
-	}
-	.state.offline {
-		background-color: #72767d;
 	}
 
 	.user-text {

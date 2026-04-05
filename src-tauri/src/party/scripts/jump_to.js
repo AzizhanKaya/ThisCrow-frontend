@@ -28,14 +28,14 @@ new Promise((resolve, reject) => {
                             const offset = OFFSET;
                             const isPlaying = PLAY;
 
-                            const targetMs = isPlaying ? (Date.now() - offset) : offset;
-                            player.seek(targetMs);
-                            
                             if (isPlaying) {
                                 player.play();
                             } else {
                                 player.pause();
                             }
+
+                            const targetMs = isPlaying ? (Date.now() - offset) : offset;
+                            player.seek(targetMs);
 
                             resolve("Success");
                             return;

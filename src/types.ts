@@ -25,14 +25,16 @@ export type Channel = {
 	watch_party?: WatchParty;
 };
 
-export type WatchParty = {
+export interface Watch {
 	video: id;
-	title: string;
-	host: id;
-	users: id[];
 	offset: number;
 	playing: boolean;
-};
+}
+
+export interface WatchParty extends Watch {
+	host: id;
+	users: id[];
+}
 
 export enum ChannelType {
 	Text = 'text',
@@ -67,7 +69,36 @@ export type User = {
 	status: Status;
 	friends?: id[];
 	groups?: id[];
+	activity?: Activity;
+	watch?: Watch;
 };
+
+export type Activity =
+	| {
+			kind: 'Game';
+			name: string;
+			time: Date;
+	  }
+	| {
+			kind: 'Music';
+			title: string;
+			artist: string;
+			album: string;
+			album_url: string;
+			length: number;
+			offset: number;
+	  }
+	| {
+			kind: 'Watching';
+			video: id;
+			offset: number;
+	  }
+	| {
+			kind: 'Streaming';
+			group_id: id;
+			channel_id: id;
+			time: Date;
+	  };
 
 export interface Me extends User {
 	friends: id[];

@@ -47,7 +47,7 @@ export const useDMStore = defineStore('dm', {
 			this.dms = await userStore.getUsers(dms);
 		},
 
-		async ensureUser(id: id) {
+		async ensureUser(id: id): Promise<User> {
 			if (this.getUser(id)) return this.getUser(id)!;
 
 			if (this.loading_user.has(id)) {

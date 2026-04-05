@@ -90,6 +90,11 @@ pub fn run() {
                 });
             }
 
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                tauri::async_runtime::spawn(activity::game::start_steam_tracker());
+            }
+
             Ok(())
         })
         .manage({

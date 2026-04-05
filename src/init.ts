@@ -29,6 +29,7 @@ export async function initApp() {
 	userStore.init(me);
 	meStore.changeStatus(Status.Online);
 	voiceStore.init();
+	keyStore.init();
 
 	if (appStore.isTauri) {
 		watchStore.init();
@@ -38,6 +39,5 @@ export async function initApp() {
 		friendStore.init(me.friends, me.friend_requests, me.friend_requests_sent),
 		serverStore.init(me.groups),
 		dmStore.init(),
-		keyStore.init(),
 	]);
 }
