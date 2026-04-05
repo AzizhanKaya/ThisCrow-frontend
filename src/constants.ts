@@ -3,6 +3,11 @@ const API_PORT = import.meta.env.VITE_API_PORT;
 const WS_PORT = import.meta.env.VITE_WS_PORT;
 const HTTPS = import.meta.env.VITE_HTTPS === 'true';
 
-export const HOST_URL = (HTTPS ? 'https://' : 'http://') + DOMAIN_ADDRESS;
-export const API_URL = HOST_URL + (API_PORT ? ':' + API_PORT : '') + '/api';
-export const WS_URL = (HTTPS ? 'wss://' : 'ws://') + DOMAIN_ADDRESS + (WS_PORT ? ':' + WS_PORT : '');
+const PROTOCOL = HTTPS ? 'https://' : 'http://';
+const WS_PROTOCOL = HTTPS ? 'wss://' : 'ws://';
+
+export const HOST_URL = PROTOCOL + DOMAIN_ADDRESS;
+
+export const API_URL = API_PORT ? HOST_URL + ':' + API_PORT + '/api' : HOST_URL + '/api';
+
+export const WS_URL = WS_PORT ? WS_PROTOCOL + DOMAIN_ADDRESS + ':' + WS_PORT + '/ws' : WS_PROTOCOL + DOMAIN_ADDRESS + '/ws';
