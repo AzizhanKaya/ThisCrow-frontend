@@ -4,25 +4,30 @@ use anyhow::anyhow;
 use tauri::{AppHandle, Emitter};
 use windows::Foundation::TypedEventHandler;
 use windows::Media::Control::{
+    CurrentSessionChangedEventArgs, GlobalSystemMediaTransportControlsSession,
     GlobalSystemMediaTransportControlsSessionManager,
-    GlobalSystemMediaTransportControlsSessionPlaybackStatus,
+    GlobalSystemMediaTransportControlsSessionPlaybackStatus, MediaPropertiesChangedEventArgs,
+    PlaybackInfoChangedEventArgs,
 };
 
 pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-        .map_err(|e| anyhow!(e))?
-        .await
-        .map_err(|e| anyhow!(e))?;
+        .map_err(|e: windows::core::Error| anyhow!(e))?
+        .get()
+        .map_err(|e: windows::core::Error| anyhow!(e))?;
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
     let tx_session = tx.clone();
     manager
-        .CurrentSessionChanged(&TypedEventHandler::new(move |_, _| {
+        .CurrentSessionChanged(&TypedEventHandler::<
+            GlobalSystemMediaTransportControlsSessionManager,
+            CurrentSessionChangedEventArgs,
+        >::new(move |_, _| {
             let _ = tx_session.send(());
             Ok(())
         }))
-        .map_err(|e| anyhow!(e))?;
+        .map_err(|e: windows::core::Error| anyhow!(e))?;
 
     let mut current_session_id = String::new();
 
@@ -39,13 +44,19 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
                 current_session_id = source_app;
 
                 let tx_props = tx.clone();
-                let _ = session.MediaPropertiesChanged(&TypedEventHandler::new(move |_, _| {
+                let _ = session.MediaPropertiesChanged(&TypedEventHandler::<
+                    GlobalSystemMediaTransportControlsSession,
+                    MediaPropertiesChangedEventArgs,
+                >::new(move |_, _| {
                     let _ = tx_props.send(());
                     Ok(())
                 }));
 
                 let tx_playback = tx.clone();
-                let _ = session.PlaybackInfoChanged(&TypedEventHandler::new(move |_, _| {
+                let _ = session.PlaybackInfoChanged(&TypedEventHandler::<
+                    GlobalSystemMediaTransportControlsSession,
+                    PlaybackInfoChangedEventArgs,
+                >::new(move |_, _| {
                     let _ = tx_playback.send(());
                     Ok(())
                 }));
@@ -59,7 +70,7 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
             let mut activity = Music::default();
 
             if let Ok(op) = session.TryGetMediaPropertiesAsync() {
-                if let Ok(properties) = op.await {
+                if let Ok(properties) = op.get() {
                     activity.title = properties.Title().unwrap_or_default().to_string();
                     activity.artist = properties.Artist().unwrap_or_default().to_string();
                     activity.album = properties.AlbumTitle().unwrap_or_default().to_string();
