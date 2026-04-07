@@ -80,6 +80,7 @@
 				modalStore.openModal(ModalView.INVITE, { server_id: server_id.value, server_name: server.name });
 				break;
 			case 'settings':
+				modalStore.openModal(ModalView.SERVER_SETTINGS, { server_id: server_id.value });
 				break;
 		}
 	};

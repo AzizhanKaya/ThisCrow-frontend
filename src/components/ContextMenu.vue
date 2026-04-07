@@ -11,6 +11,10 @@
 		subtext?: string;
 		rightIcon?: string;
 		rightText?: string;
+		children?: ContextMenuOption[];
+		checked?: boolean;
+		stayOpen?: boolean;
+		data?: any;
 	};
 
 	const props = defineProps<{
@@ -22,11 +26,12 @@
 	}>();
 
 	const emit = defineEmits<{
-		(e: 'select', action: string): void;
+		(e: 'select', action: string, option: ContextMenuOption): void;
 		(e: 'close'): void;
 	}>();
 
 	const menuRef = ref<HTMLElement | null>(null);
+	const activeSubmenu = ref<number | null>(null);
 
 	const handleClickOutside = () => {
 		emit('close');
@@ -83,29 +88,74 @@
 		<div v-if="show" ref="menuRef" class="context-menu" @click.stop @contextmenu.prevent>
 			<template v-for="(option, index) in options" :key="option.action || index">
 				<div v-if="option.divider" class="menu-divider"></div>
-				<button
+				<div
 					v-else
-					class="menu-item"
-					:class="option.variant"
-					@click="
-						if (option.action) {
-							emit('select', option.action);
-							emit('close');
-						}
-					"
+					class="menu-item-wrapper"
+					@mouseenter="activeSubmenu = index"
+					@mouseleave="activeSubmenu = null"
 				>
-					<div class="item-left">
-						<Icon v-if="option.icon" :icon="option.icon" class="item-icon" />
-						<div class="item-text">
-							<span class="label">{{ option.label }}</span>
-							<span v-if="option.subtext" class="subtext">{{ option.subtext }}</span>
+					<button
+						class="menu-item"
+						:class="option.variant"
+						@click="
+							if (option.action) {
+								emit('select', option.action, option);
+								if (!option.stayOpen) emit('close');
+							}
+						"
+					>
+						<div class="item-left">
+							<div v-if="option.checked !== undefined" class="check-box">
+								<Icon v-if="option.checked" icon="mdi:check" class="check-icon" />
+							</div>
+							<Icon v-if="option.icon" :icon="option.icon" class="item-icon" />
+							<div class="item-text">
+								<span class="label">{{ option.label }}</span>
+								<span v-if="option.subtext" class="subtext">{{ option.subtext }}</span>
+							</div>
+						</div>
+						<div class="item-right" v-if="option.rightIcon || option.rightText || option.children">
+							<Icon v-if="option.rightIcon" :icon="option.rightIcon" class="right-icon" />
+							<span v-if="option.rightText" class="right-badge">{{ option.rightText }}</span>
+							<Icon v-if="option.children" icon="mdi:chevron-right" class="right-icon" />
+						</div>
+					</button>
+					
+					<!-- Nested Menu -->
+					<div v-if="option.children && activeSubmenu === index" class="submenu-container">
+						<div class="context-menu nested-menu">
+							<template v-for="(child, childIndex) in option.children" :key="child.action || childIndex">
+								<div v-if="child.divider" class="menu-divider"></div>
+								<button
+									v-else
+									class="menu-item"
+									:class="child.variant"
+									@click="
+										if (child.action) {
+											emit('select', child.action, child);
+											if (!child.stayOpen) emit('close');
+										}
+									"
+								>
+									<div class="item-left">
+										<div v-if="child.checked !== undefined" class="check-box">
+											<Icon v-if="child.checked" icon="mdi:check" class="check-icon" />
+										</div>
+										<Icon v-if="child.icon" :icon="child.icon" class="item-icon" />
+										<div class="item-text">
+											<span class="label">{{ child.label }}</span>
+											<span v-if="child.subtext" class="subtext">{{ child.subtext }}</span>
+										</div>
+									</div>
+									<div class="item-right" v-if="child.rightIcon || child.rightText">
+										<Icon v-if="child.rightIcon" :icon="child.rightIcon" class="right-icon" />
+										<span v-if="child.rightText" class="right-badge">{{ child.rightText }}</span>
+									</div>
+								</button>
+							</template>
 						</div>
 					</div>
-					<div class="item-right" v-if="option.rightIcon || option.rightText">
-						<Icon v-if="option.rightIcon" :icon="option.rightIcon" class="right-icon" />
-						<span v-if="option.rightText" class="right-badge">{{ option.rightText }}</span>
-					</div>
-				</button>
+				</div>
 			</template>
 		</div>
 	</Transition>
@@ -143,6 +193,23 @@
 		height: 1px;
 		background-color: var(--border);
 		margin: 4px 0;
+	}
+
+	.menu-item-wrapper {
+		position: relative;
+	}
+
+	.submenu-container {
+		position: absolute;
+		left: 100%;
+		top: -8px;
+		padding-left: 6px;
+		z-index: 101;
+	}
+
+	.nested-menu {
+		position: static;
+		min-width: 180px;
 	}
 
 	.menu-item {
@@ -247,6 +314,20 @@
 
 	.menu-item.success:hover .label,
 	.menu-item.success:hover .item-icon {
+		color: var(--text);
+	}
+
+	.check-box {
+		width: 16px;
+		height: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.check-icon {
+		font-size: 16px;
 		color: var(--text);
 	}
 </style>

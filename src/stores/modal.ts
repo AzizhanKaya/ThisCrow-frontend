@@ -13,6 +13,7 @@ export enum ModalView {
 	CALLING = 'CALLING',
 	WATCH_PARTY = 'WATCH_PARTY',
 	PROFILE_CARD = 'PROFILE_CARD',
+	SERVER_SETTINGS = 'SERVER_SETTINGS',
 }
 
 export const useModalStore = defineStore('modal', () => {

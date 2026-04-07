@@ -10,6 +10,7 @@
 	import Calling from '@/modals/Calling.vue';
 	import WatchParty from '@/modals/WatchParty.vue';
 	import ProfileCard from '@/modals/ProfileCard.vue';
+	import ServerSettings from '@/modals/ServerSettings.vue';
 
 	const modalStore = useModalStore();
 </script>
@@ -27,6 +28,7 @@
 			<Calling v-else-if="modalStore.view === ModalView.CALLING" />
 			<WatchParty v-else-if="modalStore.view === ModalView.WATCH_PARTY" />
 			<ProfileCard v-else-if="modalStore.view === ModalView.PROFILE_CARD" />
+			<ServerSettings v-else-if="modalStore.view === ModalView.SERVER_SETTINGS" />
 		</Transition>
 	</div>
 </template>

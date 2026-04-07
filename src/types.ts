@@ -52,7 +52,39 @@ export type Role = {
 	name: string;
 	position: number;
 	color: string;
+	permissions: number;
 };
+
+export enum Permissions {
+	// ─── Core / Admin ───
+	ADMINISTRATOR = 1 << 0,
+	VIEW_AUDIT_LOG = 1 << 1,
+	MANAGE_GROUP = 1 << 2,
+	MANAGE_ROLES = 1 << 3,
+	MANAGE_CHANNELS = 1 << 4,
+	KICK_MEMBERS = 1 << 5,
+	BAN_MEMBERS = 1 << 6,
+	CREATE_INVITE = 1 << 7,
+	DELETE_INVITE = 1 << 8,
+
+	// ─── Text ───
+	VIEW_CHANNEL = 1 << 9,
+	VIEW_MESSAGES = 1 << 10,
+	SEND_MESSAGE = 1 << 11,
+	SEND_TTS_MESSAGES = 1 << 12,
+	MANAGE_MESSAGES = 1 << 13,
+	EMBED_LINKS = 1 << 14,
+	ATTACH_FILES = 1 << 15,
+	READ_MESSAGE_HISTORY = 1 << 16,
+	MENTION_EVERYONE = 1 << 17,
+
+	// ─── Voice ───
+	CONNECT = 1 << 18,
+	SPEAK = 1 << 19,
+	MUTE_MEMBERS = 1 << 20,
+	DEAFEN_MEMBERS = 1 << 21,
+	MOVE_MEMBERS = 1 << 22,
+}
 
 export enum Status {
 	Online = 'Online',
@@ -307,6 +339,7 @@ export type Ack =
 	| { ack: AckType.ChangedStatus; payload: Status }
 	| { ack: AckType.CreatedRole; payload: { name: string; permissions: number; color: string } }
 	| { ack: AckType.AssignedRole; payload: { role_id: id } }
+	| { ack: AckType.RemovedRole; payload: { role_id: id } }
 	| { ack: AckType.AddedFriend; payload: undefined }
 	| { ack: AckType.ReceivedFriendRequest; payload: undefined }
 	| { ack: AckType.SentFriendRequest; payload: undefined }
@@ -401,6 +434,7 @@ export enum AckType {
 	Initialized = 'initialized',
 	ChangedStatus = 'changed_status',
 	AssignedRole = 'assigned_role',
+	RemovedRole = 'removed_role',
 	AddedFriend = 'added_friend',
 	ReceivedFriendRequest = 'received_friend_request',
 	SentFriendRequest = 'sent_friend_request',

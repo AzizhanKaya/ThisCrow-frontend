@@ -45,6 +45,14 @@ export async function getInvitationInfo(code: string): Promise<InvitationInfo> {
 	});
 }
 
+export async function getGroupInvitations(group_id: id): Promise<Invitation[]> {
+	return await msgFetch<Invitation[]>(`${API_URL}/invitation/list`, {
+		method: 'POST',
+		credentials: 'include',
+		body: encode(group_id),
+	});
+}
+
 export async function deleteInvitation(id: id): Promise<void> {
 	return await msgFetch<void>(`${API_URL}/invitation/delete`, {
 		method: 'POST',

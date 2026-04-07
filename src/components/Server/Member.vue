@@ -2,7 +2,7 @@
 	import { useDMStore } from '@/stores/dm';
 	import { useFriendStore } from '@/stores/friend';
 	import { type Member, type User, Status } from '@/types';
-	import { ref } from 'vue';
+	import { ref, computed } from 'vue';
 	import ContextMenu from '@/components/ContextMenu.vue';
 	import ProfileCard from '@/components/ProfileCard.vue';
 	import { Icon } from '@iconify/vue';
@@ -50,17 +50,35 @@
 		y: 0,
 	});
 
-	const contextMenuOptions: ContextMenuOption[] = [
+	const roleOptions = computed<ContextMenuOption[]>(() => {
+		if (!serverStore.server?.roles) return [];
+		return Array.from(serverStore.server.roles.values())
+			.sort((a, b) => a.position - b.position)
+			.map((role) => {
+				const hasRole = props.member.roles.some((r) => r.id === role.id);
+				return {
+					label: role.name,
+					action: 'toggle_role',
+					checked: hasRole,
+					stayOpen: true,
+					data: role.id,
+				} as ContextMenuOption;
+			});
+	});
+
+	const contextMenuOptions = computed<ContextMenuOption[]>(() => [
 		{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
 		{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
 		{ label: 'Call', action: 'call', icon: 'mdi:phone' },
+		{ divider: true },
+		{ label: 'Roles', icon: 'mdi:shield-account', children: roleOptions.value },
 		{ divider: true },
 		{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' },
 		{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
 		{ divider: true },
 		{ label: 'Kick @' + props.member.user.username, action: 'kick', icon: 'mdi:account-remove', variant: 'danger' },
 		{ label: 'Ban @' + props.member.user.username, action: 'ban', icon: 'mdi:account-cancel', variant: 'danger' },
-	];
+	]);
 
 	function openContextMenu(e: MouseEvent) {
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -87,8 +105,9 @@
 		};
 	}
 
-	function handleContextAction(action: string) {
+	function handleContextAction(action: string, option?: ContextMenuOption) {
 		const user = props.member.user;
+		const server_id = serverStore.server?.id;
 
 		switch (action) {
 			case 'message':
@@ -102,6 +121,17 @@
 				break;
 			case 'copy_username':
 				navigator.clipboard.writeText(user.username);
+				break;
+			case 'toggle_role':
+				if (server_id && option?.data !== undefined) {
+					const roleId = option.data;
+					const hasRole = props.member.roles.some((r) => r.id === roleId);
+					if (hasRole) {
+						serverStore.removeRole(server_id, user.id, roleId);
+					} else {
+						serverStore.assignRole(server_id, user.id, roleId);
+					}
+				}
 				break;
 		}
 	}

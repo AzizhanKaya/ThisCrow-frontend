@@ -42,7 +42,7 @@ export const useDMStore = defineStore('dm', {
 		},
 		async init() {
 			this.setupListeners();
-			const dms = (await fetchDms()).map(([a, b]) => a);
+			const dms = (await fetchDms()).sort((x, y) => (x[1] > y[1] ? -1 : x[1] < y[1] ? 1 : 0)).map(([a, b]) => a);
 			const userStore = useUserStore();
 			this.dms = await userStore.getUsers(dms);
 		},

@@ -149,6 +149,56 @@ export const useServerStore = defineStore('server', {
 						break;
 					}
 
+					case AckType.CreatedRole: {
+						if (!server.roles) server.roles = new Map();
+						server.roles.set(target_id, {
+							id: target_id,
+							name: payload.name,
+							position: server.roles.size + 1,
+							color: payload.color,
+							permissions: payload.permissions,
+						} as any);
+						break;
+					}
+
+					case AckType.UpdatedRole: {
+						const role = server.roles?.get(target_id);
+						if (!role) return;
+						Object.assign(role, payload);
+						break;
+					}
+
+					case AckType.DeletedRole: {
+						server.roles?.delete(target_id);
+						server.members?.forEach((member) => {
+							const index = member.roles.findIndex((r: any) => r.id === target_id);
+							if (index !== -1) {
+								member.roles.splice(index, 1);
+							}
+						});
+						break;
+					}
+
+					case AckType.AssignedRole: {
+						const member = server.members?.get(target_id);
+						const role = server.roles?.get(payload.role_id);
+						if (member && role && !member.roles.some((r) => r.id === role.id)) {
+							member.roles.push(role);
+						}
+						break;
+					}
+
+					case AckType.RemovedRole: {
+						const member = server.members?.get(target_id);
+						if (member) {
+							const index = member.roles.findIndex((r) => r.id === payload.role_id);
+							if (index !== -1) {
+								member.roles.splice(index, 1);
+							}
+						}
+						break;
+					}
+
 					case AckType.JoinedVoice: {
 						const channel = server.channels?.get(payload);
 						if (!channel) return;
@@ -277,6 +327,91 @@ export const useServerStore = defineStore('server', {
 				type: MessageType.InfoGroup,
 				data: { event: EventType.Unsubscribe },
 			});
+		},
+
+		async updateServer(server_id: id, name?: string, description?: string, icon?: string): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.UpdateGroup, payload: { name, description, icon } },
+			};
+			return websocketService.request(message);
+		},
+
+		async createRole(server_id: id, name: string, color: string, permissions: number): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.CreateRole, payload: { name, color, permissions } },
+			};
+			return websocketService.request(message);
+		},
+
+		async updateRole(
+			server_id: id,
+			role_id: id,
+			name?: string,
+			position?: number,
+			color?: string,
+			permissions?: number
+		): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.UpdateRole, payload: { role: role_id, name, position, color, permissions } },
+			};
+			return websocketService.request(message);
+		},
+
+		async deleteRole(server_id: id, role_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.DeleteRole, payload: { role: role_id } },
+			};
+			return websocketService.request(message);
+		},
+
+		async assignRole(server_id: id, user_id: id, role_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.AssignRole, payload: { user: user_id, role: role_id } },
+			};
+			return websocketService.request(message);
+		},
+
+		async removeRole(server_id: id, user_id: id, role_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.RemoveRole, payload: { user: user_id, role: role_id } },
+			};
+			return websocketService.request(message);
 		},
 	},
 });
