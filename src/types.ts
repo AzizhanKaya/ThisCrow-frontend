@@ -27,7 +27,6 @@ export type Channel = {
 
 export interface Watch {
 	video: id;
-	title: string;
 	offset: number;
 	playing: boolean;
 }
@@ -102,36 +101,44 @@ export type User = {
 	status: Status;
 	friends?: id[];
 	groups?: id[];
-	activity?: Activity;
-	watch?: Watch;
+	activities?: Partial<Activity>;
 };
 
-export type Activity =
-	| {
-			kind: 'Game';
-			name: string;
-			time: Date;
-	  }
-	| {
-			kind: 'Music';
-			title: string;
-			artist: string;
-			album: string;
-			album_url: string;
-			length: number;
-			offset: number;
-	  }
-	| {
-			kind: 'Watching';
-			video: id;
-			offset: number;
-	  }
-	| {
-			kind: 'Streaming';
+export type Music = {
+	title: string;
+	artist: string;
+	album: string;
+	album_url: string;
+	length: number;
+	offset: number;
+	paused: boolean;
+};
+
+export type Game = {
+	app_id: number;
+	start_time: number;
+	name: string;
+	header_image: string;
+	short_description: string;
+	background: string;
+};
+
+export type Activity = {
+	game: { type: 'game'; payload: Game };
+	music: { type: 'music'; payload: Music };
+	watching: {
+		type: 'watching';
+		payload: Watch;
+	};
+	streaming: {
+		type: 'streaming';
+		payload: {
 			group_id: id;
 			channel_id: id;
-			time: Date;
-	  };
+			time: number;
+		};
+	};
+};
 
 export interface Me extends User {
 	friends: id[];
@@ -183,6 +190,14 @@ export type File = {
 	name: string;
 	size: string;
 };
+
+export type MusicEvent =
+	| { music: 'playing'; payload: Music }
+	| { music: 'seek'; payload: number }
+	| { music: 'paused' }
+	| { music: 'stopped' };
+
+export type GameEvent = { game: 'playing'; payload: Game } | { game: 'stopped' };
 
 export type Event =
 	/* ===== USER ===== */
@@ -270,7 +285,17 @@ export type Event =
 	| { event: EventType.LeaveParty }
 	| { event: EventType.Watch; payload: id }
 	| { event: EventType.UnWatch }
-	| { event: EventType.JumpTo; payload: { offset: number; play: boolean } };
+	| { event: EventType.JumpTo; payload: { offset: number; play: boolean } }
+	| {
+			event: EventType.Music;
+			payload: MusicEvent;
+	  }
+	| { event: EventType.Game; payload: GameEvent }
+	| { event: EventType.Watching; payload: { video: id; offset: number } }
+	| {
+			event: EventType.Streaming;
+			payload: { group_id: id; channel_id: id; time: number };
+	  };
 
 export enum EventType {
 	/* ===== USER ===== */
@@ -323,6 +348,12 @@ export enum EventType {
 	Watch = 'watch',
 	UnWatch = 'unwatch',
 	JumpTo = 'jump_to',
+
+	// ==== ACTIVITY ==== */
+	Music = 'music',
+	Game = 'game',
+	Watching = 'watching',
+	Streaming = 'streaming',
 }
 
 export type Ack =
@@ -421,7 +452,10 @@ export type Ack =
 	| { ack: AckType.LeftParty; payload: id }
 	| { ack: AckType.Watching; payload: id }
 	| { ack: AckType.UnWatched; payload: undefined }
-	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } };
+	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } }
+	// ===== ACTIVITY ===== */
+	| { ack: AckType.MusicActivity; payload: MusicEvent }
+	| { ack: AckType.GameActivity; payload: GameEvent };
 
 export enum AckType {
 	None = 'none',
@@ -465,4 +499,6 @@ export enum AckType {
 	Watching = 'watching',
 	UnWatched = 'unwatched',
 	JumpedTo = 'jumped_to',
+	MusicActivity = 'music_activity',
+	GameActivity = 'game_activity',
 }

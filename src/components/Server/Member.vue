@@ -9,11 +9,13 @@
 	import { useRouter } from 'vue-router';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useServerStore } from '@/stores/server';
+	import { useUserStore } from '@/stores/user';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useModalStore, ModalView } from '@/stores/modal';
 
 	const friendStore = useFriendStore();
 	const serverStore = useServerStore();
+	const userStore = useUserStore();
 	const modalStore = useModalStore();
 	const router = useRouter();
 
@@ -21,16 +23,19 @@
 		member: Member;
 	}>();
 
-	function getState(user: User): string {
+	const user = computed(() => userStore.users.get(props.member.user.id) || props.member.user);
+
+	function getStatusClass(user: User): string {
 		switch (user.status) {
 			case Status.Online:
-				return 'online';
+				return 'status-online';
 			case Status.Idle:
-				return 'idle';
+				return 'status-idle';
 			case Status.Dnd:
-				return 'dnd';
+				return 'status-dnd';
 			case Status.Offline:
-				return 'offline';
+			default:
+				return 'status-offline';
 		}
 	}
 
@@ -145,17 +150,17 @@
 	<div class="user-card" @click.stop="openProfileCard($event)" @contextmenu.prevent="openContextMenu($event)">
 		<div class="user-info">
 			<div class="avatar-container">
-				<img :src="member.user.avatar || getDefaultAvatar(member.user.username)" alt="avatar" class="avatar loaded" />
-				<div :class="['state', getState(member.user)]"></div>
+				<img :src="user.avatar || getDefaultAvatar(user.username)" alt="avatar" class="avatar loaded" />
+				<div :class="['state', getStatusClass(user)]"></div>
 			</div>
 			<div class="user-text">
 				<div class="names">
-					<span class="name">{{ member.user.name }}</span>
-					<span class="username">@{{ member.user.username }}</span>
+					<span class="name">{{ user.name }}</span>
+					<span class="username">@{{ user.username }}</span>
 				</div>
-				<span class="status">{{ member.user.status }}</span>
+				<span class="status">{{ user.status }}</span>
 			</div>
-			<Icon class="crown" icon="mdi:crown" v-if="member.user.id === serverStore.server?.owner" />
+			<Icon class="crown" icon="mdi:crown" v-if="user.id === serverStore.server?.owner" />
 		</div>
 
 		<ContextMenu
@@ -238,19 +243,6 @@
 		left: 25px;
 		bottom: 0px;
 		flex-shrink: 0;
-	}
-
-	.state.online {
-		background-color: #43b581;
-	}
-	.state.dnd {
-		background-color: #f04747;
-	}
-	.state.idle {
-		background-color: #e2e446;
-	}
-	.state.offline {
-		background-color: #72767d;
 	}
 
 	.user-text {

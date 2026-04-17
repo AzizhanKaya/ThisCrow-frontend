@@ -57,7 +57,13 @@ export const useUserStore = defineStore('user', {
 		},
 
 		async getUser(id: id): Promise<User> {
-			return this.users.get(id) ?? (this.setUser(await fetchUser(id)), this.users.get(id)!);
+			return this.users.get(id) ?? (await this.fetchUser(id));
+		},
+
+		async fetchUser(id: id): Promise<User> {
+			const user = await fetchUser(id);
+			this.setUser(user);
+			return user;
 		},
 	},
 });

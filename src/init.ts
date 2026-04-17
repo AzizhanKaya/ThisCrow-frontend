@@ -10,6 +10,7 @@ import { useVoiceStore } from './stores/voice';
 import { useWatchStore } from './stores/watch';
 import { useAppStore } from './stores/app';
 import { useKeyStore } from './stores/key';
+import { useActivityStore } from './stores/activity';
 
 export async function initApp() {
 	const friendStore = useFriendStore();
@@ -19,9 +20,9 @@ export async function initApp() {
 	const meStore = useMeStore();
 	const userStore = useUserStore();
 	const voiceStore = useVoiceStore();
-	const watchStore = useWatchStore();
 	const appStore = useAppStore();
 	const keyStore = useKeyStore();
+	const activityStore = useActivityStore();
 
 	const me: Me = await websocketService.waitForSessionInit();
 	messageStore.init();
@@ -30,8 +31,10 @@ export async function initApp() {
 	meStore.changeStatus(Status.Online);
 	voiceStore.init();
 	keyStore.init();
+	await activityStore.init();
 
 	if (appStore.isTauri) {
+		const watchStore = useWatchStore();
 		watchStore.init();
 	}
 

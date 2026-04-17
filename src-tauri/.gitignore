@@ -3,3 +3,4 @@
 /gen/schemas
 .env
 .vscode
+.cargo

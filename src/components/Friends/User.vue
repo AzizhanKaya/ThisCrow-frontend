@@ -1,8 +1,8 @@
 <script setup lang="ts">
-	import { useDMStore } from '@/stores/dm';
 	import { useFriendStore } from '@/stores/friend';
 	import { type User, Status } from '@/types';
-	import { ref } from 'vue';
+	import { ref, computed } from 'vue';
+	import { useUserStore } from '@/stores/user';
 	import ContextMenu from '@/components/ContextMenu.vue';
 	import ProfileCard from '@/components/ProfileCard.vue';
 	import { Icon } from '@iconify/vue';
@@ -12,6 +12,7 @@
 	import { getDefaultAvatar } from '@/utils/avatar';
 
 	const friendStore = useFriendStore();
+	const userStore = useUserStore();
 	const modalStore = useModalStore();
 	const router = useRouter();
 
@@ -22,16 +23,19 @@
 		request_sent?: boolean;
 	}>();
 
-	function getState(user: User): string {
+	const user = computed(() => userStore.users.get(props.user.id) || props.user);
+
+	function getStatusClass(user: User): string {
 		switch (user.status) {
 			case Status.Online:
-				return 'online';
+				return 'status-online';
 			case Status.Idle:
-				return 'idle';
+				return 'status-idle';
 			case Status.Dnd:
-				return 'dnd';
+				return 'status-dnd';
 			case Status.Offline:
-				return 'offline';
+			default:
+				return 'status-offline';
 		}
 	}
 
@@ -119,7 +123,7 @@
 		<div class="user-info">
 			<div class="avatar-container">
 				<img :src="user.avatar || getDefaultAvatar(user.username)" alt="avatar" class="avatar loaded" />
-				<div :class="['state', 'status-' + getState(user)]"></div>
+				<div :class="['state', getStatusClass(user)]"></div>
 			</div>
 			<div class="user-text">
 				<div class="names">
@@ -247,7 +251,7 @@
 	}
 
 	.status {
-		color: #b9bbbe;
+		color: var(--text);
 		font-size: 13px;
 	}
 

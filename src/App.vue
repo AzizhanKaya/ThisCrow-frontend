@@ -84,6 +84,11 @@
 
 		--error: hsl(0, 77%, 59%);
 		--error-hover: hsl(0, 77%, 54%);
+
+		--status-online: #43b581;
+		--status-idle: #e2e446;
+		--status-dnd: #f04747;
+		--status-offline: #72767d;
 	}
 
 	* {
@@ -149,16 +154,16 @@
 	}
 
 	.status-online {
-		background-color: #43b581;
+		background-color: var(--status-online);
 	}
 	.status-idle {
-		background-color: #e2e446;
+		background-color: var(--status-idle);
 	}
 	.status-dnd {
-		background-color: #f04747;
+		background-color: var(--status-dnd);
 	}
 	.status-offline {
-		background-color: #72767d;
+		background-color: var(--status-offline);
 	}
 </style>
 

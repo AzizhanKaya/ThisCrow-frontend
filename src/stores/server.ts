@@ -157,7 +157,7 @@ export const useServerStore = defineStore('server', {
 							position: server.roles.size + 1,
 							color: payload.color,
 							permissions: payload.permissions,
-						} as any);
+						});
 						break;
 					}
 
@@ -239,7 +239,6 @@ export const useServerStore = defineStore('server', {
 						if (!channel) return;
 						channel.watch_party = {
 							video: 0,
-							title: '',
 							host: target_id,
 							users: [target_id],
 							offset: 0,

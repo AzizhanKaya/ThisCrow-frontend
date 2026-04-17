@@ -18,6 +18,7 @@
 	const appStore = useAppStore();
 	const serverStore = useServerStore();
 	const modalStore = useModalStore();
+	const voiceStore = useVoiceStore();
 	const route = useRoute();
 	const router = useRouter();
 
@@ -46,7 +47,7 @@
 
 			onCleanup(async () => {
 				removeHandler();
-				const voiceStore = useVoiceStore();
+
 				if (voiceStore.group_id !== newId) {
 					await unsubscribe();
 				}

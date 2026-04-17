@@ -3,7 +3,7 @@ import { type Ack, AckType, EventType, MessageType } from '@/types';
 import { WS_URL } from '@/constants';
 import { decode, encode } from '@/utils/msgpack';
 
-type MessageCallback<T = any> = (message: Message<T>) => void;
+type MessageCallback<T = any> = (message: Message<T>) => void | Promise<void>;
 
 class WebSocketService {
 	private static instance: WebSocketService;
@@ -14,8 +14,9 @@ class WebSocketService {
 	private connectionStateHandlers: Set<(state: string) => void> = new Set();
 	private pendingRequests = new Map<bigint, { resolve: Function; reject: Function; timer: any }>();
 	private reconnectAttempts = 0;
-	private maxReconnectAttempts = 2;
-	private readonly reconnectDelay = 5000;
+	private maxReconnectAttempts = 10;
+	private readonly reconnectDelay = 1000;
+	private eventQueue: Promise<void> = Promise.resolve();
 
 	private constructor() {
 		this.url = WS_URL;
@@ -45,7 +46,7 @@ class WebSocketService {
 			this.connectionStateHandlers.forEach((h) => h('OPEN'));
 		};
 
-		this.ws.onmessage = this.handleIncomingMessage.bind(this);
+		this.ws.onmessage = this.handleMessage.bind(this);
 
 		this.ws.onerror = (error) => {
 			console.error('WebSocket error:', error);
@@ -73,33 +74,53 @@ class WebSocketService {
 		});
 	}
 
-	private handleIncomingMessage(event: MessageEvent) {
+	private handleMessage(event: MessageEvent) {
 		try {
 			let message = decode(new Uint8Array(event.data)) as Message<MessageData>;
 
 			console.log(message);
 
-			if (message.type === MessageType.Server && this.pendingRequests.has(message.id)) {
-				const data = message.data as Ack;
-				const { resolve, reject, timer } = this.pendingRequests.get(message.id)!;
-				clearTimeout(timer);
-				this.pendingRequests.delete(message.id);
-
-				if (data.ack === AckType.Error) {
-					reject(new Error(data.payload as string));
-				} else {
-					resolve(message);
-				}
-			}
-
-			const handlers = this.messageHandlers.get(message.type);
-			if (handlers && handlers.size > 0) {
-				handlers.forEach((handler) => handler(message));
+			if (message.type === MessageType.Server) {
+				this.eventQueue = this.eventQueue
+					.then(async () => {
+						this.handleAck(message);
+					})
+					.catch((error) => {
+						console.error('Error handling server message:', error);
+					});
 			} else {
-				console.warn(`No handlers registered for message type: ${message.type}`);
+				const handlers = this.messageHandlers.get(message.type);
+				if (handlers && handlers.size > 0) {
+					handlers.forEach((handler) => handler(message));
+				} else {
+					console.warn(`No handlers registered for message type: ${message.type}`);
+				}
 			}
 		} catch (error) {
 			console.error('Error handling message:', error);
+		}
+	}
+
+	private async handleAck(message: Message<MessageData>) {
+		if (this.pendingRequests.has(message.id)) {
+			const data = message.data as Ack;
+			const { resolve, reject, timer } = this.pendingRequests.get(message.id)!;
+			clearTimeout(timer);
+			this.pendingRequests.delete(message.id);
+
+			if (data.ack === AckType.Error) {
+				reject(new Error(data.payload as string));
+			} else {
+				resolve(message);
+			}
+		}
+
+		const handlers = this.messageHandlers.get(message.type);
+		if (handlers && handlers.size > 0) {
+			const promises = Array.from(handlers).map((handler) => handler(message));
+			await Promise.all(promises);
+		} else {
+			console.warn(`No handlers registered for message type: ${message.type}`);
 		}
 	}
 

@@ -1,6 +1,6 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "thiscrow",
+	"productName": "ThisCrow",
 	"version": "0.1.0",
 	"identifier": "com.thiscrow.desktop",
 	"build": {
@@ -23,7 +23,8 @@
 				"decorations": false,
 				"transparent": true,
 				"shadow": true,
-				"visible": false
+				"visible": false,
+				"devtools": true
 			}
 		],
 		"security": {

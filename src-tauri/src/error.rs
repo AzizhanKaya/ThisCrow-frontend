@@ -5,6 +5,7 @@ pub struct Error(String);
 
 impl From<anyhow::Error> for Error {
     fn from(error: anyhow::Error) -> Self {
+        log::warn!("{:#}", error);
         Self(format!("{:#}", error))
     }
 }

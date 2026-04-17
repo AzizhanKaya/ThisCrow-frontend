@@ -92,7 +92,8 @@ pub fn run() {
 
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
-                tauri::async_runtime::spawn(activity::game::start_steam_tracker());
+                let handle_game = app.handle().clone();
+                tauri::async_runtime::spawn(activity::game::start_steam_tracker(handle_game));
             }
 
             Ok(())
@@ -104,7 +105,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             party::browsers::get_browsers,
             party::watch::open_party,
-            party::watch::jump_to
+            party::watch::jump_to,
+            activity::game::get_current_game,
+            activity::music::get_current_music
         ])
         .run(tauri::generate_context!())
         .expect("Tauri could not start");

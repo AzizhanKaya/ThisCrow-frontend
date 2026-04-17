@@ -1,45 +1,46 @@
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted } from 'vue';
+	import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 	import { useModalStore } from '@/stores/modal';
 	import { useMeStore } from '@/stores/me';
 	import { useFriendStore } from '@/stores/friend';
-	import { useDMStore } from '@/stores/dm';
 	import { useRouter } from 'vue-router';
 	import { Icon } from '@iconify/vue';
 	import { getDefaultAvatar } from '@/utils/avatar';
-	import { type User, Status, type Activity } from '@/types';
+	import { type User, Status, type Server } from '@/types';
 
 	import { useServerStore } from '@/stores/server';
 
 	const modalStore = useModalStore();
 	const meStore = useMeStore();
 	const friendStore = useFriendStore();
-	const dmStore = useDMStore();
 	const serverStore = useServerStore();
 	const router = useRouter();
 
-	const user = computed(() => modalStore.data?.user as User);
-	const me = computed(() => meStore.me);
+	const user = $computed(() => {
+		return modalStore.data?.user as User;
+	});
+	const me = $computed(() => meStore.me!);
+	const is_me = me.id === user.id;
 
-	const activeTab = ref('activity'); // 'activity', 'mutual_friends', 'mutual_servers'
+	const activeTab = ref('activity');
 
-	const mutualFriends = computed(() => {
-		if (!user.value?.friends || !me.value?.friends) return [];
-		const mutualIds = user.value.friends.filter((f) => me.value!.friends.includes(f));
+	const mutualFriends = $computed(() => {
+		if (!user.friends || !me.friends) return [];
+		const mutualIds = user.friends.filter((f) => me.friends.includes(f));
 		return mutualIds.map((id) => friendStore.getFriend(id)).filter(Boolean) as User[];
 	});
 
-	const mutualServers = computed(() => {
-		if (!user.value?.groups || !me.value?.groups) return [];
-		const mutualIds = user.value.groups.filter((g) => me.value!.groups.includes(g));
-		return mutualIds.map((id) => serverStore.getServerById(id)).filter(Boolean) as any[];
+	const mutualServers = $computed(() => {
+		if (!user?.groups || !me?.groups) return [];
+		const mutualIds = user.groups.filter((g) => me!.groups.includes(g));
+		return mutualIds.map((id) => serverStore.getServerById(id)).filter(Boolean) as Server[];
 	});
 
-	const mutualFriendsCount = computed(() => mutualFriends.value.length);
-	const mutualServersCount = computed(() => mutualServers.value.length);
+	const mutualFriendsCount = computed(() => mutualFriends.length);
+	const mutualServersCount = computed(() => mutualServers.length);
 
-	const getStatusClass = computed(() => {
-		switch (user.value?.status) {
+	const userStatus = computed(() => {
+		switch (user?.status) {
 			case Status.Online:
 				return 'status-online';
 			case Status.Idle:
@@ -52,37 +53,43 @@
 		}
 	});
 
-	const activities = computed(() => {
-		const list: Activity[] = [];
-		if (user.value?.activity) {
-			list.push(user.value.activity);
-		}
-		return list;
-	});
+	const getMusicProgress = (activity: any) => {
+		if (activity.paused) return Number(activity.offset);
+		return Math.max(0, now - Number(activity.offset));
+	};
+
+	const formatMS = (ms: number) => {
+		const totalSeconds = Math.floor(ms / 1000);
+		const mins = Math.floor(totalSeconds / 60);
+		const secs = totalSeconds % 60;
+		return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+	};
 
 	const handleAddFriend = () => {
-		friendStore.sendFriendRequest(user.value);
+		friendStore.sendFriendRequest(user);
 	};
 
 	const handleMessage = () => {
-		router.push({ name: 'user', params: { userId: user.value.id.toString() } });
+		router.push({ name: 'user', params: { userId: user.id.toString() } });
 		modalStore.closeModal();
 	};
 
-	const now = ref(Date.now());
+	let now = $ref(Date.now());
 	let timer: ReturnType<typeof setInterval>;
+
 	onMounted(() => {
 		timer = setInterval(() => {
-			now.value = Date.now();
+			now = Date.now();
 		}, 1000);
 	});
+
 	onUnmounted(() => {
 		clearInterval(timer);
 	});
 
 	const formatTimeElapsed = (dateString: Date | string | number) => {
 		const start = new Date(dateString).getTime();
-		const elapsed = now.value - start;
+		const elapsed = now - start;
 		if (elapsed < 0) return '00:00';
 		const totalSeconds = Math.floor(elapsed / 1000);
 		const hours = Math.floor(totalSeconds / 3600);
@@ -93,6 +100,12 @@
 		}
 		return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 	};
+
+	const hasActivities = computed(() => {
+		const acts = user.activities;
+		if (!acts) return false;
+		return Object.keys(acts).length > 0;
+	});
 </script>
 
 <template>
@@ -107,14 +120,14 @@
 			<div class="header-content">
 				<div class="avatar-wrapper">
 					<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
-					<div class="status-indicator" :class="getStatusClass"></div>
+					<div class="status-indicator" :class="userStatus"></div>
 				</div>
 
 				<div class="actions" v-if="me && me.id !== user.id">
-					<button class="action-circle-btn btn-secondary" title="Mesaj Gönder" @click="handleMessage">
+					<button class="action-circle-btn btn-secondary" title="Send Message" @click="handleMessage">
 						<Icon icon="mdi:message" />
 					</button>
-					<button class="action-circle-btn btn-secondary" title="Arkadaş Ekle" @click="handleAddFriend">
+					<button class="action-circle-btn btn-secondary" title="Add Friend" @click="handleAddFriend">
 						<Icon icon="mdi:account-plus" />
 					</button>
 				</div>
@@ -122,71 +135,108 @@
 
 			<div class="user-details">
 				<h2 class="name">{{ user.name }}</h2>
-				<span class="username">{{ user.username }}</span>
+				<span class="username">@{{ user.username }}</span>
 			</div>
 
 			<div class="divider"></div>
 
 			<div class="tabs">
-				<button class="tab" :class="{ active: activeTab === 'activity' }" @click="activeTab = 'activity'">Aktivite</button>
+				<button class="tab" :class="{ active: activeTab === 'activity' }" @click="activeTab = 'activity'">Activity</button>
 				<button class="tab" :class="{ active: activeTab === 'mutual_friends' }" @click="activeTab = 'mutual_friends'">
-					Ortak Arkadaşlar <span class="badge" v-if="mutualFriendsCount">{{ mutualFriendsCount }}</span>
+					Mutual Friends <span class="badge" v-if="mutualFriendsCount">{{ mutualFriendsCount }}</span>
 				</button>
 				<button class="tab" :class="{ active: activeTab === 'mutual_servers' }" @click="activeTab = 'mutual_servers'">
-					Ortak Sunucular <span class="badge" v-if="mutualServersCount">{{ mutualServersCount }}</span>
+					Mutual Servers <span class="badge" v-if="mutualServersCount">{{ mutualServersCount }}</span>
 				</button>
 			</div>
 
 			<div class="tab-content scrollable">
 				<!-- Activity Tab -->
 				<div v-show="activeTab === 'activity'" class="activity-section">
-					<div v-if="activities.length === 0" class="empty-state">
+					<div v-if="!hasActivities || !user.activities" class="empty-state">
 						<Icon icon="mdi:emoticon-sad-outline" class="empty-icon" />
-						<p>Şu anda hiçbir aktivite yok.</p>
+						<p>No activity at the moment.</p>
 					</div>
 					<div class="activity-list" v-else>
-						<div v-for="(activity, index) in activities" :key="index" class="activity-item">
-							<template v-if="activity.kind === 'Game'">
-								<div class="activity-icon-wrapper">
-									<Icon icon="mdi:controller" class="activity-icon" />
+						<!-- Game Activity -->
+						<div v-if="user.activities.game" class="activity-item">
+							<div class="activity-icon-wrapper">
+								<img
+									v-if="user.activities.game.payload.header_image"
+									:src="user.activities.game.payload.header_image"
+									class="activity-image"
+								/>
+								<Icon v-else icon="mdi:controller" class="activity-icon" />
+							</div>
+							<div class="activity-content">
+								<span class="activity-title text-truncate">Playing</span>
+								<span class="activity-name text-truncate">{{ user.activities.game.payload.name || 'Game' }}</span>
+								<span class="activity-detail text-truncate"
+									>{{ formatTimeElapsed(Number(user.activities.game.payload.start_time)) }} elapsed</span
+								>
+							</div>
+						</div>
+
+						<!-- Music Activity -->
+						<div v-if="user.activities.music" class="activity-item">
+							<div class="activity-icon-wrapper">
+								<img
+									v-if="user.activities.music.payload.album_url"
+									:src="user.activities.music.payload.album_url"
+									class="activity-image"
+								/>
+								<Icon v-else icon="mdi:music" class="activity-icon" />
+							</div>
+							<div class="activity-content">
+								<span class="activity-title text-truncate">{{ user.activities.music.payload.paused ? 'Paused' : 'Listening' }}</span>
+								<span class="activity-name text-truncate">{{ user.activities.music.payload.title }}</span>
+								<span class="activity-detail text-truncate">
+									{{ user.activities.music.payload.artist
+									}}<template v-if="user.activities.music.payload.album">, {{ user.activities.music.payload.album }}</template>
+								</span>
+
+								<div class="music-progress-container">
+									<div class="music-progress-bar">
+										<div
+											class="music-progress-fill"
+											:style="{
+												width:
+													Math.min(
+														100,
+														(getMusicProgress(user.activities.music.payload) / (user.activities.music.payload.length * 1000)) * 100
+													) + '%',
+											}"
+										></div>
+									</div>
+									<div class="music-time">
+										<span>{{ formatMS(getMusicProgress(user.activities.music.payload)) }}</span>
+										<span>{{ formatMS(user.activities.music.payload.length * 1000) }}</span>
+									</div>
 								</div>
-								<div class="activity-content">
-									<span class="activity-title text-truncate">Oynuyor</span>
-									<span class="activity-name text-truncate">{{ activity.name }}</span>
-									<span class="activity-detail text-truncate">{{ formatTimeElapsed(activity.time) }} geçti</span>
-								</div>
-							</template>
-							<template v-else-if="activity.kind === 'Music'">
-								<div class="activity-icon-wrapper">
-									<img v-if="activity.album_url" :src="activity.album_url" class="activity-image" />
-									<Icon v-else icon="mdi:music" class="activity-icon" />
-								</div>
-								<div class="activity-content">
-									<span class="activity-title text-truncate">Spotify Dinliyor</span>
-									<span class="activity-name text-truncate">{{ activity.title }}</span>
-									<span class="activity-detail text-truncate">{{ activity.artist }}</span>
-									<span class="activity-detail text-truncate">{{ activity.album }}</span>
-								</div>
-							</template>
-							<template v-else-if="activity.kind === 'Watching'">
-								<div class="activity-icon-wrapper">
-									<Icon icon="mdi:play-network" class="activity-icon" />
-								</div>
-								<div class="activity-content">
-									<span class="activity-title text-truncate">İzliyor</span>
-									<span class="activity-name text-truncate">Video ID: {{ activity.video }}</span>
-								</div>
-							</template>
-							<template v-else-if="activity.kind === 'Streaming'">
-								<div class="activity-icon-wrapper">
-									<Icon icon="mdi:monitor-share" class="activity-icon" />
-								</div>
-								<div class="activity-content">
-									<span class="activity-title text-truncate">Yayın Yapıyor</span>
-									<span class="activity-name text-truncate">Grup: {{ activity.group_id }}</span>
-									<span class="activity-detail text-truncate">Çevrimiçi Olarak İzleniyor</span>
-								</div>
-							</template>
+							</div>
+						</div>
+
+						<!-- Watching Activity -->
+						<div v-if="user.activities.watching" class="activity-item">
+							<div class="activity-icon-wrapper">
+								<Icon icon="mdi:play-network" class="activity-icon" />
+							</div>
+							<div class="activity-content">
+								<span class="activity-title text-truncate">Watching</span>
+								<span class="activity-name text-truncate">Video ID: {{ user.activities.watching.payload.video }}</span>
+							</div>
+						</div>
+
+						<!-- Streaming Activity -->
+						<div v-if="user.activities.streaming" class="activity-item">
+							<div class="activity-icon-wrapper">
+								<Icon icon="mdi:monitor-share" class="activity-icon" />
+							</div>
+							<div class="activity-content">
+								<span class="activity-title text-truncate">Streaming</span>
+								<span class="activity-name text-truncate">Grup: {{ user.activities.streaming.payload.group_id }}</span>
+								<span class="activity-detail text-truncate">Streaming online</span>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -195,7 +245,7 @@
 				<div v-show="activeTab === 'mutual_friends'" class="mutual-section">
 					<div class="empty-state" v-if="mutualFriendsCount === 0">
 						<Icon icon="mdi:account-group" class="empty-icon" />
-						<p>Ortak arkadaşınız yok.</p>
+						<p>No mutual friends.</p>
 					</div>
 					<div class="list" v-else>
 						<div v-for="friend in mutualFriends" :key="friend.id.toString()" class="list-item">
@@ -212,7 +262,7 @@
 				<div v-show="activeTab === 'mutual_servers'" class="mutual-section">
 					<div class="empty-state" v-if="mutualServersCount === 0">
 						<Icon icon="mdi:server" class="empty-icon" />
-						<p>Ortak sunucunuz yok.</p>
+						<p>No mutual servers.</p>
 					</div>
 					<div class="list" v-else>
 						<div v-for="server in mutualServers" :key="server.id.toString()" class="list-item">
@@ -348,7 +398,6 @@
 
 	.user-details {
 		padding: 16px 24px;
-		background-color: var(--bg-darker);
 	}
 
 	.name {
@@ -460,15 +509,15 @@
 
 	.activity-item {
 		display: flex;
-		gap: 16px;
+		gap: 20px;
 		background-color: var(--bg-dark);
-		padding: 16px;
-		border-radius: 8px;
+		padding: 20px;
+		border-radius: 12px;
 	}
 
 	.activity-icon-wrapper {
-		width: 72px;
-		height: 72px;
+		width: 90px;
+		height: 90px;
 		border-radius: 12px;
 		background-color: var(--bg-light);
 		display: flex;
@@ -494,6 +543,7 @@
 		flex-direction: column;
 		justify-content: center;
 		overflow: hidden;
+		flex: 1;
 	}
 
 	.text-truncate {
@@ -503,23 +553,54 @@
 	}
 
 	.activity-title {
-		font-size: 0.75rem;
-		font-weight: 700;
+		font-size: 0.7rem;
+		font-weight: 800;
 		text-transform: uppercase;
 		color: var(--text-muted);
-		margin-bottom: 4px;
+		margin-bottom: 8px;
+		letter-spacing: 0.04em;
+		line-height: 1;
 	}
 
 	.activity-name {
-		font-size: 1rem;
-		font-weight: 600;
+		font-size: 1.1rem;
+		font-weight: 700;
 		color: var(--text);
-		margin-bottom: 4px;
+		margin-bottom: 2px;
 	}
 
 	.activity-detail {
 		font-size: 0.9rem;
 		color: var(--text-muted);
+	}
+
+	.music-progress-container {
+		margin-top: 8px;
+		width: 100%;
+		min-width: 200px;
+	}
+
+	.music-progress-bar {
+		height: 6px;
+		background-color: var(--bg-light);
+		border-radius: 3px;
+		width: 100%;
+		overflow: hidden;
+	}
+
+	.music-progress-fill {
+		height: 100%;
+		background-color: #1db954; /* Spotify Green */
+		border-radius: 2px;
+		transition: width 0.1s linear;
+	}
+
+	.music-time {
+		display: flex;
+		justify-content: space-between;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin-top: 4px;
 	}
 
 	.list {
