@@ -26,7 +26,8 @@
 	// State
 	const isDragging = ref(false);
 	const channel_id = computed(() => {
-		return route.params.channel ? Number(route.params.channel) : null;
+		console.log(route.params.channelId);
+		return route.params.channelId ? Number(route.params.channelId) : null;
 	});
 
 	const dragOverCategory = ref<string | null>(null);

@@ -31,6 +31,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub async fn start_steam_tracker<R: tauri::Runtime>(app: AppHandle<R>) {
     let initial_state = get_current_appid();
     let (tx, mut rx) = watch::channel(initial_state);
@@ -44,7 +45,7 @@ pub async fn start_steam_tracker<R: tauri::Runtime>(app: AppHandle<R>) {
         match current_id {
             Some(id) => {
                 println!("Game Activity: AppID {}", id);
-                let (name, header_image, short_description, background) = 
+                let (name, header_image, short_description, background) =
                     if let Some(info) = fetch_steam_game_info(id).await {
                         (info.0, info.1, info.2, info.3)
                     } else {
@@ -75,11 +76,23 @@ pub async fn start_steam_tracker<R: tauri::Runtime>(app: AppHandle<R>) {
 }
 
 async fn fetch_steam_game_info(app_id: u32) -> Option<(String, String, String, String)> {
-    let url = format!("https://store.steampowered.com/api/appdetails?appids={}", app_id);
-    let response = reqwest::get(&url).await.ok()?.json::<serde_json::Value>().await.ok()?;
+    let url = format!(
+        "https://store.steampowered.com/api/appdetails?appids={}",
+        app_id
+    );
+    let response = reqwest::get(&url)
+        .await
+        .ok()?
+        .json::<serde_json::Value>()
+        .await
+        .ok()?;
 
     if let Some(app_data) = response.get(app_id.to_string()) {
-        if app_data.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if app_data
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             let data = app_data.get("data")?;
             return Some((
                 data.get("name")?.as_str()?.to_string(),
@@ -110,7 +123,7 @@ pub fn get_current_appid() -> Option<u32> {
 pub async fn get_current_game() -> Option<Game> {
     let id = get_current_appid()?;
     println!("Initial Game Check: AppID {}", id);
-    let (name, header_image, short_description, background) = 
+    let (name, header_image, short_description, background) =
         if let Some(info) = fetch_steam_game_info(id).await {
             (info.0, info.1, info.2, info.3)
         } else {
