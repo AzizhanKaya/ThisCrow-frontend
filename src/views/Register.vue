@@ -3,12 +3,19 @@
 	import { Icon } from '@iconify/vue';
 	import Toast from '@/components/Toast.vue';
 	import { register } from '@/api/auth';
+	import { hash } from '../../pkg/wasm_lib';
+	import { useKeyStore } from '@/stores/key';
+	import { websocketService } from '@/services/websocket';
+	import { useRouter } from 'vue-router';
 
-	const username = ref('');
-	const name = ref('');
-	const email = ref('');
-	const password = ref('');
-	const confirmPassword = ref('');
+	const keyStore = useKeyStore();
+	const router = useRouter();
+
+	const username_ref = ref('');
+	const name_ref = ref('');
+	const email_ref = ref('');
+	const password_ref = ref('');
+	const confirmPassword_ref = ref('');
 
 	const error = ref<any>(null);
 	const isLoading = ref(false);
@@ -16,13 +23,24 @@
 	async function submit() {
 		error.value = null;
 		isLoading.value = true;
+
+		const username = username_ref.value;
+		const name = name_ref.value;
+		const email = email_ref.value;
+		const password = password_ref.value;
+		const confirmPassword = confirmPassword_ref.value;
+
+		if (password !== confirmPassword) {
+			error.value = 'Passwords does not match';
+			isLoading.value = false;
+			return;
+		}
+
 		try {
-			if (password.value !== confirmPassword.value) {
-				error.value = 'Passwords does not match';
-				isLoading.value = false;
-				return;
-			}
-			await register(username.value, name.value, email.value, password.value);
+			await register(username, name, email, password);
+			keyStore.storeKeys(hash(username + ':' + password));
+			websocketService.connect();
+			router.push({ name: 'chats' });
 		} catch (err: any) {
 			console.error(err);
 			error.value = err?.message || 'An error occurred';
@@ -40,27 +58,27 @@
 			<div class="field">
 				<label>Username</label>
 				<Icon icon="mdi:user" class="icon" />
-				<input type="text" v-model="username" required placeholder="Username" />
+				<input type="text" v-model="username_ref" required placeholder="Username" />
 			</div>
 			<div class="field">
 				<label>Name</label>
 				<Icon icon="mdi:user" class="icon" />
-				<input type="text" v-model="name" required placeholder="Name" />
+				<input type="text" v-model="name_ref" required placeholder="Name" />
 			</div>
 			<div class="field">
 				<label>Email</label>
 				<Icon icon="ic:baseline-email" class="icon" />
-				<input type="email" v-model="email" required placeholder="Email" />
+				<input type="email" v-model="email_ref" required placeholder="Email" />
 			</div>
 			<div class="field">
 				<label>Password</label>
 				<Icon icon="fa6-solid:lock" class="icon" />
-				<input type="password" v-model="password" required placeholder="Password" />
+				<input type="password" v-model="password_ref" required placeholder="Password" />
 			</div>
 			<div class="field">
 				<label>Confirm Password</label>
 				<Icon icon="octicon:lock-24" class="icon" />
-				<input type="password" v-model="confirmPassword" required placeholder="Confirm Password" />
+				<input type="password" v-model="confirmPassword_ref" required placeholder="Confirm Password" />
 			</div>
 			<button type="submit">Register</button>
 		</form>

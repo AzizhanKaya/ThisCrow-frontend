@@ -73,4 +73,3 @@ jobs:
       releaseBody: 'This version was automatically created.'
       releaseDraft: false
       prerelease: false
-      overwrite: true

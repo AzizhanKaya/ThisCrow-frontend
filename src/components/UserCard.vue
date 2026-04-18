@@ -53,10 +53,10 @@
 		showUserMenu.value = !showUserMenu.value;
 	};
 
-	const handleAction = (action: string) => {
+	const handleAction = async (action: string) => {
 		if (action === 'logout') {
 			websocketService.disconnect();
-			meStore.logOut();
+			await meStore.logOut();
 			router.push({ name: 'login' });
 		}
 		showUserMenu.value = false;

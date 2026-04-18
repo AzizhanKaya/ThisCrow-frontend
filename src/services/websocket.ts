@@ -13,9 +13,8 @@ class WebSocketService {
 	private errorHandlers: Set<(error: Event) => void> = new Set();
 	private connectionStateHandlers: Set<(state: string) => void> = new Set();
 	private pendingRequests = new Map<bigint, { resolve: Function; reject: Function; timer: any }>();
-	private reconnectAttempts = 0;
-	private maxReconnectAttempts = 10;
-	private readonly reconnectDelay = 1000;
+	private reconnectDelay = 1000;
+	private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 	private eventQueue: Promise<void> = Promise.resolve();
 
 	private constructor() {
@@ -31,6 +30,11 @@ class WebSocketService {
 	}
 
 	connect() {
+		if (this.reconnectTimeout) {
+			clearTimeout(this.reconnectTimeout);
+			this.reconnectTimeout = null;
+		}
+
 		if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
 			this.disconnect();
 		}
@@ -42,7 +46,12 @@ class WebSocketService {
 
 		this.ws.onopen = () => {
 			console.log('WebSocket connection established');
-			this.reconnectAttempts = 0;
+
+			if (this.reconnectTimeout) {
+				clearTimeout(this.reconnectTimeout);
+				this.reconnectTimeout = null;
+			}
+
 			this.connectionStateHandlers.forEach((h) => h('OPEN'));
 		};
 
@@ -56,14 +65,15 @@ class WebSocketService {
 		this.ws.onclose = (event) => {
 			console.log('WebSocket connection closed');
 			this.connectionStateHandlers.forEach((h) => h('CLOSED'));
-			if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-				const delay = Math.min(10000, this.reconnectDelay * Math.pow(2, this.reconnectAttempts));
-
-				console.log(`Reconnecting in ${delay}ms...`);
-				setTimeout(() => {
-					this.reconnectAttempts++;
+			if (event.code !== 1000) {
+				console.log(event.code);
+				if (this.reconnectDelay !== 10000) {
+					this.reconnectDelay = Math.min(10000, this.reconnectDelay * 2);
+				}
+				console.log(`Reconnecting in ${this.reconnectDelay}ms...`);
+				this.reconnectTimeout = setTimeout(() => {
 					this.connect();
-				}, delay);
+				}, this.reconnectDelay);
 			}
 		};
 	}
@@ -177,12 +187,21 @@ class WebSocketService {
 	}
 
 	disconnect() {
+		if (this.reconnectTimeout) {
+			clearTimeout(this.reconnectTimeout);
+			this.reconnectTimeout = null;
+		}
+
+		this.reconnectDelay = 1000;
+
 		if (this.ws) {
-			this.ws.close(1000, 'Close');
 			this.ws.onopen = null;
 			this.ws.onerror = null;
 			this.ws.onmessage = null;
+			this.ws.onclose = null;
+			this.ws.close(1000, 'Close');
 			this.ws = null;
+			this.connectionStateHandlers.forEach((h) => h('CLOSED'));
 		}
 	}
 

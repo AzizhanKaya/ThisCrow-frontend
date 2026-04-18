@@ -27,10 +27,9 @@ export const useAppStore = defineStore('app', {
 						await this.handleLoad();
 					} catch (error) {
 						console.error('initApp hatası:', error);
-						router.push({ name: 'login' });
-						websocketService.disconnect();
 						const meStore = useMeStore();
 						await meStore.logOut();
+						router.push({ name: 'login' });
 					} finally {
 						this.loading = false;
 					}

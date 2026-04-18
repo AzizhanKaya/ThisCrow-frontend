@@ -1,6 +1,6 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 use anyhow::anyhow;
 use getrandom::getrandom;
@@ -130,4 +130,16 @@ pub fn decrypt_message(
         .map_err(|e| anyhow!("Decryption failed: {}", e))?;
 
     Ok(plaintext)
+}
+
+#[wasm_bindgen]
+pub fn hash(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    let result = hasher.finalize();
+
+    result
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>()
 }

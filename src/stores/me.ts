@@ -15,11 +15,11 @@ export const useMeStore = defineStore('me', {
 		},
 
 		async logOut() {
-			await logOut();
+			this.me = null;
 			websocketService.disconnect();
 			localStorage.removeItem('private_key');
 			localStorage.removeItem('public_key');
-			this.me = null;
+			await logOut();
 		},
 
 		changeStatus(status: Status) {
