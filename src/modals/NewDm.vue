@@ -85,8 +85,9 @@
 		}, 600);
 	});
 
-	const handleMessage = (user: User) => {
+	const handleMessage = async (user: User) => {
 		modalStore.closeModal();
+		await dmStore.ensureUser(user.id);
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	};
 </script>

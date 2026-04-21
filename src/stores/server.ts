@@ -317,7 +317,6 @@ export const useServerStore = defineStore('server', {
 		async unsubscribeFromServer(server_id: id) {
 			const meStore = useMeStore();
 			if (!meStore.me) return;
-			if (websocketService.getConnectionState() !== 'OPEN') return;
 			return websocketService.request({
 				id: generate_uid(meStore.me.id),
 				from: meStore.me.id,

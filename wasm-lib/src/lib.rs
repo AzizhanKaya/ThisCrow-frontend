@@ -32,9 +32,9 @@ impl KeyPair {
 }
 
 #[wasm_bindgen]
-pub fn generate_keypair(password: &str) -> KeyPair {
+pub fn generate_keypair(hash_input: &str) -> KeyPair {
     let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
+    hasher.update(hash_input.as_bytes());
     let result = hasher.finalize();
 
     let mut secret_bytes = [0u8; 32];
@@ -130,16 +130,4 @@ pub fn decrypt_message(
         .map_err(|e| anyhow!("Decryption failed: {}", e))?;
 
     Ok(plaintext)
-}
-
-#[wasm_bindgen]
-pub fn hash(input: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(input.as_bytes());
-    let result = hasher.finalize();
-
-    result
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<String>()
 }

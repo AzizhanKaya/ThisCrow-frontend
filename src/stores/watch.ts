@@ -1,8 +1,5 @@
 import { defineStore } from 'pinia';
 import { MessageType, type User, type id, type Message, type WatchParty, type Ack, AckType, EventType } from '@/types';
-import { useUserStore } from './user.ts';
-import { useMeStore } from './me.ts';
-import { fetchDms } from '@/api/state.ts';
 import { websocketService } from '@/services/websocket.ts';
 import { ModalView, useModalStore } from './modal.ts';
 import { invoke } from '@tauri-apps/api/core';

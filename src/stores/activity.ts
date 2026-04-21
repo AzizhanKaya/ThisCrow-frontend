@@ -65,7 +65,6 @@ export const useActivityStore = defineStore('activity', {
 			const userStore = useUserStore();
 			const meStore = useMeStore();
 			const user = userStore.users.get(userId);
-			console.log(event);
 			if (!user) return;
 			if (!user.activities) user.activities = {};
 

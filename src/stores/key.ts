@@ -13,8 +13,7 @@ export const useKeyStore = defineStore('keys', {
 	}),
 
 	actions: {
-		storeKeys(hash: string) {
-			const keypair = generate_keypair(hash);
+		storeKeys(keypair: { public_key: Uint8Array; private_key: Uint8Array }) {
 			this.public_key = new Uint8Array(keypair.public_key);
 			this.private_key = new Uint8Array(keypair.private_key);
 

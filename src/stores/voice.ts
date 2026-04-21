@@ -170,9 +170,8 @@ export const useVoiceStore = defineStore('voice', {
 
 		async leaveVoice() {
 			if (this.cleanupUnload) {
-				const cleanup = this.cleanupUnload;
+				this.cleanupUnload();
 				this.cleanupUnload = null;
-				cleanup();
 			}
 
 			if (this.unwatch) {

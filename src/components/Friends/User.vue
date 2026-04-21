@@ -233,11 +233,16 @@
 		font-weight: 600;
 		font-size: 1rem;
 		color: var(--text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.username {
 		font-weight: 100;
 		font-size: 0.8rem;
 		color: var(--text-muted);
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 	.name:hover {
 		text-decoration: underline;
@@ -253,6 +258,9 @@
 	.status {
 		color: var(--text);
 		font-size: 13px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.action-buttons {

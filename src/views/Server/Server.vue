@@ -41,15 +41,23 @@
 
 			serverStore.subscribeToServer(newId);
 
-			const unsubscribe = async () => serverStore.unsubscribeFromServer(newId);
+			let unsubscribed = false;
+			const unsubscribe = async () => {
+				if (unsubscribed) return;
+				unsubscribed = true;
+				try {
+					await serverStore.unsubscribeFromServer(newId);
+				} catch (error) {
+					console.warn('Unsubscribe error:', error);
+				}
+			};
 
 			const removeHandler = appStore.onBeforeUnload(unsubscribe);
 
 			onCleanup(async () => {
-				removeHandler();
-
 				if (voiceStore.group_id !== newId) {
 					await unsubscribe();
+					removeHandler();
 				}
 			});
 		},
