@@ -30,19 +30,19 @@ export const useDMStore = defineStore('dm', {
 				if (!meStore.me) return;
 
 				const user_id = m.from === meStore.me.id ? m.to : m.from;
-
 				await this.ensureUser(user_id);
 
 				const index = this.dms.findIndex((u) => u.id === user_id);
-				if (index > 0) {
+
+				if (index != -1) {
 					const [user] = this.dms.splice(index, 1);
-					this.dms.unshift(user);
+					this.dms.push(user);
 				}
 			});
 		},
 		async init() {
 			this.setupListeners();
-			const dms = (await fetchDms()).sort((x, y) => (x[1] > y[1] ? -1 : x[1] < y[1] ? 1 : 0)).map(([a, b]) => a);
+			const dms = (await fetchDms()).sort((x, y) => (x[1] > y[1] ? 1 : x[1] < y[1] ? -1 : 0)).map(([a, b]) => a);
 			const userStore = useUserStore();
 			this.dms = await userStore.getUsers(dms);
 		},

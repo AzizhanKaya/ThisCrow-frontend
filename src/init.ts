@@ -23,6 +23,7 @@ export async function initApp() {
 	const appStore = useAppStore();
 	const keyStore = useKeyStore();
 	const activityStore = useActivityStore();
+	const watchStore = useWatchStore();
 
 	const me: Me = await websocketService.waitForSessionInit();
 	messageStore.init();
@@ -34,7 +35,6 @@ export async function initApp() {
 	await activityStore.init();
 
 	if (appStore.isTauri) {
-		const watchStore = useWatchStore();
 		watchStore.init();
 	}
 

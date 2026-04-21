@@ -66,7 +66,6 @@ class WebSocketService {
 			console.log('WebSocket connection closed');
 			this.connectionStateHandlers.forEach((h) => h('CLOSED'));
 			if (event.code !== 1000) {
-				console.log(event.code);
 				if (this.reconnectDelay !== 10000) {
 					this.reconnectDelay = Math.min(10000, this.reconnectDelay * 2);
 				}
@@ -119,7 +118,7 @@ class WebSocketService {
 			this.pendingRequests.delete(message.id);
 
 			if (data.ack === AckType.Error) {
-				reject(new Error(data.payload as string));
+				reject(data.payload);
 			} else {
 				resolve(message);
 			}
@@ -142,7 +141,6 @@ class WebSocketService {
 		if (this.ws.readyState != WebSocket.OPEN) {
 			throw new Error('WebSocket is not connected. Current state:' + this.getConnectionState());
 		}
-
 		console.log(message);
 
 		this.ws.send(encode(message));
@@ -152,7 +150,7 @@ class WebSocketService {
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => {
 				this.pendingRequests.delete(message.id);
-				reject(new Error('Timeout'));
+				reject('Timeout ' + message.id);
 			}, timeoutMs);
 
 			this.pendingRequests.set(message.id, { resolve, reject, timer });

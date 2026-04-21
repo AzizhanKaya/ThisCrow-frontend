@@ -29,7 +29,7 @@
 
 	const privateKey = ref<Uint8Array | null | undefined>(undefined);
 
-	const messages = computed(() => messageStore.getMessages(chatTarget.value).toSorted((a, b) => Number(a.id - b.id)));
+	const messages = computed(() => messageStore.getMessages(chatTarget.value)?.toSorted((a, b) => Number(a.id - b.id)));
 
 	const scroller = ref<HTMLElement | null>(null);
 	const isLoadingMore = ref(false);
@@ -165,6 +165,8 @@
 	watch(
 		chatTarget,
 		async (newTarget) => {
+			privateKey.value = undefined;
+
 			if (newTarget.kind === 'user') {
 				privateKey.value = await keyStore.get_private_key(newTarget.user_id);
 			} else {
@@ -178,8 +180,9 @@
 	);
 
 	watch(
-		() => messages.value.length,
+		() => messages.value?.length,
 		async (newLen, oldLen) => {
+			if (!newLen || !oldLen) return;
 			if (!isLoadingMore.value && newLen > oldLen) {
 				await scrollToBottom();
 			}
@@ -195,7 +198,7 @@
 			<Icon icon="svg-spinners:ring-resize" width="24" height="24" />
 		</div>
 
-		<div v-if="messages.length === 0" class="no-messages">
+		<div v-if="messages?.length === 0" class="no-messages">
 			<div class="no-messages-icon">
 				<Icon icon="ri:message-2-fill" width="56" height="56" />
 			</div>
@@ -204,7 +207,7 @@
 		</div>
 
 		<div
-			v-if="privateKey !== undefined"
+			v-if="messages && privateKey !== undefined"
 			v-for="(message, index) in messages"
 			:key="message.id.toString()"
 			class="message-wrapper"
@@ -218,10 +221,10 @@
 				:privateKey="privateKey"
 			/>
 			<div v-if="hoveredMessageId === message.id" class="message-actions">
-				<Icon icon="mdi:reply" class="action-icon" @click="handleReply(message)" title="Yanıtla" />
+				<Icon icon="mdi:reply" class="action-icon" @click="handleReply(message)" title="Reply" />
 				<template v-if="me.id === message.from">
-					<Icon icon="mdi:pencil" class="action-icon" @click="handleOverwrite(message)" title="Düzenle" />
-					<Icon icon="mdi:delete" class="action-icon action-delete" @click="handleDelete(message)" title="Sil" />
+					<Icon icon="mdi:pencil" class="action-icon" @click="handleOverwrite(message)" title="Edit" />
+					<Icon icon="mdi:delete" class="action-icon action-delete" @click="handleDelete(message)" title="Delete" />
 				</template>
 			</div>
 		</div>

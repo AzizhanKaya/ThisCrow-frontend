@@ -77,7 +77,7 @@ export const useMessageStore = defineStore('message', {
 		},
 
 		getMessages(target: ChatTarget) {
-			return this.messages.get(chatKey(target)) || [];
+			return this.messages.get(chatKey(target));
 		},
 
 		sendMessage(message: Message) {

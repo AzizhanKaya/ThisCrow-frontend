@@ -27,10 +27,11 @@
 	.main-layout {
 		display: grid;
 		grid-template-columns: 70px 1fr;
-		overflow: hidden;
 		height: calc(100% - 30px);
 		width: 100%;
 		position: absolute;
+		top: 30px;
+		left: 0;
 		overflow: auto;
 	}
 
@@ -42,10 +43,11 @@
 	.content-view {
 		height: 100%;
 		min-width: 800px;
-		overflow: auto;
+		overflow: hidden;
 		border-left: 1px solid var(--border);
 		border-top: 1px solid var(--border);
 		border-top-left-radius: 20px;
+		position: relative;
 	}
 
 	.fade-enter-active,

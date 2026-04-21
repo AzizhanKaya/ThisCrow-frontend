@@ -60,11 +60,7 @@
 	};
 
 	async function onCall() {
-		if (isCalling.value) {
-			await voiceStore.leaveVoice();
-		} else {
-			await voiceStore.joinVoice(undefined, undefined, props.targetUser);
-		}
+		await voiceStore.joinVoice(undefined, undefined, props.targetUser);
 	}
 </script>
 

@@ -1,4 +1,8 @@
 import { ref, computed } from 'vue';
+import { API_URL } from '@/constants';
+import { encode, msgFetch } from '@/utils/msgpack';
+
+export type StorageType = 'image' | 'video' | 'file' | 'avatar' | 'icon';
 
 interface SelectedFiles {
 	images: Array<{ url: string; file: File }>;
@@ -39,15 +43,13 @@ export function useFiles() {
 		const files = (event.target as HTMLInputElement).files;
 		if (!files) return;
 
-		const filesArray = Array.from(files);
+		const uploaded = await uploadFiles(Array.from(files));
 
-		const uploaded = await uploadFiles(filesArray);
+		uploaded.forEach((info) => {
+			const file = info.file;
+			const url = info.url;
 
-		uploaded.forEach((info, index) => {
-			const file = filesArray[index];
-			const url = `/uploads/${info.type}/${info.saved_name}`;
-
-			if (info.type === 'img') {
+			if (info.type === 'image') {
 				selectedFiles.value.images.push({ url, file });
 			} else if (info.type === 'video') {
 				selectedFiles.value.videos.push({ url, file });
@@ -78,48 +80,62 @@ export function useFiles() {
 		};
 	}
 
-	async function uploadFiles(files: File[]) {
+	async function uploadFiles(files: File[], overrideStorageType?: StorageType) {
 		const uploaded: Array<{
-			file_name: string;
-			saved_name: string;
-			type: string;
+			file: File;
+			type: StorageType;
+			url: string;
 		}> = [];
 
-		const formData = new FormData();
+		for (const file of files) {
+			let storageType: StorageType = overrideStorageType || getFileType(file);
 
-		files.forEach((file) => {
-			const type = getFileType(file);
-			formData.append(type, file);
-		});
-
-		try {
-			const response = await fetch('/upload', {
-				method: 'POST',
-				body: formData,
-			});
-
-			if (!response.ok) throw new Error('Upload failed');
-
-			const result = await response.json();
-
-			result.forEach((uploadInfo: { filename: string; saved_name: string; type: string }) => {
-				uploaded.push({
-					file_name: uploadInfo.filename,
-					saved_name: uploadInfo.saved_name,
-					type: uploadInfo.type,
+			try {
+				const signature = await msgFetch<{
+					original_filename: string;
+					saved_filename: string;
+					signed_url: string;
+					public_url: string;
+				}>(`${API_URL}/upload`, {
+					method: 'PUT',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					credentials: 'include',
+					body: encode({
+						filename: file.name,
+						content_type: file.type || 'application/octet-stream',
+						storage_type: storageType,
+					}),
 				});
-			});
-		} catch (error) {
-			console.error('Upload error:', error);
+
+				const uploadResponse = await fetch(signature.signed_url, {
+					method: 'PUT',
+					headers: {
+						'Content-Type': file.type || 'application/octet-stream',
+					},
+					body: file,
+				});
+
+				if (!uploadResponse.ok) throw new Error('Upload to storage failed');
+
+				uploaded.push({
+					file,
+					type: storageType,
+					url: signature.public_url,
+				});
+			} catch (error) {
+				console.error('Upload error:', error);
+			}
 		}
 
 		return uploaded;
 	}
 
-	function getFileType(file: File): 'img' | 'video' | 'file' {
+	function getFileType(file: File): StorageType {
 		const mime = file.type;
 
-		if (mime.startsWith('image/')) return 'img';
+		if (mime.startsWith('image/')) return 'image';
 		if (mime.startsWith('video/')) return 'video';
 		return 'file';
 	}
@@ -131,5 +147,6 @@ export function useFiles() {
 		handleFileSelect,
 		removeFile,
 		clearFiles,
+		uploadFiles,
 	};
 }

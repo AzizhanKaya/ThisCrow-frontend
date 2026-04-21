@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import type { id } from '@/types';
-import { generate_keypair, generate_shared_secret } from '@/../pkg/wasm_lib';
+import { generate_shared_secret } from '@/../pkg/wasm_lib';
 import { fetchPublicKey } from '@/api/info';
 
 export const useKeyStore = defineStore('keys', {
@@ -13,8 +13,7 @@ export const useKeyStore = defineStore('keys', {
 	}),
 
 	actions: {
-		storeKeys(hash: string) {
-			const keypair = generate_keypair(hash);
+		storeKeys(keypair: { public_key: Uint8Array; private_key: Uint8Array }) {
 			this.public_key = new Uint8Array(keypair.public_key);
 			this.private_key = new Uint8Array(keypair.private_key);
 

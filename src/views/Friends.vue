@@ -122,7 +122,8 @@
 		justify-content: space-between;
 		padding: 8px 12px;
 		border-bottom: 1px solid var(--border-muted);
-		gap: 20px;
+		gap: 8px;
+		min-width: 0;
 	}
 
 	.tabs {
@@ -190,6 +191,7 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: 16px 24px;
+		padding-bottom: 100px;
 	}
 
 	.section {
@@ -216,137 +218,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-	}
-
-	.friend-card {
-		border-radius: 8px;
-		padding: 8px 12px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		transition: background-color 0.2s;
-	}
-
-	.friend-card:hover {
-		background-color: var(--bg-dark);
-	}
-
-	.friend-info {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		flex: 1;
-	}
-
-	.avatar-container {
-		position: relative;
-	}
-
-	.avatar {
-		width: 40px;
-		height: 40px;
-		border-radius: 50%;
-		background-color: var(--bg-dark);
-		transition: opacity 0.1s ease-in;
-		opacity: 0;
-	}
-
-	.avatar.loaded {
-		opacity: 1;
-	}
-
-	.state {
-		height: 12px;
-		width: 12px;
-		border-radius: 50%;
-		position: absolute;
-		z-index: 10;
-		border: 2px #333 solid;
-		left: 29px;
-		bottom: 5px;
-		flex-shrink: 0;
-	}
-
-	.state.online {
-		background-color: #43b581;
-	}
-	.state.dnd {
-		background-color: #f04747;
-	}
-	.state.idle {
-		background-color: #e2e446;
-	}
-	.state.offline {
-		background-color: #72767d;
-	}
-
-	.friend-text {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.name {
-		font-weight: 500;
-		font-size: 1rem;
-		color: var(--text);
-	}
-	.username {
-		font-weight: 500;
-		font-size: 0.8rem;
-		color: var(--text-muted);
-		margin-left: 0px;
-	}
-	.name:hover {
-		text-decoration: underline;
-		cursor: pointer;
-	}
-
-	.status-container {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.status {
-		color: #b9bbbe;
-		font-size: 13px;
-	}
-
-	.action-buttons {
-		display: flex;
-		gap: 8px;
-		opacity: 0;
-		transition: opacity 0.2s;
-	}
-
-	.friend-card:hover .action-buttons {
-		opacity: 1;
-	}
-
-	.icon-btn {
-		background-color: var(--bg-dark);
-		color: var(--text-muted);
-		border: none;
-		border-radius: 50%;
-		width: 36px;
-		height: 36px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		font-size: 20px;
-		transition: all 0.2s;
-	}
-
-	.icon-btn:hover {
-		background-color: #3a3d44;
-		color: #dcddde;
-	}
-
-	.icon-btn.success:hover {
-		background-color: var(--success);
-		color: white;
 	}
 
 	.icon-btn.danger:hover {

@@ -6,7 +6,7 @@
 	import { websocketService } from '@/services/websocket';
 	import { useKeyStore } from '@/stores/key';
 	import { useRouter } from 'vue-router';
-	import { hash } from '@/../pkg/wasm_lib';
+	import { generate_keypair } from '@/../pkg/wasm_lib';
 
 	const keyStore = useKeyStore();
 	const router = useRouter();
@@ -24,7 +24,7 @@
 		const pass = password.value;
 		try {
 			await login(user, pass);
-			keyStore.storeKeys(hash(user + ':' + pass));
+			keyStore.storeKeys(generate_keypair(user + ':' + pass));
 			websocketService.connect();
 			router.push({ name: 'chats' });
 		} catch (err: any) {

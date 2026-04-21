@@ -22,7 +22,11 @@
 
 	const router = useRouter();
 	const route = useRoute();
+
 	const user_id = computed(() => route.params.userId as string);
+	const reversedDms = computed(() => {
+		return [...dmStore.dms].reverse();
+	});
 
 	function handleUserClick(user: UserType) {
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
@@ -134,7 +138,7 @@
 					Direct Messages
 					<Icon @click="openDM" class="new-dm-icon" icon="mdi:plus" />
 				</div>
-				<template v-for="(user, index) in dmStore.dms" :key="user.id.toString()">
+				<template v-for="(user, index) in reversedDms" :key="user.id.toString()">
 					<User
 						:user="user"
 						@contextmenu.prevent="openContextMenu($event, user)"

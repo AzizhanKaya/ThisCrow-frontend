@@ -23,7 +23,6 @@
 	};
 
 	const handleDecline = async () => {
-		await voiceStore.leaveVoice();
 		modalStore.closeModal();
 	};
 </script>

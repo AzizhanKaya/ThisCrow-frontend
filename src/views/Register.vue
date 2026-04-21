@@ -3,7 +3,7 @@
 	import { Icon } from '@iconify/vue';
 	import Toast from '@/components/Toast.vue';
 	import { register } from '@/api/auth';
-	import { hash } from '../../pkg/wasm_lib';
+	import { generate_keypair } from '../../pkg/wasm_lib';
 	import { useKeyStore } from '@/stores/key';
 	import { websocketService } from '@/services/websocket';
 	import { useRouter } from 'vue-router';
@@ -37,8 +37,9 @@
 		}
 
 		try {
-			await register(username, name, email, password);
-			keyStore.storeKeys(hash(username + ':' + password));
+			const keypair = generate_keypair(username + ':' + password);
+			await register(username, name, email, password, keypair.public_key);
+			keyStore.storeKeys(keypair);
 			websocketService.connect();
 			router.push({ name: 'chats' });
 		} catch (err: any) {

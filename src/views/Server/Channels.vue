@@ -26,7 +26,6 @@
 	// State
 	const isDragging = ref(false);
 	const channel_id = computed(() => {
-		console.log(route.params.channelId);
 		return route.params.channelId ? Number(route.params.channelId) : null;
 	});
 
@@ -139,7 +138,7 @@
 
 		if (channel.type === ChannelType.Voice) {
 			const voiceStore = useVoiceStore();
-			voiceStore.joinVoice(channel, props.server_id);
+			await voiceStore.joinVoice(channel, props.server_id);
 		}
 		if (channel.type === ChannelType.Text) {
 		}

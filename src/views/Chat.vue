@@ -17,10 +17,13 @@
 
 	const route = useRoute();
 	const messageStore = useMessageStore();
+	const userStore = useUserStore();
+	const voiceStore = useVoiceStore();
 
 	const to = computed(() => {
 		return Number(route.params.userId as string);
 	});
+	const targetUser = ref<User | undefined>(undefined);
 
 	const chatTarget = computed<ChatTarget>(() => ({ kind: 'user', user_id: to.value }));
 
@@ -29,8 +32,8 @@
 
 	watch(
 		chatTarget,
-		(newTarget) => {
-			messageStore.initChat(newTarget);
+		async (newTarget) => {
+			await messageStore.initChat(newTarget);
 			showSkeleton.value = false;
 			if (skeletonTimer) clearTimeout(skeletonTimer);
 		},
@@ -42,7 +45,7 @@
 		(loading) => {
 			if (skeletonTimer) clearTimeout(skeletonTimer);
 
-			const hasMessages = messageStore.getMessages(chatTarget.value).length > 0;
+			const hasMessages = !!messageStore.getMessages(chatTarget.value);
 
 			if (loading && !hasMessages) {
 				skeletonTimer = setTimeout(() => {
@@ -56,11 +59,6 @@
 		},
 		{ immediate: true }
 	);
-
-	const targetUser = ref<User | undefined>(undefined);
-	const userStore = useUserStore();
-	const voiceStore = useVoiceStore();
-	const meStore = useMeStore();
 
 	watch(
 		to,

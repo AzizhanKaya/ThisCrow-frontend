@@ -2,6 +2,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
 };
+use anyhow::Context;
 use anyhow::anyhow;
 use getrandom::getrandom;
 use hkdf::Hkdf;
@@ -32,13 +33,10 @@ impl KeyPair {
 }
 
 #[wasm_bindgen]
-pub fn generate_keypair(password: &str) -> KeyPair {
+pub fn generate_keypair(hash: &str) -> KeyPair {
     let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    let result = hasher.finalize();
-
-    let mut secret_bytes = [0u8; 32];
-    secret_bytes.copy_from_slice(&result);
+    hasher.update(hash.as_bytes());
+    let secret_bytes: [u8; 32] = hasher.finalize().into();
 
     let private_key = StaticSecret::from(secret_bytes);
     let public_key = PublicKey::from(&private_key);
@@ -51,20 +49,15 @@ pub fn generate_keypair(password: &str) -> KeyPair {
 
 #[wasm_bindgen]
 pub fn generate_shared_secret(our_private_key: &[u8], other_public_key: &[u8]) -> Result<Vec<u8>> {
-    if our_private_key.len() != 32 {
-        bail!("Private key must be exactly 32 bytes.");
-    }
-    if other_public_key.len() != 32 {
-        bail!("Public key must be exactly 32 bytes.");
-    }
+    let our_private_key: [u8; 32] = our_private_key
+        .try_into()
+        .context("Private key must be exactly 32 bytes.")?;
+    let other_public_key: [u8; 32] = other_public_key
+        .try_into()
+        .context("Public key must be exactly 32 bytes.")?;
 
-    let mut priv_bytes = [0u8; 32];
-    priv_bytes.copy_from_slice(our_private_key);
-    let private_key = StaticSecret::from(priv_bytes);
-
-    let mut pub_bytes = [0u8; 32];
-    pub_bytes.copy_from_slice(other_public_key);
-    let public_key = PublicKey::from(pub_bytes);
+    let private_key = StaticSecret::from(our_private_key);
+    let public_key = PublicKey::from(other_public_key);
 
     let shared_secret = private_key.diffie_hellman(&public_key);
 
@@ -130,16 +123,4 @@ pub fn decrypt_message(
         .map_err(|e| anyhow!("Decryption failed: {}", e))?;
 
     Ok(plaintext)
-}
-
-#[wasm_bindgen]
-pub fn hash(input: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(input.as_bytes());
-    let result = hasher.finalize();
-
-    result
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<String>()
 }

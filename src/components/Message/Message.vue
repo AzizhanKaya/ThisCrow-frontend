@@ -18,22 +18,16 @@
 			required: false,
 		},
 		privateKey: {
-			type: Object as PropType<Uint8Array | null>,
+			type: Object as PropType<Uint8Array | null | undefined>,
 			required: false,
 		},
 	});
 
 	const message = $computed(() => {
+		if (props.privateKey === undefined) return;
+
 		const data = props.message.data;
-		if (typeof data !== 'object' || data === null || !('cipher' in data)) {
-			return props.message;
-		}
-
-		if (!props.privateKey) {
-			return props.message;
-		}
-
-		if (props.message.overwrited) {
+		if (typeof data !== 'object' || !('cipher' in data) || !props.privateKey) {
 			return props.message;
 		}
 
@@ -91,7 +85,13 @@
 
 <template>
 	<div class="message" :class="{ 'with-user': user }">
-		<img v-if="user" class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" @click.stop="openProfileCard($event)" style="cursor: pointer" />
+		<img
+			v-if="user && props.privateKey !== undefined"
+			class="avatar"
+			:src="user.avatar || getDefaultAvatar(user.username)"
+			@click.stop="openProfileCard($event)"
+			style="cursor: pointer"
+		/>
 
 		<div class="content">
 			<div v-if="user" class="message-header">

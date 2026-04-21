@@ -61,7 +61,6 @@ export const useFriendStore = defineStore('friends', {
 					}
 
 					case AckType.DeletedFriend: {
-						console.log('Deleted friend', message.from);
 						this.friends.delete(message.from);
 						this.incoming_requests = this.incoming_requests.filter((u) => u.id !== message.from);
 						this.outgoing_requests = this.outgoing_requests.filter((u) => u.id !== message.from);
