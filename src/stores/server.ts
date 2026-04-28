@@ -34,7 +34,6 @@ export const useServerStore = defineStore('server', {
 						const max = [...this.servers.values()].reduce((max, s) => (s.position > max ? s.position : max), 0);
 						const server = {
 							id: server_id,
-							version: 0,
 							...payload,
 							position: max + 1,
 						};
@@ -46,7 +45,6 @@ export const useServerStore = defineStore('server', {
 						{
 							const {
 								id,
-								version,
 								name,
 								owner,
 								icon,
@@ -55,7 +53,6 @@ export const useServerStore = defineStore('server', {
 								roles: roles_record,
 							}: {
 								id: id;
-								version: id;
 								owner: id;
 								name: string;
 								icon?: string;
@@ -101,11 +98,10 @@ export const useServerStore = defineStore('server', {
 
 							const server = this.servers.get(server_id);
 							if (server) {
-								Object.assign(server, { version, members, channels, roles, owner });
+								Object.assign(server, { members, channels, roles, owner });
 							} else {
 								this.servers.set(server_id, {
 									id,
-									version,
 									name,
 									icon,
 									position: 0,
@@ -128,6 +124,17 @@ export const useServerStore = defineStore('server', {
 
 					case AckType.UpdatedGroup:
 						Object.assign(server, payload);
+						break;
+
+					case AckType.JoinedMember:
+						server.members?.set(target_id, {
+							user: await userStore.getUser(target_id),
+							roles: [],
+						});
+						break;
+
+					case AckType.RemovedMember:
+						server.members?.delete(target_id);
 						break;
 
 					case AckType.CreatedChannel:

@@ -11,6 +11,7 @@
 	import { useKeyStore } from '@/stores/key';
 	import { encrypt_message, generate_nonce } from '@/../pkg/wasm_lib';
 	import { encode } from '@/utils/msgpack';
+	import ProfileCard from '@/components/ProfileCard.vue';
 
 	const props = defineProps<{
 		to: id;
@@ -36,13 +37,33 @@
 	const canLoadMore = computed(() => messageStore.hasMore.get(chatKey(chatTarget.value)) !== false);
 	const hoveredMessageId = ref<MessageType['id'] | null>(null);
 
-	const contextMenuInfo = ref({
+	const contextMenu = ref({
 		show: false,
 		x: 0,
 		y: 0,
 		options: [] as { action: string; label: string; icon: string; danger?: boolean; divider?: boolean }[],
 		message: null as MessageType | null,
 	});
+
+	const profileCard = ref({
+		show: false,
+		x: 0,
+		y: 0,
+		user: null as ReturnType<typeof userStore.users.get> | null,
+	});
+
+	const handleOpenProfile = (payload: { user: any; x: number; y: number }) => {
+		if (profileCard.value.show && profileCard.value.user?.id === payload.user.id) {
+			profileCard.value.show = false;
+			return;
+		}
+		profileCard.value = {
+			show: true,
+			x: payload.x,
+			y: payload.y,
+			user: payload.user,
+		};
+	};
 
 	const handleContextMenu = (e: MouseEvent, message: MessageType) => {
 		const options: { action: string; label: string; icon: string; danger?: boolean; divider?: boolean }[] = [
@@ -56,7 +77,7 @@
 			);
 		}
 
-		contextMenuInfo.value = {
+		contextMenu.value = {
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
@@ -66,7 +87,7 @@
 	};
 
 	const handleContextSelect = async (action: string) => {
-		const msg = contextMenuInfo.value.message;
+		const msg = contextMenu.value.message;
 		if (!msg) return;
 
 		switch (action) {
@@ -219,6 +240,7 @@
 				:message="message"
 				:user="index === 0 || messages[index - 1].from !== message.from ? userStore.users.get(message.from) : undefined"
 				:privateKey="privateKey"
+				@open-profile="handleOpenProfile"
 			/>
 			<div v-if="hoveredMessageId === message.id" class="message-actions">
 				<Icon icon="mdi:reply" class="action-icon" @click="handleReply(message)" title="Reply" />
@@ -230,13 +252,22 @@
 		</div>
 
 		<ContextMenu
-			:show="contextMenuInfo.show"
-			:x="contextMenuInfo.x"
-			:y="contextMenuInfo.y"
-			:options="contextMenuInfo.options"
-			@close="contextMenuInfo.show = false"
+			:show="contextMenu.show"
+			:x="contextMenu.x"
+			:y="contextMenu.y"
+			:options="contextMenu.options"
+			@close="contextMenu.show = false"
 			@select="handleContextSelect"
 			:min-width="180"
+		/>
+
+		<ProfileCard
+			v-if="profileCard.user"
+			:user="profileCard.user"
+			:show="profileCard.show"
+			:x="profileCard.x"
+			:y="profileCard.y"
+			@close="profileCard.show = false"
 		/>
 	</div>
 </template>

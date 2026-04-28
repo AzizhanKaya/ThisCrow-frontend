@@ -38,6 +38,8 @@
 	.server-sidebar {
 		height: 100%;
 		padding-top: 5px;
+		overflow-y: auto;
+		scrollbar-width: none;
 	}
 
 	.content-view {

@@ -2,16 +2,16 @@
 	import { Status } from '@/types';
 	import { computed, ref } from 'vue';
 	import { useMeStore } from '@/stores/me';
-	import { useVoiceStore } from '@/stores/voice';
+	import VoicePanel from './VoicePanel.vue';
 	import { onClickOutside } from '@vueuse/core';
 	import { useRouter } from 'vue-router';
 	import { Icon } from '@iconify/vue';
 	import { websocketService } from '@/services/websocket';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { webrtcService } from '@/services/webrtc';
+	import { useModalStore, ModalView } from '@/stores/modal';
 
 	const meStore = useMeStore();
-	const voiceStore = useVoiceStore();
 	const router = useRouter();
 
 	const user = meStore.me!;
@@ -59,35 +59,18 @@
 			await meStore.logOut();
 			router.push({ name: 'login' });
 		}
+
+		if (action === 'profile') {
+			useModalStore().openModal(ModalView.PROFILE_CARD, { user: meStore.me });
+		}
+
 		showUserMenu.value = false;
 	};
 </script>
 
 <template>
 	<div v-if="user" class="user-container">
-		<!-- Voice Panel Wrapper -->
-		<div v-if="voiceStore.voice_channel || voiceStore.voice_direct" class="voice-panel">
-			<div class="voice-info">
-				<div class="voice-connection">
-					<Icon icon="mdi:signal-cellular-3" class="icon-green" />
-					<span>Voice Connected</span>
-				</div>
-				<div class="voice-channel-name">
-					# {{ voiceStore.voice_channel ? voiceStore.voice_channel.name : voiceStore.voice_direct?.name }}
-				</div>
-			</div>
-			<div class="voice-actions">
-				<button class="action-btn" :class="{ 'is-active': voiceStore.isMuted }" @click.stop="voiceStore.toggleMute()">
-					<Icon :icon="voiceStore.isMuted ? 'mdi:microphone-off' : 'mdi:microphone'" />
-				</button>
-				<button class="action-btn" :class="{ 'is-active': voiceStore.isScreenSharing }" @click.stop="voiceStore.toggleScreen()">
-					<Icon :icon="voiceStore.isScreenSharing ? 'mdi:monitor-share' : 'ic:round-stop-screen-share'" />
-				</button>
-				<button class="action-btn danger" @click.stop="voiceStore.leaveVoice()">
-					<Icon icon="mdi:phone-hangup" />
-				</button>
-			</div>
-		</div>
+		<VoicePanel />
 
 		<div class="user-card" ref="userCardRef" @click="handleUserCardClick">
 			<img
@@ -194,17 +177,26 @@
 		flex-direction: column;
 		align-items: flex-start;
 		justify-content: center;
+		min-width: 0;
+		flex: 1;
 	}
 
 	.name {
 		font-weight: bold;
 		font-size: 1.2rem;
 		color: var(--text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		width: 100%;
 	}
 
 	.username {
 		font-size: 0.9em;
 		color: var(--text-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.status-container {
@@ -387,85 +379,5 @@
 	.fade-leave-to {
 		opacity: 0;
 		transform: translate3d(0, 10px, 0) scale(0.95);
-	}
-
-	.voice-panel {
-		background-color: var(--bg-darker);
-		border-radius: 10px 10px 0 0;
-		padding: 10px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		position: relative;
-		bottom: -4px;
-	}
-
-	.voice-info {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.voice-connection {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		color: var(--success);
-		font-weight: 600;
-		font-size: 0.9rem;
-	}
-
-	.icon-green {
-		color: var(--success);
-	}
-
-	.voice-channel-name {
-		font-size: 0.85rem;
-		color: var(--text-muted);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.voice-actions {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		margin-top: 4px;
-	}
-
-	.action-btn {
-		background: none;
-		border: none;
-		color: var(--text-muted);
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 6px;
-		border-radius: 6px;
-		transition: all 0.2s;
-		font-size: 1.1rem;
-		flex: 1;
-		background-color: var(--bg);
-	}
-
-	.action-btn:hover {
-		color: var(--text);
-		background-color: var(--bg-light);
-	}
-
-	.action-btn.is-active {
-		color: var(--error);
-	}
-
-	.action-btn.danger {
-		color: var(--error);
-	}
-
-	.action-btn.danger:hover {
-		background-color: var(--error);
-		color: var(--text);
 	}
 </style>

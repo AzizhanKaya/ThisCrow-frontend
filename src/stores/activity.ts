@@ -28,8 +28,16 @@ export const useActivityStore = defineStore('activity', {
 
 	actions: {
 		async init() {
-			const meStore = useMeStore();
 			const appStore = useAppStore();
+
+			websocketService.onMessage(MessageType.Server, (message: Message<Ack>) => {
+				if (message.data.ack === AckType.MusicActivity) {
+					this.handleMusic(message.from, message.data.payload);
+				}
+				if (message.data.ack === AckType.GameActivity) {
+					this.handleGame(message.from, message.data.payload);
+				}
+			});
 
 			if (appStore.isTauri) {
 				const game = await invoke<Game | null>('get_current_game');
@@ -50,15 +58,6 @@ export const useActivityStore = defineStore('activity', {
 					this.sendGameActivity(event.payload);
 				});
 			}
-
-			websocketService.onMessage(MessageType.Server, (message: Message<Ack>) => {
-				if (message.data.ack === AckType.MusicActivity) {
-					this.handleMusic(message.from, message.data.payload);
-				}
-				if (message.data.ack === AckType.GameActivity) {
-					this.handleGame(message.from, message.data.payload);
-				}
-			});
 		},
 
 		handleMusic(userId: id, event: MusicEvent) {

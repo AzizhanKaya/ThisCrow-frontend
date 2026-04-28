@@ -29,18 +29,18 @@ export async function joinInvitation(code: string): Promise<void> {
 	});
 }
 
-export interface InvitationInfo {
+export interface Invitation {
 	group_id: id;
 	group_name: string;
-	group_icon: string | null;
-	group_description: string | null;
+	group_icon: string | undefined;
+	group_description: string | undefined;
 	member_count: number;
 }
 
-export async function getInvitationInfo(code: string): Promise<InvitationInfo> {
+export async function getInvitationInfo(code: string): Promise<Invitation> {
 	const params = new URLSearchParams();
 	params.append('code', code);
-	return await msgFetch<InvitationInfo>(`${API_URL}/invitation/info?${params.toString()}`, {
+	return await msgFetch<Invitation>(`${API_URL}/invitation/info?${params.toString()}`, {
 		credentials: 'include',
 	});
 }

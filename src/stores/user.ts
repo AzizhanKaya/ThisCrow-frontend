@@ -14,12 +14,15 @@ export const useUserStore = defineStore('user', {
 			websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
 				const { ack, payload } = message.data;
 
+				const user = this.users.get(message.from);
+				if (!user) return;
+
 				switch (ack) {
 					case AckType.ChangedStatus:
-						Object.assign(this.users.get(message.from)!, { status: payload });
+						Object.assign(user, { status: payload });
 						break;
 					case AckType.UpdatedUser:
-						Object.assign(this.users.get(message.from)!, payload);
+						Object.assign(user, payload);
 						break;
 				}
 			});

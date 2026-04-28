@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { watch } from 'vue';
+import { watch, ref } from 'vue';
 import {
 	EventType,
 	MessageType,
@@ -21,6 +21,11 @@ import { webrtcService, MediaType } from '@/services/webrtc';
 import { useUserStore } from './user';
 import { useModalStore, ModalView } from './modal';
 
+export interface AudioDevice {
+	deviceId: string;
+	label: string;
+}
+
 export const useVoiceStore = defineStore('voice', {
 	state: () => ({
 		voice_channel: undefined as Channel | undefined,
@@ -29,9 +34,19 @@ export const useVoiceStore = defineStore('voice', {
 		on_voice_direct: [] as id[],
 		unwatch: null as (() => void) | null,
 		isMuted: false,
+		isDeafened: false,
 		isVideoOn: false,
 		isScreenSharing: false,
 		cleanupUnload: null as (() => void) | null,
+		audioDevices: [] as AudioDevice[],
+		selectedDeviceId: '' as string,
+		showDeviceSelector: false,
+		outputDevices: [] as AudioDevice[],
+		selectedOutputDeviceId: '' as string,
+		showOutputDeviceSelector: false,
+		deviceChangeCleanup: null as (() => void) | null,
+		voiceThreshold: 0.02,
+		noiseSuppression: true,
 	}),
 
 	actions: {
@@ -75,11 +90,110 @@ export const useVoiceStore = defineStore('voice', {
 			this.voice_direct = undefined;
 			this.on_voice_direct = [];
 			this.isMuted = false;
+			this.isDeafened = false;
 			this.isVideoOn = false;
 			this.isScreenSharing = false;
 			this.unwatch = null;
 			this.cleanupUnload = null;
+			this.audioDevices = [];
+			this.selectedDeviceId = '';
+			this.showDeviceSelector = false;
+			this.outputDevices = [];
+			this.selectedOutputDeviceId = '';
+			this.showOutputDeviceSelector = false;
 			this.setupListeners();
+			this.setupDeviceChangeListener();
+		},
+
+		setupDeviceChangeListener() {
+			if (this.deviceChangeCleanup) this.deviceChangeCleanup();
+			const handler = () => {
+				this.enumerateAudioDevices();
+				this.enumerateOutputDevices();
+			};
+			navigator.mediaDevices.addEventListener('devicechange', handler);
+			this.deviceChangeCleanup = () => {
+				navigator.mediaDevices.removeEventListener('devicechange', handler);
+			};
+		},
+
+		async enumerateAudioDevices() {
+			try {
+				const devices = await navigator.mediaDevices.enumerateDevices();
+				this.audioDevices = devices
+					.filter((d) => d.kind === 'audioinput')
+					.map((d) => ({
+						deviceId: d.deviceId,
+						label: d.label || `Microphone (${d.deviceId.slice(0, 5)}...)`,
+					}));
+
+				if (!this.selectedDeviceId || !this.audioDevices.some((d) => d.deviceId === this.selectedDeviceId)) {
+					this.selectedDeviceId = this.audioDevices[0]?.deviceId || '';
+				}
+			} catch (e) {
+				console.error('Failed to enumerate audio devices:', e);
+			}
+		},
+
+		async selectAudioDevice(deviceId: string) {
+			this.selectedDeviceId = deviceId;
+			this.showDeviceSelector = false;
+
+			if ((this.voice_channel || this.voice_direct) && !this.isMuted) {
+				try {
+					await webrtcService.removeTrack(MediaType.Audio);
+					const track = await webrtcService.addTrack(MediaType.Audio, deviceId);
+					track.onended = () => {
+						this.isMuted = true;
+						webrtcService.removeTrack(MediaType.Audio);
+					};
+				} catch (e) {
+					console.error('Failed to switch microphone:', e);
+				}
+			}
+		},
+
+		toggleDeviceSelector() {
+			this.showDeviceSelector = !this.showDeviceSelector;
+			this.showOutputDeviceSelector = false;
+			if (this.showDeviceSelector) {
+				this.enumerateAudioDevices();
+			}
+		},
+
+		async enumerateOutputDevices() {
+			try {
+				const devices = await navigator.mediaDevices.enumerateDevices();
+				this.outputDevices = devices
+					.filter((d) => d.kind === 'audiooutput')
+					.map((d) => ({
+						deviceId: d.deviceId,
+						label: d.label || `Speaker (${d.deviceId.slice(0, 5)}...)`,
+					}));
+
+				if (!this.selectedOutputDeviceId || !this.outputDevices.some((d) => d.deviceId === this.selectedOutputDeviceId)) {
+					this.selectedOutputDeviceId = this.outputDevices[0]?.deviceId || '';
+				}
+			} catch (e) {
+				console.error('Failed to enumerate output devices:', e);
+			}
+		},
+
+		selectOutputDevice(deviceId: string) {
+			this.selectedOutputDeviceId = deviceId;
+			this.showOutputDeviceSelector = false;
+		},
+
+		toggleOutputDeviceSelector() {
+			this.showOutputDeviceSelector = !this.showOutputDeviceSelector;
+			this.showDeviceSelector = false;
+			if (this.showOutputDeviceSelector) {
+				this.enumerateOutputDevices();
+			}
+		},
+
+		toggleDeafen() {
+			this.isDeafened = !this.isDeafened;
 		},
 
 		async joinVoice(channel?: Channel, group_id?: id, user?: User): Promise<void> {
@@ -97,6 +211,11 @@ export const useVoiceStore = defineStore('voice', {
 
 			const to = user?.id || channel?.id;
 
+			const audioReady = webrtcService.addTrack(MediaType.Audio).catch((e) => {
+				console.error('Mic error during join:', e);
+				return null;
+			});
+
 			try {
 				await websocketService.request({
 					id: generate_uid(me.id),
@@ -110,11 +229,15 @@ export const useVoiceStore = defineStore('voice', {
 				});
 			} catch (e) {
 				console.error(e);
+				webrtcService.disconnectAll();
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;
 				throw e;
 			}
+
+			await audioReady;
+			this.enumerateAudioDevices();
 
 			this.voice_channel = channel;
 			this.voice_direct = user;
@@ -164,8 +287,6 @@ export const useVoiceStore = defineStore('voice', {
 					{ immediate: true }
 				);
 			}
-
-			await webrtcService.addTrack(MediaType.Audio);
 		},
 
 		async leaveVoice() {
@@ -181,18 +302,18 @@ export const useVoiceStore = defineStore('voice', {
 
 			const meStore = useMeStore();
 			const me = meStore.me!;
-			webrtcService.disconnectAll();
 
 			const to = this.voice_direct?.id || this.voice_channel?.id;
+			const group_id = this.group_id;
 
 			try {
 				if (to) {
 					await websocketService.request({
 						id: generate_uid(me.id),
-						type: this.group_id ? MessageType.InfoGroup : MessageType.Info,
+						type: group_id ? MessageType.InfoGroup : MessageType.Info,
 						from: me.id,
 						to,
-						group_id: this.group_id,
+						group_id,
 						data: {
 							event: EventType.ExitVoice,
 						},
@@ -201,19 +322,21 @@ export const useVoiceStore = defineStore('voice', {
 			} catch (e) {
 				console.error(e);
 			} finally {
+				webrtcService.disconnectAll();
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;
-				this.on_voice_direct = [];
+				this.isMuted = false;
 				this.isVideoOn = false;
 				this.isScreenSharing = false;
+				this.isDeafened = false;
 			}
 		},
 
 		async toggleMute() {
 			try {
 				if (this.isMuted) {
-					const track = await webrtcService.addTrack(MediaType.Audio);
+					const track = await webrtcService.addTrack(MediaType.Audio, this.selectedDeviceId || undefined);
 					this.isMuted = false;
 					track.onended = () => {
 						this.isMuted = true;

@@ -30,6 +30,9 @@ class WebRTCService {
 	private audioContext?: AudioContext;
 	private audioProcessor?: number;
 	public speakingUsers = reactive(new Set<id>());
+	public inputLevel = ref(0);
+	public latencyMs = ref(0);
+	private latencyInterval?: number;
 	private get me(): User | null | undefined {
 		return useMeStore().me;
 	}
@@ -204,32 +207,34 @@ class WebRTCService {
 	}
 
 	public async connectPeers(userIds: id[]) {
-		for (const userId of userIds) {
-			if (this.pcs.has(userId)) continue;
+		await Promise.all(
+			userIds.map(async (userId) => {
+				if (this.pcs.has(userId)) return;
 
-			if (this.pendingOffers.has(userId)) {
-				const sdp = this.pendingOffers.get(userId)!;
-				this.pendingOffers.delete(userId);
-				await this.handleOffer(userId, sdp);
-				continue;
-			}
+				if (this.pendingOffers.has(userId)) {
+					const sdp = this.pendingOffers.get(userId)!;
+					this.pendingOffers.delete(userId);
+					await this.handleOffer(userId, sdp);
+					return;
+				}
 
-			const peer = this.createPeer(userId);
-			this.pcs.set(userId, peer);
+				const peer = this.createPeer(userId);
+				this.pcs.set(userId, peer);
 
-			if (this.me!.id > userId) {
-				this.setupTransceivers(peer);
-				const offer = await peer.connection.createOffer();
-				await peer.connection.setLocalDescription(offer);
-				websocketService.sendMessage({
-					id: generate_uid(this.me!.id),
-					type: MessageType.Info,
-					from: this.me!.id,
-					to: userId,
-					data: { event: EventType.Offer, payload: offer.sdp! },
-				});
-			}
-		}
+				if (this.me!.id > userId) {
+					this.setupTransceivers(peer);
+					const offer = await peer.connection.createOffer();
+					await peer.connection.setLocalDescription(offer);
+					websocketService.sendMessage({
+						id: generate_uid(this.me!.id),
+						type: MessageType.Info,
+						from: this.me!.id,
+						to: userId,
+						data: { event: EventType.Offer, payload: offer.sdp! },
+					});
+				}
+			})
+		);
 	}
 
 	private setupPeerConnectionHandlers(userId: id, connection: RTCPeerConnection) {
@@ -266,6 +271,12 @@ class WebRTCService {
 		connection.onconnectionstatechange = () => {
 			const peer = this.pcs.get(userId);
 			if (peer && peer.connection !== connection) return;
+
+			this.stateUpdate.value++;
+
+			if (connection.connectionState === 'connected') {
+				this.startLatencyPolling();
+			}
 
 			if (['disconnected', 'failed', 'closed'].includes(connection.connectionState)) {
 				this.removePeerConnection(userId);
@@ -311,7 +322,7 @@ class WebRTCService {
 			}
 			const rms = Math.sqrt(sum / bufferLength);
 
-			if (rms > 0.01) {
+			if (rms > 0.005) {
 				this.speakingUsers.add(userId);
 				holdFrames = HOLD_DURATION;
 			} else {
@@ -326,11 +337,24 @@ class WebRTCService {
 		intervalId = window.setInterval(checkVolume, 100);
 	}
 
-	public async addTrack(type: MediaType) {
+	public async addTrack(type: MediaType, deviceId?: string) {
 		if (!this.localStream) this.localStream = markRaw(new MediaStream());
 
+		const voiceStore = useVoiceStore();
+		const baseAudio: MediaTrackConstraints = deviceId ? { deviceId: deviceId } : {};
+		if (voiceStore.noiseSuppression) {
+			baseAudio.noiseSuppression = true;
+			baseAudio.echoCancellation = true;
+			baseAudio.autoGainControl = true;
+		} else {
+			baseAudio.noiseSuppression = false;
+			baseAudio.echoCancellation = true;
+			baseAudio.autoGainControl = false;
+		}
+		const audioConstraints: MediaTrackConstraints | boolean = Object.keys(baseAudio).length > 0 ? baseAudio : true;
+
 		const constraints = {
-			[MediaType.Audio]: { audio: true },
+			[MediaType.Audio]: { audio: audioConstraints },
 			[MediaType.Video]: { video: true },
 			[MediaType.Screen]: null,
 		};
@@ -366,7 +390,6 @@ class WebRTCService {
 				const bufferLength = analyser.fftSize;
 				const dataArray = new Float32Array(bufferLength);
 
-				const THRESHOLD = 0.02;
 				let holdFrames = 0;
 				const HOLD_DURATION = 10;
 
@@ -379,8 +402,12 @@ class WebRTCService {
 						sum += dataArray[i] * dataArray[i];
 					}
 					const rms = Math.sqrt(sum / bufferLength);
+					const normalizedLevel = Math.min(1, rms / 0.15);
+					this.inputLevel.value = normalizedLevel;
 
-					if (rms > THRESHOLD) {
+					const threshold = voiceStore.voiceThreshold;
+
+					if (rms > threshold) {
 						gainNode.gain.setTargetAtTime(1, this.audioContext.currentTime, 0.05);
 						holdFrames = HOLD_DURATION;
 						if (this.me) this.speakingUsers.add(this.me.id);
@@ -496,10 +523,57 @@ class WebRTCService {
 			this.audioProcessor = undefined;
 		}
 
+		this.stopLatencyPolling();
+		this.latencyMs.value = 0;
 		this.speakingUsers.clear();
 		this.activeTracks.clear();
 		this.pendingOffers.clear();
 		this.pendingCandidates.clear();
+	}
+
+	private startLatencyPolling() {
+		if (this.latencyInterval) return;
+		this.latencyInterval = window.setInterval(() => this.measureLatency(), 2000);
+		this.measureLatency();
+	}
+
+	private stopLatencyPolling() {
+		if (this.latencyInterval) {
+			clearInterval(this.latencyInterval);
+			this.latencyInterval = undefined;
+		}
+	}
+
+	private async measureLatency() {
+		const peers = Array.from(this.pcs.values());
+		if (peers.length === 0) {
+			this.latencyMs.value = 0;
+			return;
+		}
+
+		let totalRtt = 0;
+		let count = 0;
+
+		for (const peer of peers) {
+			try {
+				const stats = await peer.connection.getStats();
+				stats.forEach((report) => {
+					if (
+						report.type === 'candidate-pair' &&
+						report.nominated === true &&
+						report.state === 'succeeded' &&
+						report.currentRoundTripTime != null
+					) {
+						totalRtt += report.currentRoundTripTime;
+						count++;
+					}
+				});
+			} catch {}
+		}
+
+		if (count > 0) {
+			this.latencyMs.value = Math.max(1, Math.round((totalRtt / count) * 1000));
+		}
 	}
 }
 

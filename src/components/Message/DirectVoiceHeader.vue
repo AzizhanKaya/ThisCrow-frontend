@@ -184,7 +184,7 @@
 			>
 				<Icon :icon="voiceStore.isMuted ? 'mdi:microphone-off' : 'mdi:microphone'" />
 			</button>
-			<button v-if="isCalling" class="control-btn danger-btn disconnect-btn" @click="onCall">
+			<button v-if="isCalling" class="control-btn danger-btn disconnect-btn" @click="voiceStore.leaveVoice()">
 				<Icon icon="mdi:phone-hangup" />
 			</button>
 

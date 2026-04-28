@@ -2,7 +2,7 @@ import { ref, computed } from 'vue';
 import { API_URL } from '@/constants';
 import { encode, msgFetch } from '@/utils/msgpack';
 
-export type StorageType = 'image' | 'video' | 'file' | 'avatar' | 'icon';
+export type StorageType = 'image' | 'video' | 'file' | 'avatar' | 'icon' | 'banner';
 
 interface SelectedFiles {
 	images: Array<{ url: string; file: File }>;
@@ -98,9 +98,6 @@ export function useFiles() {
 					public_url: string;
 				}>(`${API_URL}/upload`, {
 					method: 'PUT',
-					headers: {
-						'Content-Type': 'application/json',
-					},
 					credentials: 'include',
 					body: encode({
 						filename: file.name,

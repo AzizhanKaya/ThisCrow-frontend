@@ -5,9 +5,11 @@
 	import { getGroupInvitations, deleteInvitation, type Invitation } from '@/api/invite';
 	import { Permissions, type Role } from '@/types';
 	import { Icon } from '@iconify/vue';
+	import { useFiles } from '@/composables/useFiles';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
+	const { uploadFiles } = useFiles();
 
 	const activeTab = ref('general');
 	const server_id = modalStore.data?.server_id;
@@ -58,7 +60,36 @@
 	const serverName = ref('');
 	const serverDescription = ref('');
 	const serverIcon = ref('');
+	const serverIconPreview = ref<string | null>(null);
+	const iconFileInput = ref<HTMLInputElement | null>(null);
+	const isUploadingIcon = ref(false);
 	const isSaving = ref(false);
+
+	const triggerIconUpload = () => {
+		iconFileInput.value?.click();
+	};
+
+	const handleIconUpload = async (event: Event) => {
+		const files = (event.target as HTMLInputElement).files;
+		if (!files || !files[0]) return;
+
+		const file = files[0];
+		serverIconPreview.value = URL.createObjectURL(file);
+
+		isUploadingIcon.value = true;
+		try {
+			const uploaded = await uploadFiles([file], 'icon');
+			if (uploaded.length > 0) {
+				serverIcon.value = uploaded[0].url;
+			}
+		} catch (e) {
+			console.error('Icon upload failed:', e);
+			serverIconPreview.value = serverIcon.value || null;
+		} finally {
+			isUploadingIcon.value = false;
+			if (iconFileInput.value) iconFileInput.value.value = '';
+		}
+	};
 
 	const hasGeneralChanges = computed(() => {
 		if (!server.value) return false;
@@ -117,6 +148,7 @@
 			serverName.value = server.value.name;
 			serverDescription.value = server.value.description || '';
 			serverIcon.value = server.value.icon || '';
+			serverIconPreview.value = server.value.icon || null;
 		}
 		if (server_id) await loadInvites();
 	});
@@ -138,7 +170,7 @@
 		if (!server_id) return;
 		isSaving.value = true;
 		try {
-			await serverStore.updateServer(server_id, serverName.value, serverDescription.value, serverIcon.value);
+			await serverStore.updateServer(server_id, serverName.value, serverDescription.value, serverIcon.value || undefined);
 		} finally {
 			isSaving.value = false;
 		}
@@ -229,6 +261,25 @@
 					<h2 class="content-title">Server Overview</h2>
 
 					<div class="input-group">
+						<label>ICON</label>
+						<div class="icon-upload-row">
+							<div class="icon-upload-preview" @click="triggerIconUpload">
+								<img v-if="serverIconPreview" :src="serverIconPreview" class="preview-img" />
+								<div v-else class="preview-placeholder">
+									<Icon icon="mdi:camera-plus" class="camera-icon" />
+								</div>
+								<div v-if="isUploadingIcon" class="icon-hover-overlay" style="opacity: 1">
+									<Icon icon="eos-icons:loading" class="spin" />
+								</div>
+								<div v-else-if="serverIconPreview" class="icon-hover-overlay">
+									<Icon icon="mdi:image-edit" />
+								</div>
+							</div>
+						</div>
+						<input type="file" accept="image/*" ref="iconFileInput" @change="handleIconUpload" hidden />
+					</div>
+
+					<div class="input-group">
 						<label>SERVER NAME <span class="req">*</span></label>
 						<div class="input-wrapper">
 							<input type="text" v-model="serverName" />
@@ -239,13 +290,6 @@
 						<label>DESCRIPTION</label>
 						<div class="input-wrapper textarea-wrapper">
 							<textarea v-model="serverDescription" rows="4"></textarea>
-						</div>
-					</div>
-
-					<div class="input-group">
-						<label>ICON URL</label>
-						<div class="input-wrapper">
-							<input type="text" v-model="serverIcon" placeholder="https://..." />
 						</div>
 					</div>
 				</div>
@@ -903,6 +947,62 @@
 	.empty-icon {
 		font-size: 2.5rem;
 		opacity: 0.4;
+	}
+
+	/* ─── Icon upload ─── */
+	.icon-upload-row {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+
+	.icon-upload-preview {
+		width: 64px;
+		height: 64px;
+		border-radius: 50%;
+		background-color: var(--bg-dark);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		position: relative;
+		overflow: hidden;
+		flex-shrink: 0;
+		border: 2px solid var(--border);
+		transition: border-color 0.2s;
+	}
+
+	.icon-upload-preview .preview-img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		border-radius: 50%;
+	}
+
+	.icon-upload-preview .preview-placeholder {
+		color: var(--text-muted);
+	}
+
+	.icon-upload-preview .camera-icon {
+		font-size: 24px;
+	}
+
+	.icon-hover-overlay {
+		position: absolute;
+
+		background-color: rgba(0, 0, 0, 0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: white;
+		font-size: 20px;
+		opacity: 0;
+		transition: opacity 0.2s;
+		border-radius: 50%;
+	}
+
+	.icon-upload-preview:hover .icon-hover-overlay {
+		opacity: 1;
 	}
 
 	/* ─── Utility ─── */

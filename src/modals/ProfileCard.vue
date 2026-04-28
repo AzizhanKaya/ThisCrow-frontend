@@ -1,14 +1,16 @@
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+	import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 	import { useModalStore } from '@/stores/modal';
 	import { useMeStore } from '@/stores/me';
 	import { useFriendStore } from '@/stores/friend';
 	import { useRouter } from 'vue-router';
 	import { Icon } from '@iconify/vue';
 	import { getDefaultAvatar } from '@/utils/avatar';
-	import { type User, Status, type Server } from '@/types';
-
+	import { type User, Status, type Server, EventType, MessageType, type Message, type Event } from '@/types';
+	import { websocketService } from '@/services/websocket';
+	import { generate_uid } from '@/utils/uid';
 	import { useServerStore } from '@/stores/server';
+	import { useFiles } from '@/composables/useFiles';
 
 	const modalStore = useModalStore();
 	const meStore = useMeStore();
@@ -24,20 +26,61 @@
 
 	const activeTab = ref('activity');
 
-	const mutualFriends = $computed(() => {
+	const isEditingName = ref(false);
+	const editName = ref('');
+	const nameInputRef = ref<HTMLInputElement | null>(null);
+
+	const startEditName = async () => {
+		if (!is_me) return;
+		editName.value = user.name;
+		isEditingName.value = true;
+		await nextTick();
+		nameInputRef.value?.focus();
+	};
+
+	const saveName = async () => {
+		if (editName.value.trim() && editName.value.trim() !== user.name) {
+			const newName = editName.value.trim();
+			await websocketService.request({
+				id: generate_uid(me.id),
+				from: me.id,
+				to: 0,
+				data: {
+					event: EventType.UpdateUser,
+					payload: { name: newName },
+				},
+				type: MessageType.Info,
+			});
+		}
+
+		isEditingName.value = false;
+	};
+
+	const displayFriends = $computed(() => {
+		if (is_me) {
+			if (!me.friends) return [];
+			return me.friends.map((id) => friendStore.getFriend(id)).filter(Boolean) as User[];
+		}
 		if (!user.friends || !me.friends) return [];
 		const mutualIds = user.friends.filter((f) => me.friends.includes(f));
 		return mutualIds.map((id) => friendStore.getFriend(id)).filter(Boolean) as User[];
 	});
 
-	const mutualServers = $computed(() => {
+	const displayServers = $computed(() => {
+		if (is_me) {
+			if (!me.groups) return [];
+			return me.groups.map((id) => serverStore.getServerById(id)).filter(Boolean) as Server[];
+		}
 		if (!user?.groups || !me?.groups) return [];
 		const mutualIds = user.groups.filter((g) => me!.groups.includes(g));
 		return mutualIds.map((id) => serverStore.getServerById(id)).filter(Boolean) as Server[];
 	});
 
-	const mutualFriendsCount = computed(() => mutualFriends.length);
-	const mutualServersCount = computed(() => mutualServers.length);
+	const hasActivities = computed(() => {
+		const acts = user.activities;
+		if (!acts) return false;
+		return Object.keys(acts).length > 0;
+	});
 
 	const userStatus = computed(() => {
 		switch (user?.status) {
@@ -101,26 +144,102 @@
 		return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 	};
 
-	const hasActivities = computed(() => {
-		const acts = user.activities;
-		if (!acts) return false;
-		return Object.keys(acts).length > 0;
-	});
+	const { uploadFiles } = useFiles();
+	const avatarInput = ref<HTMLInputElement | null>(null);
+	const isUploadingAvatar = ref(false);
+
+	const bannerInput = ref<HTMLInputElement | null>(null);
+	const isUploadingBanner = ref(false);
+
+	const triggerAvatarUpload = () => {
+		if (!is_me) return;
+		avatarInput.value?.click();
+	};
+
+	const handleAvatarSelect = async (event: any) => {
+		const files = (event.target as HTMLInputElement).files;
+		if (!files || !files[0]) return;
+
+		isUploadingAvatar.value = true;
+		try {
+			const uploaded = await uploadFiles([files[0]], 'avatar');
+			if (uploaded.length > 0) {
+				await websocketService.request({
+					id: generate_uid(me.id),
+					from: me.id,
+					to: 0,
+					data: {
+						event: EventType.UpdateUser,
+						payload: { avatar: uploaded[0].url },
+					},
+					type: MessageType.Info,
+				});
+			}
+		} finally {
+			isUploadingAvatar.value = false;
+			if (avatarInput.value) avatarInput.value.value = '';
+		}
+	};
+
+	const triggerBannerUpload = () => {
+		if (!is_me) return;
+		bannerInput.value?.click();
+	};
+
+	const handleBannerSelect = async (event: any) => {
+		const files = (event.target as HTMLInputElement).files;
+		if (!files || !files[0]) return;
+
+		isUploadingBanner.value = true;
+		try {
+			const uploaded = await uploadFiles([files[0]], 'banner');
+			if (uploaded.length > 0) {
+				await websocketService.request({
+					id: generate_uid(me.id),
+					from: me.id,
+					to: 0,
+					data: {
+						event: EventType.UpdateUser,
+						payload: { banner: uploaded[0].url },
+					},
+					type: MessageType.Info,
+				});
+			}
+		} finally {
+			isUploadingBanner.value = false;
+			if (bannerInput.value) bannerInput.value.value = '';
+		}
+	};
 </script>
 
 <template>
 	<div class="modal-backdrop" @click="modalStore.closeModal">
 		<div class="modal-container profile_modal" @click.stop v-if="user">
-			<div class="banner">
-				<button class="close-btn" @click="modalStore.closeModal">
+			<div
+				class="banner"
+				:class="{ 'is-me': is_me }"
+				:style="user.banner ? { backgroundImage: `url(${user.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"
+				@click="triggerBannerUpload"
+			>
+				<div v-if="is_me" class="banner-edit-overlay">
+					<Icon v-if="isUploadingBanner" icon="eos-icons:loading" class="edit-icon spin" />
+					<Icon v-else icon="mdi:image" class="edit-icon" />
+				</div>
+				<input type="file" accept="image/*" ref="bannerInput" @change="handleBannerSelect" hidden />
+				<button class="close-btn" @click.stop="modalStore.closeModal">
 					<Icon icon="mdi:close" />
 				</button>
 			</div>
 
 			<div class="header-content">
-				<div class="avatar-wrapper">
+				<div class="avatar-wrapper" :class="{ 'is-me': is_me }" @click="triggerAvatarUpload">
 					<img class="avatar" :src="user.avatar || getDefaultAvatar(user.username)" />
+					<div v-if="is_me" class="avatar-edit-overlay">
+						<Icon v-if="isUploadingAvatar" icon="eos-icons:loading" class="edit-icon spin" />
+						<Icon v-else icon="mdi:camera" class="edit-icon" />
+					</div>
 					<div class="status-indicator" :class="userStatus"></div>
+					<input type="file" accept="image/*" ref="avatarInput" @change="handleAvatarSelect" hidden />
 				</div>
 
 				<div class="actions" v-if="me && me.id !== user.id">
@@ -134,7 +253,22 @@
 			</div>
 
 			<div class="user-details">
-				<h2 class="name">{{ user.name }}</h2>
+				<div class="name-container" v-if="isEditingName">
+					<input
+						ref="nameInputRef"
+						type="text"
+						maxlength="20"
+						v-model="editName"
+						class="name-input"
+						@keyup.enter="saveName"
+						@keyup.escape="isEditingName = false"
+						@blur="saveName"
+					/>
+				</div>
+				<h2 class="name" :class="{ 'is-editable': is_me }" @click="startEditName" v-else>
+					{{ user.name }}
+					<Icon icon="mdi:pencil" class="name-edit-icon" v-if="is_me" />
+				</h2>
 				<span class="username">@{{ user.username }}</span>
 			</div>
 
@@ -143,10 +277,12 @@
 			<div class="tabs">
 				<button class="tab" :class="{ active: activeTab === 'activity' }" @click="activeTab = 'activity'">Activity</button>
 				<button class="tab" :class="{ active: activeTab === 'mutual_friends' }" @click="activeTab = 'mutual_friends'">
-					Mutual Friends <span class="badge" v-if="mutualFriendsCount">{{ mutualFriendsCount }}</span>
+					{{ is_me ? 'Friends' : 'Mutual Friends' }}
+					<span class="badge" v-if="displayFriends.length">{{ displayFriends.length }}</span>
 				</button>
 				<button class="tab" :class="{ active: activeTab === 'mutual_servers' }" @click="activeTab = 'mutual_servers'">
-					Mutual Servers <span class="badge" v-if="mutualServersCount">{{ mutualServersCount }}</span>
+					{{ is_me ? 'Servers' : 'Mutual Servers' }}
+					<span class="badge" v-if="displayServers.length">{{ displayServers.length }}</span>
 				</button>
 			</div>
 
@@ -243,12 +379,12 @@
 
 				<!-- Mutual Friends Tab -->
 				<div v-show="activeTab === 'mutual_friends'" class="mutual-section">
-					<div class="empty-state" v-if="mutualFriendsCount === 0">
+					<div class="empty-state" v-if="displayFriends.length === 0">
 						<Icon icon="mdi:account-group" class="empty-icon" />
-						<p>No mutual friends.</p>
+						<p>{{ is_me ? 'You have no friends.' : 'No mutual friends.' }}</p>
 					</div>
 					<div class="list" v-else>
-						<div v-for="friend in mutualFriends" :key="friend.id.toString()" class="list-item">
+						<div v-for="friend in displayFriends" :key="friend.id.toString()" class="list-item">
 							<img :src="friend.avatar || getDefaultAvatar(friend.username)" class="item-avatar" />
 							<div class="item-info">
 								<span class="item-name">{{ friend.name }}</span>
@@ -260,12 +396,12 @@
 
 				<!-- Mutual Servers Tab -->
 				<div v-show="activeTab === 'mutual_servers'" class="mutual-section">
-					<div class="empty-state" v-if="mutualServersCount === 0">
+					<div class="empty-state" v-if="displayServers.length === 0">
 						<Icon icon="mdi:server" class="empty-icon" />
-						<p>No mutual servers.</p>
+						<p>{{ is_me ? 'You are not in any servers.' : 'No mutual servers.' }}</p>
 					</div>
 					<div class="list" v-else>
-						<div v-for="server in mutualServers" :key="server.id.toString()" class="list-item">
+						<div v-for="server in displayServers" :key="server.id.toString()" class="list-item">
 							<div class="item-avatar server-avatar" v-if="server.icon">
 								<img :src="server.icon" />
 							</div>
@@ -301,6 +437,37 @@
 		background-color: var(--bg-darkest);
 		width: 100%;
 		position: relative;
+	}
+
+	.banner.is-me:hover .banner-edit-overlay {
+		opacity: 1;
+	}
+
+	.banner-edit-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.4);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		opacity: 0;
+		transition: opacity 0.2s;
+		cursor: pointer;
+		color: white;
+		font-weight: 600;
+		gap: 8px;
+	}
+
+	.banner-edit-overlay .edit-icon {
+		font-size: 32px;
+	}
+
+	.banner-edit-overlay .edit-icon.spin {
+		animation: spin 1s linear infinite;
 	}
 
 	.close-btn {
@@ -340,6 +507,41 @@
 		border-radius: 50%;
 		background-color: var(--bg-darker);
 		padding: 8px;
+	}
+
+	.avatar-wrapper.is-me:hover .avatar-edit-overlay {
+		opacity: 1;
+	}
+
+	.avatar-edit-overlay {
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		right: 8px;
+		bottom: 8px;
+		border-radius: 50%;
+		background-color: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		opacity: 0;
+		transition: opacity 0.2s;
+		cursor: pointer;
+		color: white;
+	}
+
+	.avatar-edit-overlay .edit-icon {
+		font-size: 32px;
+	}
+
+	.avatar-edit-overlay .edit-icon.spin {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		100% {
+			transform: rotate(360deg);
+		}
 	}
 
 	.avatar {
@@ -405,6 +607,52 @@
 		font-weight: 700;
 		margin: 0 0 4px 0;
 		color: var(--text);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: max-content;
+	}
+
+	.name.is-editable {
+		cursor: pointer;
+		transition: color 0.2s;
+	}
+
+	.name.is-editable:hover {
+		color: #ffffff;
+	}
+
+	.name-edit-icon {
+		font-size: 1.2rem;
+		opacity: 0;
+		transition: opacity 0.2s;
+	}
+
+	.name.is-editable:hover .name-edit-icon {
+		opacity: 1;
+	}
+
+	.name-container {
+		margin: 0 0 4px 0;
+	}
+
+	.name-input {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: var(--text);
+		background: var(--bg-dark);
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		padding: 0px 4px;
+		font-family: inherit;
+		outline: none;
+		transition: border-color 0.2s;
+		field-sizing: content;
+		min-width: 50px;
+	}
+
+	.name-input:focus {
+		border-color: var(--color);
 	}
 
 	.username {

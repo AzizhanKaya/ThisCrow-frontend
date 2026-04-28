@@ -17,6 +17,7 @@
 	const handleAnswer = async () => {
 		if (!targetUser.value) return;
 		const user = targetUser.value;
+		console.log('call', user);
 		await voiceStore.joinVoice(undefined, undefined, user);
 		modalStore.closeModal();
 		router.push({ name: 'user', params: { userId: user.id } });

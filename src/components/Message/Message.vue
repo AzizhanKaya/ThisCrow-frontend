@@ -6,7 +6,6 @@
 	import { decrypt_message } from '@/../pkg/wasm_lib';
 	import { decode } from '@/utils/msgpack';
 	import { getDefaultAvatar } from '@/utils/avatar';
-	import ProfileCard from '@/components/ProfileCard.vue';
 
 	const props = defineProps({
 		message: {
@@ -61,25 +60,21 @@
 		return undefined;
 	});
 
-	const profileCard = ref({
-		show: false,
-		x: 0,
-		y: 0,
-	});
+	const emit = defineEmits<{
+		(e: 'open-profile', payload: { user: User; x: number; y: number }): void;
+	}>();
 
 	function openProfileCard(e: MouseEvent) {
 		if (!props.user) return;
-		if (profileCard.value.show) {
-			profileCard.value.show = false;
-			return;
-		}
+
 		document.dispatchEvent(new Event('click'));
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		profileCard.value = {
-			show: true,
+
+		emit('open-profile', {
+			user: props.user,
 			x: rect.right + 10,
 			y: rect.top,
-		};
+		});
 	}
 </script>
 
@@ -90,7 +85,6 @@
 			class="avatar"
 			:src="user.avatar || getDefaultAvatar(user.username)"
 			@click.stop="openProfileCard($event)"
-			style="cursor: pointer"
 		/>
 
 		<div class="content">
@@ -154,15 +148,6 @@
 				</span>
 			</div>
 		</div>
-
-		<ProfileCard
-			v-if="user"
-			:user="user"
-			:show="profileCard.show"
-			:x="profileCard.x"
-			:y="profileCard.y"
-			@close="profileCard.show = false"
-		/>
 	</div>
 </template>
 
@@ -192,6 +177,7 @@
 		height: 40px;
 		border-radius: 50%;
 		flex-shrink: 0;
+		cursor: pointer;
 	}
 
 	.content {
@@ -209,7 +195,7 @@
 
 	.name {
 		font-size: 1rem;
-		color: #dbdbdb;
+		color: var(--text-secondary);
 		font-weight: 600;
 		cursor: pointer;
 	}
@@ -252,11 +238,11 @@
 		font-size: 1rem;
 		line-height: 1.4;
 		word-break: break-word;
-		-webkit-user-select: auto;
-		user-select: auto;
+		-webkit-user-select: text;
+		user-select: text;
 	}
 
 	.sent {
-		color: #dbdbdb;
+		color: var(--text-secondary);
 	}
 </style>

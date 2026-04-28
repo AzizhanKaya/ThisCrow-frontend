@@ -6,30 +6,43 @@
 	import { websocketService } from '@/services/websocket';
 	import { AckType, MessageType, type Ack, type id, type Message } from '@/types';
 	import { useRouter } from 'vue-router';
+	import { useFiles } from '@/composables/useFiles';
 
 	const router = useRouter();
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
+	const { uploadFiles } = useFiles();
 
 	const serverName = ref('');
 	const serverDescription = ref<string | undefined>(undefined);
 	const serverIcon = ref<string | undefined>(undefined);
 	const serverIconPreview = ref<string | null>(null);
 	const fileInput = ref<HTMLInputElement | null>(null);
+	const isUploadingIcon = ref(false);
 
 	const isLoading = ref(false);
 
-	const handleFileUpload = (event: Event) => {
+	const handleFileUpload = async (event: Event) => {
 		const target = event.target as HTMLInputElement;
 		if (target.files && target.files[0]) {
 			const file = target.files[0];
-			const reader = new FileReader();
-			reader.onload = (e) => {
-				if (e.target?.result) {
-					serverIconPreview.value = e.target.result as string;
+
+			serverIconPreview.value = URL.createObjectURL(file);
+
+			isUploadingIcon.value = true;
+			try {
+				const uploaded = await uploadFiles([file], 'icon');
+				if (uploaded.length > 0) {
+					serverIcon.value = uploaded[0].url;
 				}
-			};
-			reader.readAsDataURL(file);
+			} catch (e) {
+				console.error('Icon upload failed:', e);
+				serverIconPreview.value = null;
+				serverIcon.value = undefined;
+			} finally {
+				isUploadingIcon.value = false;
+				if (target) target.value = '';
+			}
 		}
 	};
 
@@ -83,7 +96,10 @@
 							<span class="upload-text">UPLOAD</span>
 						</div>
 
-						<div v-if="serverIconPreview" class="hover-overlay">
+						<div v-if="isUploadingIcon" class="hover-overlay" style="opacity: 1">
+							<Icon icon="eos-icons:loading" class="spin" />
+						</div>
+						<div v-else-if="serverIconPreview" class="hover-overlay">
 							<Icon icon="mdi:image-edit" />
 						</div>
 					</div>
@@ -109,7 +125,7 @@
 
 			<footer class="modal-footer">
 				<button class="btn-cancel" @click="modalStore.closeModal">Cancel</button>
-				<button class="btn-create" :disabled="!serverName.trim() || isLoading" @click="submitCreateServer">
+				<button class="btn-create" :disabled="!serverName.trim() || isLoading || isUploadingIcon" @click="submitCreateServer">
 					<Icon v-if="isLoading" icon="eos-icons:loading" class="spin" />
 					<span v-else>Create</span>
 				</button>

@@ -201,6 +201,9 @@
 			<button class="control-btn" :class="{ 'is-active': voiceStore.isScreenSharing }" @click="voiceStore.toggleScreen()">
 				<Icon :icon="voiceStore.isScreenSharing ? 'mdi:monitor-share' : 'ic:round-stop-screen-share'" />
 			</button>
+			<button class="control-btn" :class="{ 'is-danger-active': voiceStore.isDeafened }" @click="voiceStore.toggleDeafen()">
+				<Icon :icon="voiceStore.isDeafened ? 'mdi:headphones-off' : 'mdi:headphones'" />
+			</button>
 			<button class="control-btn" :class="{ 'is-danger-active': voiceStore.isMuted }" @click="voiceStore.toggleMute()">
 				<Icon :icon="voiceStore.isMuted ? 'mdi:microphone-off' : 'mdi:microphone'" />
 			</button>
@@ -220,28 +223,29 @@
 		background-color: var(--bg-darkest);
 		position: relative;
 		flex: 1;
+		min-height: 0;
 	}
 
 	.participants-area {
 		flex: 1;
 		display: flex;
-		padding: 24px;
+		padding: 16px;
 		justify-content: center;
 		align-items: center;
 		overflow-y: auto;
-		height: 0;
+		min-height: 0;
 	}
 
 	.participants {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 16px;
+		gap: 12px;
 		width: 100%;
 		max-width: 1600px;
-		height: 100%;
 		align-items: center;
 		justify-content: center;
 		align-content: center;
+		margin: auto;
 	}
 
 	.user-card {
@@ -252,8 +256,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		flex: 0 0 100%;
+		flex: 1 1 280px;
 		max-width: 500px;
+		min-width: 400px;
 		aspect-ratio: 16 / 9;
 		box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
 		border: 2px solid rgba(255, 255, 255, 0.05);

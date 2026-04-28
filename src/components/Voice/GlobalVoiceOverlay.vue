@@ -18,12 +18,12 @@
 	});
 
 	const isVoiceViewActive = computed(() => {
-		const isServerVoice = route.name === 'server' && 
-			Number(route.params.serverId) === voiceStore.group_id && 
+		const isServerVoice =
+			route.name === 'server' &&
+			Number(route.params.serverId) === voiceStore.group_id &&
 			Number(route.params.channelId) === voiceStore.voice_channel?.id;
-			
-		const isDirectVoice = route.name === 'user' && 
-			Number(route.params.userId) === voiceStore.voice_direct?.id;
+
+		const isDirectVoice = route.name === 'user' && Number(route.params.userId) === voiceStore.voice_direct?.id;
 
 		return isServerVoice || isDirectVoice;
 	});
@@ -40,8 +40,8 @@
 
 	const activeVideoTracks = computed(() => {
 		const _ = webrtcService.stateUpdate.value;
-		const tracks: { userId: id, track: MediaStreamTrack, type: MediaType, isLocal: boolean }[] = [];
-		
+		const tracks: { userId: id; track: MediaStreamTrack; type: MediaType; isLocal: boolean }[] = [];
+
 		const me = meStore.me;
 		if (me) {
 			if (voiceStore.isVideoOn) {
@@ -57,7 +57,7 @@
 		for (const peer of peers.value) {
 			const videoTrack = webrtcService.getTrack(peer.userId as id, MediaType.Video);
 			const screenTrack = webrtcService.getTrack(peer.userId as id, MediaType.Screen);
-			
+
 			if (videoTrack && webrtcService.activeTracks.has(videoTrack.id)) {
 				tracks.push({ userId: peer.userId as id, track: videoTrack, type: MediaType.Video, isLocal: false });
 			}
@@ -65,7 +65,7 @@
 				tracks.push({ userId: peer.userId as id, track: screenTrack, type: MediaType.Screen, isLocal: false });
 			}
 		}
-		
+
 		return tracks;
 	});
 
@@ -89,31 +89,35 @@
 	onMounted(() => window.addEventListener('resize', onResize));
 	onUnmounted(() => window.removeEventListener('resize', onResize));
 
-	watch(activeVideoTracks, (newTracks) => {
-		const currentIds = new Set(newTracks.map(t => t.userId + '-' + t.type));
-		
-		for (const id in pipStates.value) {
-			if (!currentIds.has(id)) {
-				delete pipStates.value[id];
-			}
-		}
+	watch(
+		activeVideoTracks,
+		(newTracks) => {
+			const currentIds = new Set(newTracks.map((t) => t.userId + '-' + t.type));
 
-		for (const track of newTracks) {
-			const id = track.userId + '-' + track.type;
-			if (!pipStates.value[id]) {
-				pipStates.value[id] = {
-					corner: 'br',
-					x: 0,
-					y: 0,
-					isDragging: false
-				};
+			for (const id in pipStates.value) {
+				if (!currentIds.has(id)) {
+					delete pipStates.value[id];
+				}
 			}
-		}
-	}, { immediate: true });
+
+			for (const track of newTracks) {
+				const id = track.userId + '-' + track.type;
+				if (!pipStates.value[id]) {
+					pipStates.value[id] = {
+						corner: 'br',
+						x: 0,
+						y: 0,
+						isDragging: false,
+					};
+				}
+			}
+		},
+		{ immediate: true }
+	);
 
 	const computedPositions = computed(() => {
 		const corners: Record<string, string[]> = { tl: [], tr: [], bl: [], br: [] };
-		
+
 		for (const track of activeVideoTracks.value) {
 			const id = track.userId + '-' + track.type;
 			const state = pipStates.value[id];
@@ -121,8 +125,8 @@
 				corners[state.corner].push(id);
 			}
 		}
-		
-		const positions: Record<string, {x: number, y: number}> = {};
+
+		const positions: Record<string, { x: number; y: number }> = {};
 		const width = 320;
 		const height = 180;
 		const padding = 24;
@@ -136,38 +140,41 @@
 				const id = ids[i];
 				let x = 0;
 				let y = 0;
-				
+
 				if (corner === 'tr' || corner === 'br') {
 					x = winW - width - padding;
 				} else {
 					x = padding;
 				}
-				
+
 				if (corner === 'br' || corner === 'bl') {
-					y = winH - height - padding - (i * (height + gap));
+					y = winH - height - padding - i * (height + gap);
 				} else {
-					y = padding + (i * (height + gap));
+					y = padding + i * (height + gap);
 				}
-				
+
 				positions[id] = { x, y };
 			}
 		}
-		
+
 		for (const id in pipStates.value) {
 			if (pipStates.value[id].isDragging) {
 				positions[id] = { x: pipStates.value[id].x, y: pipStates.value[id].y };
 			}
 		}
-		
+
 		return positions;
 	});
 
 	let currentDragId: string | null = null;
-	let startX = 0, startY = 0, initialX = 0, initialY = 0;
+	let startX = 0,
+		startY = 0,
+		initialX = 0,
+		initialY = 0;
 
 	const startDrag = (e: MouseEvent, id: string) => {
 		if ((e.target as HTMLElement).closest('.pip-btn')) return;
-		
+
 		const state = pipStates.value[id];
 		if (!state) return;
 
@@ -203,21 +210,21 @@
 		const state = pipStates.value[currentDragId];
 		if (state) {
 			state.isDragging = false;
-			
+
 			const width = 320;
 			const height = 180;
 			const cx = state.x + width / 2;
 			const cy = state.y + height / 2;
-			
+
 			const isLeft = cx < windowSize.value.w / 2;
 			const isTop = cy < windowSize.value.h / 2;
-			
+
 			if (isTop && isLeft) state.corner = 'tl';
 			else if (isTop && !isLeft) state.corner = 'tr';
 			else if (!isTop && isLeft) state.corner = 'bl';
 			else state.corner = 'br';
 		}
-		
+
 		currentDragId = null;
 		document.removeEventListener('mousemove', doDrag);
 		document.removeEventListener('mouseup', stopDrag);
@@ -243,7 +250,7 @@
 		const videoEl = (event.currentTarget as HTMLElement).closest('.pip-video-container')?.querySelector('video');
 		if (videoEl) {
 			if (!document.fullscreenElement) {
-				videoEl.requestFullscreen().catch(err => {
+				videoEl.requestFullscreen().catch((err) => {
 					console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
 				});
 			} else {
@@ -251,32 +258,77 @@
 			}
 		}
 	};
+
+	const audioContainer = ref<HTMLElement | null>(null);
+
+	const applyOutputDevice = () => {
+		if (!audioContainer.value) return;
+		const deviceId = voiceStore.selectedOutputDeviceId;
+		if (!deviceId) return;
+		const audioEls = audioContainer.value.querySelectorAll('audio');
+		audioEls.forEach((el) => {
+			if (typeof (el as any).setSinkId === 'function') {
+				(el as any).setSinkId(deviceId).catch((e: Error) => {
+					console.error('Failed to set output device:', e);
+				});
+			}
+		});
+	};
+
+	watch(
+		() => voiceStore.selectedOutputDeviceId,
+		() => {
+			setTimeout(applyOutputDevice, 50);
+		}
+	);
+
+	watch(
+		peers,
+		() => {
+			setTimeout(applyOutputDevice, 100);
+		},
+		{ deep: true }
+	);
 </script>
 
 <template>
 	<div class="global-voice-overlay">
-		<div style="display: none">
-			<audio v-for="peer in peers" :key="peer.userId + '-audio'" :srcObject="peer.remoteStream" autoplay playsinline></audio>
+		<div class="sr-only" ref="audioContainer">
+			<audio
+				v-for="peer in peers"
+				:key="peer.userId + '-audio'"
+				:srcObject="peer.remoteStream"
+				autoplay
+				playsinline
+				:muted="voiceStore.isDeafened"
+			></audio>
 		</div>
 
 		<div v-if="showPip" class="pip-container">
-			<div 
-				v-for="(item, index) in activeVideoTracks" 
-				:key="item.userId + '-' + item.type" 
+			<div
+				v-for="(item, index) in activeVideoTracks"
+				:key="item.userId + '-' + item.type"
 				class="pip-video-container"
 				v-show="isVideoVisible(item.track.id)"
-				:class="{ 
-					'is-dragging': pipStates[item.userId + '-' + item.type]?.isDragging, 
+				:class="{
+					'is-dragging': pipStates[item.userId + '-' + item.type]?.isDragging,
 					'is-transitioning': !pipStates[item.userId + '-' + item.type]?.isDragging,
-					'is-speaking': webrtcService.speakingUsers.has(item.userId)
+					'is-speaking': webrtcService.speakingUsers.has(item.userId),
 				}"
-				:style="{ 
-					left: (computedPositions[item.userId + '-' + item.type]?.x || 0) + 'px', 
-					top: (computedPositions[item.userId + '-' + item.type]?.y || 0) + 'px' 
+				:style="{
+					left: (computedPositions[item.userId + '-' + item.type]?.x || 0) + 'px',
+					top: (computedPositions[item.userId + '-' + item.type]?.y || 0) + 'px',
 				}"
 				@mousedown="startDrag($event, item.userId + '-' + item.type)"
 			>
-				<video @loadeddata="onVideoLoaded(item.track.id)" :srcObject="getStream(item.track)" autoplay playsinline :muted="item.isLocal" class="pip-video"></video>
+				<video
+					@loadeddata="onVideoLoaded(item.track.id)"
+					:srcObject="getStream(item.track)"
+					autoplay
+					playsinline
+					:muted="item.isLocal"
+					class="pip-video"
+				></video>
 				<div class="pip-controls">
 					<button @click="returnToVoice" class="pip-btn pip-back-btn" title="Return to call">
 						<Icon icon="mdi:arrow-left" />
@@ -315,16 +367,23 @@
 	}
 
 	.pip-video-container.is-speaking {
-		box-shadow: 0 0 16px var(--success), 0 8px 24px rgba(0, 0, 0, 0.8);
+		box-shadow:
+			0 0 16px var(--success),
+			0 8px 24px rgba(0, 0, 0, 0.8);
 		border-color: var(--success);
 	}
 
 	.pip-video-container.is-speaking:hover {
-		box-shadow: 0 0 24px var(--success), 0 8px 24px rgba(0, 0, 0, 0.8);
+		box-shadow:
+			0 0 24px var(--success),
+			0 8px 24px rgba(0, 0, 0, 0.8);
 	}
 
 	.pip-video-container.is-transitioning {
-		transition: top 0.2s ease, left 0.2s ease, transform 0.2s ease;
+		transition:
+			top 0.2s ease,
+			left 0.2s ease,
+			transform 0.2s ease;
 	}
 
 	.pip-video-container.is-dragging {
@@ -351,7 +410,7 @@
 		padding: 8px;
 		display: flex;
 		justify-content: space-between;
-		background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+		background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
 		opacity: 0;
 		transition: opacity 0.2s ease;
 	}
@@ -379,4 +438,15 @@
 		background: rgba(0, 0, 0, 0.8);
 	}
 
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
 </style>

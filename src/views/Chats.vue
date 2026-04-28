@@ -24,9 +24,7 @@
 	const route = useRoute();
 
 	const user_id = computed(() => route.params.userId as string);
-	const reversedDms = computed(() => {
-		return [...dmStore.dms].reverse();
-	});
+	const reversedDms = computed(() => Array.from(dmStore.dms).reverse());
 
 	function handleUserClick(user: UserType) {
 		router.push({ name: 'user', params: { userId: user.id.toString() } });

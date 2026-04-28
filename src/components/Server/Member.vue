@@ -105,8 +105,8 @@
 		const rect = target.getBoundingClientRect();
 		profileCard.value = {
 			show: true,
-			x: rect.right + 14,
-			y: rect.top - 10,
+			x: rect.right - 430,
+			y: rect.top,
 		};
 	}
 
@@ -201,6 +201,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+		min-width: 0;
 		flex: 1;
 		position: relative;
 	}
@@ -218,6 +219,7 @@
 		position: relative;
 		width: 35px;
 		height: 35px;
+		flex-shrink: 0;
 	}
 
 	.avatar {
@@ -261,6 +263,9 @@
 		font-weight: 600;
 		font-size: 1rem;
 		color: var(--text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.username {
 		font-weight: 100;

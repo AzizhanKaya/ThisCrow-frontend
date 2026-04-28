@@ -17,6 +17,17 @@
 
 		window.addEventListener('beforeunload', appStore.handleBeforeUnload);
 
+		window.addEventListener('mousedown', (e) => {
+			const target = e.target as HTMLElement;
+			if (!target) return;
+			if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) return;
+
+			const style = window.getComputedStyle(target);
+			if (style.userSelect === 'none' || style.webkitUserSelect === 'none') {
+				window.getSelection()?.removeAllRanges();
+			}
+		});
+
 		await appStore.init(router);
 	});
 </script>
@@ -64,6 +75,7 @@
 		--bg-lightest: hsl(216, 7%, 40%);
 
 		--text: hsl(0 0% 95%);
+		--text-secondary: hsl(0 0% 80%);
 		--text-muted: hsl(0 0% 75%);
 		--text-subtle: hsl(216, 7%, 60%);
 

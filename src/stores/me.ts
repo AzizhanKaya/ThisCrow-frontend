@@ -22,7 +22,7 @@ export const useMeStore = defineStore('me', {
 			await logOut();
 		},
 
-		changeStatus(status: Status) {
+		async changeStatus(status: Status) {
 			let change_status: Message<Event> = {
 				id: generate_uid(this.me!.id),
 				from: this.me!.id,
@@ -34,7 +34,7 @@ export const useMeStore = defineStore('me', {
 				type: MessageType.Info,
 			};
 
-			websocketService.sendMessage(change_status);
+			await websocketService.request(change_status);
 		},
 	},
 });

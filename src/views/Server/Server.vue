@@ -143,7 +143,7 @@
 <style scoped>
 	.server-view {
 		display: grid;
-		grid-template-columns: clamp(200px, 20%, 300px) 1fr 240px;
+		grid-template-columns: clamp(200px, 20%, 300px) 1fr clamp(180px, 20%, 240px);
 		height: 100%;
 		width: 100%;
 	}
@@ -199,6 +199,7 @@
 
 	.channel-header {
 		height: 50px;
+		flex-shrink: 0;
 		border-bottom: 1px solid var(--border);
 		padding: 0 16px;
 		background-color: var(--bg-dark);

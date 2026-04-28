@@ -6,13 +6,13 @@
 	import ServerAdd from '@/components/Server/ServerAdd.vue';
 
 	const serverStore = useServerStore();
-	const servers = computed(() => serverStore.servers);
+	const servers = computed(() => Array.from(serverStore.servers).reverse());
 </script>
 
 <template>
 	<div class="server-list">
 		<CrowIcon />
-		<div v-if="servers.size > 0" class="separator"></div>
+		<div v-if="servers.length > 0" class="separator"></div>
 		<Server v-for="[id, server] in servers" :key="id.toString()" :server="server" />
 		<ServerAdd />
 	</div>

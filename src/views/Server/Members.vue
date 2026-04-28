@@ -51,6 +51,7 @@
 		display: flex;
 		flex-direction: column;
 		padding: 16px 8px;
+		overflow-x: hidden;
 		overflow-y: auto;
 	}
 

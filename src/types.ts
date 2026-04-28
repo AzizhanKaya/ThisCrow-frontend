@@ -3,7 +3,6 @@ export type snowflake_id = bigint;
 
 export type Server = {
 	id: id;
-	version: id;
 	position: id;
 	owner?: id;
 	name: string;
@@ -94,10 +93,10 @@ export enum Status {
 
 export type User = {
 	id: id;
-	version: id;
 	name: string;
 	username: string;
 	avatar?: string;
+	banner?: string;
 	status: Status;
 	friends?: id[];
 	groups?: id[];
@@ -201,7 +200,7 @@ export type GameEvent = { game: 'playing'; payload: Game } | { game: 'stopped' }
 
 export type Event =
 	/* ===== USER ===== */
-	| { event: EventType.UpdateUser; payload: { name?: string; avatar?: string } }
+	| { event: EventType.UpdateUser; payload: { name?: string; avatar?: string; banner?: string } }
 	| { event: EventType.ChangeStatus; payload: Status }
 
 	/* ===== FRIEND ===== */
@@ -380,13 +379,15 @@ export type Ack =
 			payload: {
 				name?: string;
 				avatar?: string;
+				banner?: string;
 			};
 	  }
 
-	/* ===== GROUP / GUILD ===== */
+	/* ===== SERVER ===== */
 	| { ack: AckType.Subscribed; payload: any }
 	| { ack: AckType.Unsubscribed; payload: undefined }
 	| { ack: AckType.AddedMember; payload: undefined }
+	| { ack: AckType.JoinedMember; payload: undefined }
 	| { ack: AckType.RemovedMember; payload: undefined }
 	| {
 			ack: AckType.CreatedGroup;
@@ -478,6 +479,7 @@ export enum AckType {
 	Subscribed = 'subscribed',
 	Unsubscribed = 'unsubscribed',
 	AddedMember = 'added_member',
+	JoinedMember = 'joined_member',
 	RemovedMember = 'removed_member',
 	CreatedGroup = 'created_group',
 	CreatedChannel = 'created_channel',

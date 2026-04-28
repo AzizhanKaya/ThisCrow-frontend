@@ -8,7 +8,6 @@
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { Icon } from '@iconify/vue';
 	import { useModalStore, ModalView } from '@/stores/modal';
-	import { useUserStore } from '@/stores/user';
 
 	const props = defineProps<{
 		user: User;
@@ -25,13 +24,8 @@
 	const friendStore = useFriendStore();
 	const router = useRouter();
 	const modalStore = useModalStore();
-	const userStore = useUserStore();
 
 	const user = computed(() => {
-		const id = props.user?.id;
-		if (id) {
-			return userStore.users.get(props.user.id) || props.user;
-		}
 		return props.user;
 	});
 	const me = computed(() => meStore.me);
@@ -103,49 +97,76 @@
 		}
 	};
 
+	const updatePosition = async () => {
+		await nextTick();
+		if (cardRef.value && props.x !== undefined && props.y !== undefined) {
+			const width = cardRef.value.offsetWidth;
+			const height = cardRef.value.offsetHeight;
+			const viewportWidth = window.innerWidth;
+			const viewportHeight = window.innerHeight;
+
+			let finalX = props.x;
+			let finalY = props.y;
+
+			if (finalX + width > viewportWidth) {
+				finalX = viewportWidth - width - 10;
+			}
+
+			if (finalY + height > viewportHeight) {
+				finalY = viewportHeight - height - 10;
+			}
+
+			if (finalX < 10) finalX = 10;
+			if (finalY < 10) finalY = 10;
+
+			cardRef.value.style.left = `${finalX}px`;
+			cardRef.value.style.top = `${finalY}px`;
+		}
+	};
+
 	watch(
-		() => props.show,
-		async (newVal) => {
-			if (newVal === undefined) return;
-			if (newVal) {
+		() => [props.show, props.x, props.y],
+		async ([newShow]) => {
+			if (newShow === undefined) return;
+			if (newShow) {
 				requestAnimationFrame(() => {
 					document.addEventListener('click', handleClickOutside);
 					document.addEventListener('contextmenu', handleClickOutside);
 				});
-
-				if (cardRef.value && props.x !== undefined && props.y !== undefined) {
-					const width = cardRef.value.offsetWidth;
-					const height = cardRef.value.offsetHeight;
-					const maxX = window.innerWidth - width;
-					const maxY = window.innerHeight - height;
-
-					let finalX = props.x;
-					let finalY = props.y;
-
-					if (finalX > maxX) finalX = maxX - 5;
-					if (finalY > maxY) finalY = maxY - 5;
-
-					cardRef.value.style.left = `${finalX}px`;
-					cardRef.value.style.top = `${finalY}px`;
-				}
+				await updatePosition();
 			} else {
 				document.removeEventListener('click', handleClickOutside);
 				document.removeEventListener('contextmenu', handleClickOutside);
 			}
 		},
-		{ immediate: true }
+		{ immediate: true, deep: true }
 	);
+
+	let resizeObserver: ResizeObserver | null = null;
 
 	onMounted(() => {
 		timer = setInterval(() => {
 			now.value = Date.now();
 		}, 1000);
+
+		window.addEventListener('resize', updatePosition);
+
+		if (cardRef.value) {
+			resizeObserver = new ResizeObserver(() => {
+				updatePosition();
+			});
+			resizeObserver.observe(cardRef.value);
+		}
 	});
 
 	onUnmounted(() => {
 		clearInterval(timer);
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('contextmenu', handleClickOutside);
+		window.removeEventListener('resize', updatePosition);
+		if (resizeObserver) {
+			resizeObserver.disconnect();
+		}
 	});
 
 	const formatTimeElapsed = (dateString: Date | string | number) => {
@@ -175,7 +196,10 @@
 			@click.stop
 			@contextmenu.prevent="() => {}"
 		>
-			<div class="banner"></div>
+			<div
+				class="banner"
+				:style="user.banner ? { backgroundImage: `url(${user.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"
+			></div>
 
 			<div class="avatar-wrapper">
 				<img class="avatar avatar-hoverable" :src="user.avatar || getDefaultAvatar(user.username)" @click="openModalProfile" />
@@ -333,6 +357,7 @@
 		flex-direction: column;
 		position: relative;
 		font-family: 'Inter', sans-serif;
+		max-height: 90vh;
 	}
 
 	.profile-card.is-popover {
@@ -418,6 +443,18 @@
 		padding: 60px 16px 16px 16px;
 		border-radius: 0 0 8px 8px;
 		flex: 1;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		scrollbar-color: var(--bg-light) transparent;
+	}
+
+	.card-inner::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.card-inner::-webkit-scrollbar-thumb {
+		background-color: var(--bg-light);
+		border-radius: 4px;
 	}
 
 	.user-info-section {

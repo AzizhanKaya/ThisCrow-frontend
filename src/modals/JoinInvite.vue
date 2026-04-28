@@ -4,13 +4,15 @@
 	import { Icon } from '@iconify/vue';
 	import { useModalStore } from '@/stores/modal';
 	import { getInvitationInfo, joinInvitation } from '@/api/invite';
-	import type { InvitationInfo } from '@/api/invite';
+	import { useServerStore } from '@/stores/server';
+	import type { Invitation } from '@/api/invite';
 
 	const modalStore = useModalStore();
+	const serverStore = useServerStore();
 	const router = useRouter();
 
 	const code = ref<string>(modalStore.data?.code ?? '');
-	const info = ref<InvitationInfo | null>(null);
+	const info = ref<Invitation | null>(null);
 	const status = ref<'loading' | 'ready' | 'joining' | 'error'>('loading');
 	const errorMessage = ref('');
 
@@ -32,10 +34,17 @@
 
 	const handleJoin = async () => {
 		status.value = 'joining';
+		const invitation = info.value!;
 		try {
 			await joinInvitation(code.value);
+			serverStore.servers.set(invitation.group_id, {
+				id: invitation.group_id,
+				name: invitation.group_name,
+				icon: invitation.group_icon,
+				position: serverStore.servers.size + 1,
+			});
+			router.push({ name: 'server', params: { serverId: invitation.group_id.toString() } });
 			modalStore.closeModal();
-			router.push({ name: 'server', params: { serverId: info.value!.group_id } });
 		} catch (e: any) {
 			status.value = 'error';
 			errorMessage.value = e?.message ?? 'Failed to join server.';

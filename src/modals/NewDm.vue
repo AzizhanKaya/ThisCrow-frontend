@@ -274,8 +274,6 @@
 		height: 42px;
 		border-radius: 50%;
 		object-fit: cover;
-		background-color: var(--bg-dark);
-		border: 2px solid var(--bg-dark);
 	}
 
 	.user-text {
