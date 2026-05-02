@@ -246,7 +246,13 @@
 					<button class="action-circle-btn btn-secondary" title="Send Message" @click="handleMessage">
 						<Icon icon="mdi:message" />
 					</button>
-					<button class="action-circle-btn btn-secondary" title="Add Friend" @click="handleAddFriend">
+					<button class="action-circle-btn btn-secondary" title="Friend" disabled v-if="friendStore.isFriend(user.id)">
+						<Icon icon="mdi:account-check" />
+					</button>
+					<button class="action-circle-btn btn-secondary" title="Request Sent" disabled v-else-if="friendStore.isRequestSent(user.id)">
+						<Icon icon="mdi:account-clock" />
+					</button>
+					<button class="action-circle-btn btn-secondary" title="Add Friend" @click="handleAddFriend" v-else>
 						<Icon icon="mdi:account-plus" />
 					</button>
 				</div>

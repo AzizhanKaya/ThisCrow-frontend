@@ -20,6 +20,8 @@ import { useAppStore } from './app';
 import { webrtcService, MediaType } from '@/services/webrtc';
 import { useUserStore } from './user';
 import { useModalStore, ModalView } from './modal';
+import { useErrorStore } from './error';
+import { getVoiceDirect } from '@/api/state';
 
 export interface AudioDevice {
 	deviceId: string;
@@ -50,8 +52,29 @@ export const useVoiceStore = defineStore('voice', {
 	}),
 
 	actions: {
-		setupListeners() {
+		async init() {
+			this.voice_channel = undefined;
+			this.group_id = undefined;
+			this.voice_direct = undefined;
+			this.isMuted = false;
+			this.isDeafened = false;
+			this.isVideoOn = false;
+			this.isScreenSharing = false;
+			this.unwatch = null;
+			this.cleanupUnload = null;
+			this.audioDevices = [];
+			this.selectedDeviceId = '';
+			this.showDeviceSelector = false;
+			this.outputDevices = [];
+			this.selectedOutputDeviceId = '';
+			this.showOutputDeviceSelector = false;
+
+			const ready = (async () => {
+				this.on_voice_direct = await getVoiceDirect();
+			})();
+
 			websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
+				await ready;
 				const { ack, payload } = message.data;
 				if (message.from !== 0) return;
 				const me = useMeStore().me!;
@@ -74,34 +97,15 @@ export const useVoiceStore = defineStore('voice', {
 						break;
 					}
 					case AckType.ExitedVoice: {
-						if (message.to === me.id) {
-							await this.leaveVoice();
-						} else {
+						if (message.to !== me.id) {
 							this.on_voice_direct = this.on_voice_direct.filter((id) => id !== message.to);
 						}
 						break;
 					}
 				}
 			});
-		},
-		init() {
-			this.voice_channel = undefined;
-			this.group_id = undefined;
-			this.voice_direct = undefined;
-			this.on_voice_direct = [];
-			this.isMuted = false;
-			this.isDeafened = false;
-			this.isVideoOn = false;
-			this.isScreenSharing = false;
-			this.unwatch = null;
-			this.cleanupUnload = null;
-			this.audioDevices = [];
-			this.selectedDeviceId = '';
-			this.showDeviceSelector = false;
-			this.outputDevices = [];
-			this.selectedOutputDeviceId = '';
-			this.showOutputDeviceSelector = false;
-			this.setupListeners();
+
+			await ready;
 			this.setupDeviceChangeListener();
 		},
 
@@ -149,6 +153,7 @@ export const useVoiceStore = defineStore('voice', {
 					};
 				} catch (e) {
 					console.error('Failed to switch microphone:', e);
+					useErrorStore().pushFrom(e, 'Failed to switch microphone.');
 				}
 			}
 		},
@@ -229,6 +234,7 @@ export const useVoiceStore = defineStore('voice', {
 				});
 			} catch (e) {
 				console.error(e);
+				useErrorStore().pushFrom(e, 'Failed to join voice channel.');
 				webrtcService.disconnectAll();
 				this.voice_channel = undefined;
 				this.group_id = undefined;
@@ -348,6 +354,7 @@ export const useVoiceStore = defineStore('voice', {
 				}
 			} catch (error) {
 				console.error('Microphone error:', error);
+				useErrorStore().pushFrom(error, 'Microphone error.');
 			}
 		},
 
@@ -366,6 +373,7 @@ export const useVoiceStore = defineStore('voice', {
 				}
 			} catch (error) {
 				console.error('Camera error:', error);
+				useErrorStore().pushFrom(error, 'Camera error.');
 			}
 		},
 
@@ -384,6 +392,7 @@ export const useVoiceStore = defineStore('voice', {
 				}
 			} catch (error) {
 				console.error('Screen share error:', error);
+				useErrorStore().pushFrom(error, 'Screen share error.');
 			}
 		},
 	},

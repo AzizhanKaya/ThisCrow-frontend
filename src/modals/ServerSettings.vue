@@ -6,9 +6,11 @@
 	import { Permissions, type Role } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import { useFiles } from '@/composables/useFiles';
+	import { useErrorStore } from '@/stores/error';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
+	const errorStore = useErrorStore();
 	const { uploadFiles } = useFiles();
 
 	const activeTab = ref('general');
@@ -84,6 +86,7 @@
 			}
 		} catch (e) {
 			console.error('Icon upload failed:', e);
+			errorStore.pushFrom(e, 'Icon upload failed.');
 			serverIconPreview.value = serverIcon.value || null;
 		} finally {
 			isUploadingIcon.value = false;
@@ -213,6 +216,7 @@
 			await loadInvites();
 		} catch (e) {
 			console.error('Failed to delete invite', e);
+			errorStore.pushFrom(e, 'Failed to delete invite.');
 		}
 	}
 

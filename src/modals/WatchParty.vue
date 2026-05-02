@@ -5,8 +5,10 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import type { id } from '@/types';
 	import { useWatchStore } from '@/stores/watch';
+	import { useErrorStore } from '@/stores/error';
 
 	const modalStore = useModalStore();
+	const errorStore = useErrorStore();
 
 	enum Browser {
 		Chrome = 'Chrome',
@@ -54,6 +56,7 @@
 			}
 		} catch (err) {
 			console.error('Failed to fetch browsers:', err);
+			errorStore.pushFrom(err, 'Failed to fetch browsers.');
 		} finally {
 			isLoading.value = false;
 		}
@@ -106,6 +109,7 @@
 			modalStore.closeModal();
 		} catch (err) {
 			console.error('Failed to start watch party:', err);
+			errorStore.pushFrom(err, 'Failed to start watch party.');
 		}
 	};
 </script>

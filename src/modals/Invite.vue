@@ -5,8 +5,10 @@
 	import { createInvitation } from '@/api/invite';
 	import type { Invitation } from '@/api/invite';
 	import type { id } from '@/types';
+	import { useErrorStore } from '@/stores/error';
 
 	const modalStore = useModalStore();
+	const errorStore = useErrorStore();
 
 	const server_id = ref<id>(modalStore.data?.server_id ?? 0);
 	const serverName = ref<string>(modalStore.data?.server_name ?? 'Server');
@@ -46,6 +48,7 @@
 			inviteLink.value = `${window.location.origin}/invite/${invitation.code}`;
 		} catch (e: any) {
 			error.value = e?.message ?? 'Failed to create invitation';
+			errorStore.pushFrom(e, 'Failed to create invitation');
 		} finally {
 			loading.value = false;
 		}

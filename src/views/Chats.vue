@@ -12,8 +12,6 @@
 	import ContextMenu, { type ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import { useFriendStore } from '@/stores/friend';
-	import Search from '@/components/Search.vue';
-	import { removeDM } from '@/api/message';
 
 	const dmStore = useDMStore();
 	const userStore = useUserStore();
@@ -97,8 +95,7 @@
 				// TODO: Implement invite
 				break;
 			case 'remove_dm':
-				removeDM(user.id);
-				dmStore.dms = dmStore.dms.filter((u) => u.id !== user.id);
+				dmStore.removeDM(user.id);
 				if (router.currentRoute.value.params.userId === user.id.toString()) {
 					router.push({ name: 'chats' });
 				}
@@ -143,7 +140,6 @@
 						@click="handleUserClick(user)"
 						:class="{ selected: user_id === user.id.toString() }"
 					/>
-					<div v-if="index < dmStore.dms.length - 1" class="user-separator"></div>
 				</template>
 			</div>
 		</aside>
@@ -212,12 +208,6 @@
 
 	.user-list * {
 		transition: background-color 0.3s;
-	}
-
-	.user-separator {
-		height: 1px;
-		background-color: var(--border);
-		margin-left: 50px;
 	}
 
 	main {

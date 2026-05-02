@@ -1,6 +1,7 @@
 import { ref, computed, reactive } from 'vue';
 import { API_URL } from '@/constants';
 import { encode, msgFetch } from '@/utils/msgpack';
+import { useErrorStore } from '@/stores/error';
 
 export type StorageType = 'image' | 'video' | 'file' | 'avatar' | 'icon' | 'banner';
 
@@ -48,6 +49,7 @@ export interface FileInfo {
 let nextFileId = 0;
 
 export function useFiles() {
+	const errorStore = useErrorStore();
 	const fileInput = ref<HTMLInputElement | null>(null);
 	const selectedFiles = ref<SelectedFiles>({
 		images: [],
@@ -131,10 +133,11 @@ export function useFiles() {
 					p.item.uploading = false;
 				} catch (error) {
 					console.error('Upload error:', error);
+					errorStore.pushFrom(error, `Failed to upload ${p.item.file.name}.`);
 					p.item.uploading = false;
 					p.item.failed = true;
 				}
-			}),
+			})
 		);
 	}
 
@@ -166,6 +169,7 @@ export function useFiles() {
 			saved_filename: string;
 			signed_url: string;
 			public_url: string;
+			extension_headers: Record<string, string>;
 		}>(`${API_URL}/upload`, {
 			method: 'PUT',
 			credentials: 'include',
@@ -180,11 +184,12 @@ export function useFiles() {
 			method: 'PUT',
 			headers: {
 				'Content-Type': file.type || 'application/octet-stream',
+				...signature.extension_headers,
 			},
 			body: file,
 		});
 
-		if (!uploadResponse.ok) throw new Error('Upload to storage failed');
+		if (!uploadResponse.ok) throw new Error(await uploadResponse.text());
 
 		return { url: signature.public_url };
 	}
@@ -205,6 +210,7 @@ export function useFiles() {
 					saved_filename: string;
 					signed_url: string;
 					public_url: string;
+					extension_headers: Record<string, string>;
 				}>(`${API_URL}/upload`, {
 					method: 'PUT',
 					credentials: 'include',
@@ -219,11 +225,12 @@ export function useFiles() {
 					method: 'PUT',
 					headers: {
 						'Content-Type': file.type || 'application/octet-stream',
+						...signature.extension_headers,
 					},
 					body: file,
 				});
 
-				if (!uploadResponse.ok) throw new Error('Upload to storage failed');
+				if (!uploadResponse.ok) throw new Error(await uploadResponse.text());
 
 				uploaded.push({
 					file,
@@ -232,6 +239,7 @@ export function useFiles() {
 				});
 			} catch (error) {
 				console.error('Upload error:', error);
+				errorStore.pushFrom(error, `Failed to upload ${file.name}.`);
 			}
 		}
 

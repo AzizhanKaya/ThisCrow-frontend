@@ -3,10 +3,13 @@
 	import { type User, Status } from '@/types';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import ProfileCard from '@/components/ProfileCard.vue';
+	import { Icon } from '@iconify/vue';
+	import { useDMStore } from '@/stores/dm';
 
 	export default {
 		components: {
 			ProfileCard,
+			Icon,
 		},
 		props: {
 			user: {
@@ -29,6 +32,10 @@
 				document.dispatchEvent(new Event('click')); // Close any other open popovers
 				const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 				this.profileCard = { show: true, x: rect.right + 10, y: rect.top };
+			},
+			handleRemoveDM() {
+				const dmStore = useDMStore();
+				dmStore.removeDM(this.user.id);
 			},
 		},
 		computed: {
@@ -55,14 +62,11 @@
 		<span class="name" @click.stop="openProfileCard($event)">{{ user.name }}</span>
 		<span class="username">@{{ user.username }}</span>
 		<div class="status" :class="'status-' + getStatus"></div>
+		<div class="remove-dm" @click="handleRemoveDM()">
+			<Icon icon="mdi:remove"></Icon>
+		</div>
 
-		<ProfileCard
-			:user="user"
-			:show="profileCard.show"
-			:x="profileCard.x"
-			:y="profileCard.y"
-			@close="profileCard.show = false"
-		/>
+		<ProfileCard :user="user" :show="profileCard.show" :x="profileCard.x" :y="profileCard.y" @close="profileCard.show = false" />
 	</div>
 </template>
 
@@ -116,7 +120,30 @@
 		position: absolute;
 		z-index: 10;
 		border: 2px #333 solid;
-		left: 40px;
+		left: 38px;
 		bottom: 5px;
+	}
+
+	.remove-dm {
+		position: absolute;
+		top: 50%;
+		right: 15px;
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.2s ease;
+	}
+
+	.user:hover .remove-dm {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.remove-dm:hover {
+		color: var(--text-error);
 	}
 </style>

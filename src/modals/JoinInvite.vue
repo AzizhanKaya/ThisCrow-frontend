@@ -6,9 +6,11 @@
 	import { getInvitationInfo, joinInvitation } from '@/api/invite';
 	import { useServerStore } from '@/stores/server';
 	import type { Invitation } from '@/api/invite';
+	import { useErrorStore } from '@/stores/error';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
+	const errorStore = useErrorStore();
 	const router = useRouter();
 
 	const code = ref<string>(modalStore.data?.code ?? '');
@@ -48,6 +50,7 @@
 		} catch (e: any) {
 			status.value = 'error';
 			errorMessage.value = e?.message ?? 'Failed to join server.';
+			errorStore.pushFrom(e, 'Failed to join server.');
 		}
 	};
 </script>

@@ -6,11 +6,13 @@
 	import { websocketService } from '@/services/websocket';
 	import { AckType, ChannelType, EventType, MessageType, type Ack, type Event, type Message, type id } from '@/types';
 	import { useMeStore } from '@/stores/me';
+	import { useErrorStore } from '@/stores/error';
 	import { generate_uid } from '@/utils/uid';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
 	const meStore = useMeStore();
+	const errorStore = useErrorStore();
 
 	const server_id = ref<id>(modalStore.data?.server_id ?? 0);
 
@@ -51,6 +53,7 @@
 			modalStore.closeModal();
 		} catch (e: any) {
 			error.value = e?.message ?? 'Failed to create channel.';
+			errorStore.pushFrom(e, 'Failed to create channel.');
 		} finally {
 			isLoading.value = false;
 		}

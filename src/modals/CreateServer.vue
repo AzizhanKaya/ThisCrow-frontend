@@ -7,10 +7,12 @@
 	import { AckType, MessageType, type Ack, type id, type Message } from '@/types';
 	import { useRouter } from 'vue-router';
 	import { useFiles } from '@/composables/useFiles';
+	import { useErrorStore } from '@/stores/error';
 
 	const router = useRouter();
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
+	const errorStore = useErrorStore();
 	const { uploadFiles } = useFiles();
 
 	const serverName = ref('');
@@ -37,6 +39,7 @@
 				}
 			} catch (e) {
 				console.error('Icon upload failed:', e);
+				errorStore.pushFrom(e, 'Icon upload failed.');
 				serverIconPreview.value = null;
 				serverIcon.value = undefined;
 			} finally {
@@ -67,6 +70,7 @@
 			router.push({ name: 'server', params: { serverId: server_id.toString() } });
 		} catch (e) {
 			console.error(e);
+			errorStore.pushFrom(e, 'Failed to create server.');
 		} finally {
 			isLoading.value = false;
 		}

@@ -29,8 +29,16 @@ export const useFriendStore = defineStore('friends', {
 		},
 	},
 	actions: {
-		setupListeners() {
+		async init(friends: id[], incoming: id[], outgoing: id[]) {
+			const ready = (async () => {
+				const userStore = useUserStore();
+				this.friends = new Map((await userStore.getUsers(friends)).map((user) => [user.id, user]));
+				this.incoming_requests = await userStore.getUsers(incoming);
+				this.outgoing_requests = await userStore.getUsers(outgoing);
+			})();
+
 			websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
+				await ready;
 				const userStore = useUserStore();
 				const { ack, payload } = message.data;
 
@@ -68,15 +76,8 @@ export const useFriendStore = defineStore('friends', {
 					}
 				}
 			});
-		},
-		async init(friends: id[], incoming: id[], outgoing: id[]) {
-			this.setupListeners();
 
-			const userStore = useUserStore();
-
-			this.friends = new Map((await userStore.getUsers(friends)).map((user) => [user.id, user]));
-			this.incoming_requests = await userStore.getUsers(incoming);
-			this.outgoing_requests = await userStore.getUsers(outgoing);
+			await ready;
 		},
 		sendFriendRequest(user: User) {
 			const meStore = useMeStore();

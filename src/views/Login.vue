@@ -2,23 +2,22 @@
 	import { ref } from 'vue';
 	import { login } from '@/api/auth';
 	import { Icon } from '@iconify/vue';
-	import Toast from '@/components/Toast.vue';
 	import { websocketService } from '@/services/websocket';
 	import { useKeyStore } from '@/stores/key';
+	import { useErrorStore } from '@/stores/error';
 	import { useRouter } from 'vue-router';
 	import { generate_keypair } from '@/../pkg/wasm_lib';
 
 	const keyStore = useKeyStore();
+	const errorStore = useErrorStore();
 	const router = useRouter();
 
 	const username = ref('');
 	const password = ref('');
 
-	const error = ref<any>(null);
 	let isLoading = ref(false);
 
 	async function submit() {
-		error.value = null;
 		isLoading.value = true;
 		const user = username.value;
 		const pass = password.value;
@@ -29,7 +28,7 @@
 			router.push({ name: 'chats' });
 		} catch (err: any) {
 			console.error(err);
-			error.value = err?.message || 'An error occurred';
+			errorStore.pushFrom(err);
 		} finally {
 			isLoading.value = false;
 		}
@@ -38,8 +37,6 @@
 
 <template>
 	<div class="login">
-		<Toast v-if="error" :message="error" @close="error = null" />
-
 		<form @submit.prevent="submit">
 			<div class="field">
 				<label>Username</label>

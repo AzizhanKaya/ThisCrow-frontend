@@ -167,7 +167,11 @@ export type EncryptedData = {
 	cipher: Uint8Array;
 };
 
-export type MessageData = string | EncryptedData | MultiData | Event | Ack;
+export type CallData = {
+	end_time: number | null;
+};
+
+export type MessageData = string | EncryptedData | MultiData | CallData | Event | Ack;
 
 export interface Message<T = MessageData> {
 	id: snowflake_id;

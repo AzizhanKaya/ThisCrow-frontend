@@ -26,9 +26,9 @@ export async function initApp() {
 	const watchStore = useWatchStore();
 
 	const me: Me = await websocketService.waitForSessionInit();
-	messageStore.init();
 	userStore.init(me);
 	meStore.setMe(me);
+	messageStore.init();
 	meStore.changeStatus(Status.Online);
 	voiceStore.init();
 	keyStore.init();

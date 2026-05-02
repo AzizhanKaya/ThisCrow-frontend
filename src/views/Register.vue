@@ -1,14 +1,15 @@
 <script setup lang="ts">
 	import { ref } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import Toast from '@/components/Toast.vue';
 	import { register } from '@/api/auth';
 	import { generate_keypair } from '../../pkg/wasm_lib';
 	import { useKeyStore } from '@/stores/key';
+	import { useErrorStore } from '@/stores/error';
 	import { websocketService } from '@/services/websocket';
 	import { useRouter } from 'vue-router';
 
 	const keyStore = useKeyStore();
+	const errorStore = useErrorStore();
 	const router = useRouter();
 
 	const username_ref = ref('');
@@ -17,11 +18,9 @@
 	const password_ref = ref('');
 	const confirmPassword_ref = ref('');
 
-	const error = ref<any>(null);
 	const isLoading = ref(false);
 
 	async function submit() {
-		error.value = null;
 		isLoading.value = true;
 
 		const username = username_ref.value;
@@ -31,7 +30,13 @@
 		const confirmPassword = confirmPassword_ref.value;
 
 		if (password !== confirmPassword) {
-			error.value = 'Passwords does not match';
+			errorStore.push('Passwords does not match');
+			isLoading.value = false;
+			return;
+		}
+
+		if (password.length < 8) {
+			errorStore.push('Passwords lenght should be 8 at least');
 			isLoading.value = false;
 			return;
 		}
@@ -44,7 +49,7 @@
 			router.push({ name: 'chats' });
 		} catch (err: any) {
 			console.error(err);
-			error.value = err?.message || 'An error occurred';
+			errorStore.pushFrom(err);
 		} finally {
 			isLoading.value = false;
 		}
@@ -53,8 +58,6 @@
 
 <template>
 	<div class="register">
-		<Toast v-if="error" :message="error" @close="error = null" />
-
 		<form @submit.prevent="submit">
 			<div class="field">
 				<label>Username</label>

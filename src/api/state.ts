@@ -14,6 +14,12 @@ export async function fetchDms(): Promise<[id, snowflake_id][]> {
 	return msgFetch<[id, snowflake_id][]>(url, { credentials: 'include' });
 }
 
+export async function getVoiceDirect(): Promise<[id]> {
+	const url = API_URL + `/state/voice_direct`;
+
+	return msgFetch<[id]>(url, { credentials: 'include' });
+}
+
 export async function logOut(): Promise<void> {
 	const url = API_URL + `/state/logout`;
 

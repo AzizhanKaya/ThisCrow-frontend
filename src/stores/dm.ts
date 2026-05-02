@@ -4,6 +4,7 @@ import { useUserStore } from './user.ts';
 import { useMeStore } from './me.ts';
 import { fetchDms } from '@/api/state.ts';
 import { websocketService } from '@/services/websocket.ts';
+import { removeDM } from '@/api/message.ts';
 
 export const useDMStore = defineStore('dm', {
 	state: () => ({
@@ -24,27 +25,32 @@ export const useDMStore = defineStore('dm', {
 			},
 	},
 	actions: {
-		setupListeners() {
-			websocketService.onMessage(MessageType.Direct, async (m: Message) => {
-				const meStore = useMeStore();
-				if (!meStore.me) return;
-
-				const user_id = m.from === meStore.me.id ? m.to : m.from;
-				await this.ensureUser(user_id);
-
-				const index = this.dms.findIndex((u) => u.id === user_id);
-
-				if (index != -1) {
-					const [user] = this.dms.splice(index, 1);
-					this.dms.push(user);
-				}
-			});
-		},
 		async init() {
-			this.setupListeners();
-			const dms = (await fetchDms()).sort((x, y) => (x[1] > y[1] ? 1 : x[1] < y[1] ? -1 : 0)).map(([a, b]) => a);
-			const userStore = useUserStore();
-			this.dms = await userStore.getUsers(dms);
+			const ready = (async () => {
+				const dms = (await fetchDms()).sort((x, y) => (x[1] > y[1] ? 1 : x[1] < y[1] ? -1 : 0)).map(([a, b]) => a);
+				const userStore = useUserStore();
+				this.dms = await userStore.getUsers(dms);
+			})();
+
+			let queue = ready;
+			websocketService.onMessage(MessageType.Direct, (m: Message) => {
+				queue = queue.then(async () => {
+					const meStore = useMeStore();
+					if (!meStore.me) return;
+
+					const user_id = m.from === meStore.me.id ? m.to : m.from;
+					await this.ensureUser(user_id);
+
+					const index = this.dms.findIndex((u) => u.id === user_id);
+
+					if (index != -1) {
+						const [user] = this.dms.splice(index, 1);
+						this.dms.push(user);
+					}
+				});
+			});
+
+			await ready;
 		},
 
 		async ensureUser(id: id): Promise<User> {
@@ -75,6 +81,11 @@ export const useDMStore = defineStore('dm', {
 			this.loading_user.set(id, addUser);
 
 			return addUser;
+		},
+
+		async removeDM(id: id) {
+			await removeDM(id);
+			this.dms = this.dms.filter((u) => u.id !== id);
 		},
 
 		addUser(user: User) {

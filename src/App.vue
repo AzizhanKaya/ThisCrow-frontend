@@ -5,6 +5,7 @@
 	import Header from './components/Header.vue';
 	import Modals from './components/Modals.vue';
 	import GlobalVoiceOverlay from './components/Voice/GlobalVoiceOverlay.vue';
+	import ErrorToasts from './components/ErrorToasts.vue';
 
 	const appStore = useAppStore();
 	const router = useRouter();
@@ -41,6 +42,7 @@
 	</router-view>
 	<Modals />
 	<GlobalVoiceOverlay />
+	<ErrorToasts />
 </template>
 
 <style>

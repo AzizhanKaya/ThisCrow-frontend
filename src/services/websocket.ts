@@ -91,9 +91,7 @@ class WebSocketService {
 
 			if (message.type === MessageType.Server) {
 				this.eventQueue = this.eventQueue
-					.then(async () => {
-						this.handleAck(message);
-					})
+					.then(() => this.handleAck(message))
 					.catch((error) => {
 						console.error('Error handling server message:', error);
 					});

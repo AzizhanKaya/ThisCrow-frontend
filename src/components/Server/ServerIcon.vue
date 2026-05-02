@@ -31,9 +31,11 @@
 	.server {
 		aspect-ratio: 1;
 		width: 100%;
+		height: 100%;
 		padding: 2px;
 		cursor: pointer;
 		position: relative;
+		box-sizing: border-box;
 	}
 
 	.server-indicator {

@@ -19,6 +19,7 @@
 		overflow: hidden;
 		cursor: pointer;
 		border: 2px #444444 solid;
+		box-sizing: border-box;
 	}
 
 	.crow-icon::after {

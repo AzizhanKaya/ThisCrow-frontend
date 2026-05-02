@@ -1,8 +1,8 @@
 <script setup lang="ts">
 	import { computed, type PropType, ref, onBeforeUnmount, watch } from 'vue';
-	import type { Message, MessageData, MultiData, User } from '@/types';
+	import type { CallData, Message, MessageData, MultiData, User } from '@/types';
 	import { Icon } from '@iconify/vue';
-	import { is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
+	import { get_timestamp_from_snowflake, is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
 	import { decrypt_message } from '@/../pkg/wasm_lib';
 	import { decode } from '@/utils/msgpack';
 	import { getDefaultAvatar } from '@/utils/avatar';
@@ -41,9 +41,17 @@
 		}
 	});
 
+	const callData = $computed<CallData | undefined>(() => {
+		const data = message?.data;
+		if (data && typeof data === 'object' && 'end_time' in data) {
+			return data as CallData;
+		}
+		return undefined;
+	});
+
 	const multiData = $computed<MultiData | undefined>(() => {
 		const data = message?.data;
-		if (typeof data === 'object') {
+		if (data && typeof data === 'object' && !('end_time' in data) && !('cipher' in data)) {
 			return data as MultiData;
 		}
 		return undefined;
@@ -59,6 +67,47 @@
 		}
 		return undefined;
 	});
+
+	function formatCallDuration(ms: number): string {
+		const total = Math.max(0, Math.floor(ms / 1000));
+		const h = Math.floor(total / 3600);
+		const m = Math.floor((total % 3600) / 60);
+		const s = total % 60;
+		if (h > 0) return `${h}h ${m}m ${s}s`;
+		if (m > 0) return `${m}m ${s}s`;
+		return `${s}s`;
+	}
+
+	const now = ref(Date.now());
+	let callTimer: ReturnType<typeof setInterval> | null = null;
+
+	const callInfo = $computed(() => {
+		if (!callData) return undefined;
+		const startedAt = get_timestamp_from_snowflake(props.message.id);
+		const ended = callData.end_time != null;
+		const elapsedMs = ended ? (callData.end_time as number) - startedAt : now.value - startedAt;
+		return {
+			ended,
+			duration: formatCallDuration(elapsedMs),
+			outgoing: is_sent_from_snowflake(props.message.id),
+		};
+	});
+
+	watch(
+		() => callInfo?.ended,
+		(ended) => {
+			const ongoing = callInfo && !ended;
+			if (ongoing && callTimer === null) {
+				callTimer = setInterval(() => {
+					now.value = Date.now();
+				}, 1000);
+			} else if (!ongoing && callTimer !== null) {
+				clearInterval(callTimer);
+				callTimer = null;
+			}
+		},
+		{ immediate: true },
+	);
 
 	const emit = defineEmits<{
 		(e: 'open-profile', payload: { user: User; x: number; y: number }): void;
@@ -104,6 +153,7 @@
 	onBeforeUnmount(() => {
 		window.removeEventListener('keydown', onKeydown);
 		if (lightboxSrc.value) document.body.style.overflow = '';
+		if (callTimer !== null) clearInterval(callTimer);
 	});
 
 	function fileExtension(name: string): string {
@@ -150,6 +200,19 @@
 			</div>
 
 			<div class="data">
+				<div v-if="callInfo" class="call-card" :class="{ ended: callInfo.ended, ongoing: !callInfo.ended }">
+					<div class="call-icon">
+						<Icon :icon="callInfo.ended ? 'mdi:phone-hangup' : 'mdi:phone'" />
+					</div>
+					<div class="call-info">
+						<span class="call-title">{{ callInfo.ended ? 'Call ended' : 'Voice call' }}</span>
+						<span class="call-meta">
+							<span v-if="!callInfo.ended" class="live-dot" />
+							<span class="duration">{{ callInfo.duration }}</span>
+						</span>
+					</div>
+				</div>
+
 				<div v-if="multiData?.images" class="media-container">
 					<img
 						v-for="img in multiData.images"
@@ -444,6 +507,112 @@
 	.file-download:hover {
 		background-color: var(--bg-light);
 		color: var(--text);
+	}
+
+	.call-card {
+		display: inline-flex;
+		align-items: center;
+		gap: 14px;
+		padding: 10px 18px 10px 12px;
+		background: linear-gradient(135deg, var(--bg-darker), var(--bg-dark));
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		max-width: 340px;
+		margin: 4px 0;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+		transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+	}
+
+	.call-card:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+	}
+
+	.call-card.ongoing {
+		border-color: hsla(141, 50%, 45%, 0.55);
+		background: linear-gradient(135deg, hsla(141, 50%, 30%, 0.18), var(--bg-dark));
+	}
+
+	.call-card.ended {
+		opacity: 0.85;
+	}
+
+	.call-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+		flex-shrink: 0;
+		font-size: 1.45rem;
+		border-radius: 50%;
+		background: linear-gradient(135deg, var(--bg), var(--bg-dark));
+		color: var(--text-secondary);
+		box-shadow: inset 0 0 0 1px var(--border-muted);
+	}
+
+	.call-card.ongoing .call-icon {
+		background: linear-gradient(135deg, hsl(141, 55%, 42%), hsl(141, 55%, 32%));
+		color: #fff;
+		box-shadow: 0 0 0 4px hsla(141, 55%, 45%, 0.18), inset 0 0 0 1px hsla(141, 55%, 60%, 0.4);
+	}
+
+	.call-card.ended .call-icon {
+		color: var(--text-subtle);
+	}
+
+	.call-info {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		gap: 3px;
+	}
+
+	.call-title {
+		color: var(--text);
+		font-weight: 600;
+		font-size: 0.95rem;
+		letter-spacing: 0.1px;
+	}
+
+	.call-card.ended .call-title {
+		color: var(--text-subtle);
+		font-weight: 500;
+	}
+
+	.call-meta {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.78rem;
+		color: var(--text-subtle);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.call-card.ongoing .call-meta .duration {
+		color: hsl(141, 50%, 70%);
+		font-weight: 500;
+	}
+
+	.live-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background-color: hsl(141, 60%, 55%);
+		box-shadow: 0 0 0 0 hsla(141, 60%, 55%, 0.6);
+		animation: live-pulse 1.6s ease-out infinite;
+	}
+
+	@keyframes live-pulse {
+		0% {
+			box-shadow: 0 0 0 0 hsla(141, 60%, 55%, 0.55);
+		}
+		70% {
+			box-shadow: 0 0 0 6px hsla(141, 60%, 55%, 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 hsla(141, 60%, 55%, 0);
+		}
 	}
 
 	.lightbox-fade-enter-active,

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { AckType, MessageType, type Message } from '@/types';
 import { websocketService } from '@/services/websocket';
 import { useMeStore } from './me';
+import { useErrorStore } from './error';
 import { fetchMessages } from '@/api/message';
 import type { Ack, id } from '@/types';
 import { snowflake_to_date } from '@/utils/snowflake';
@@ -73,6 +74,16 @@ export const useMessageStore = defineStore('message', {
 				if (msg) {
 					msg.id = message.id;
 				}
+			} else if (ack == AckType.Overwritten) {
+				const updated = payload as Message;
+				const key = this.getChatKey(updated);
+				const messages = this.messages.get(key);
+				if (!messages) return;
+
+				const idx = messages.findIndex((m) => m.id === updated.id);
+				if (idx !== -1) {
+					messages[idx] = { ...messages[idx], ...updated };
+				}
 			}
 		},
 
@@ -89,6 +100,7 @@ export const useMessageStore = defineStore('message', {
 				websocketService.sendMessage(message);
 			} catch (e) {
 				console.error(e);
+				useErrorStore().pushFrom(e, 'Failed to send message.');
 			}
 		},
 
