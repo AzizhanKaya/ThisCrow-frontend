@@ -5,7 +5,7 @@
 	import { useModalStore } from '@/stores/modal';
 	import { getInvitationInfo, joinInvitation } from '@/api/invite';
 	import { useServerStore } from '@/stores/server';
-	import type { Invitation } from '@/api/invite';
+	import type { InvitationInfo } from '@/api/invite';
 	import { useErrorStore } from '@/stores/error';
 
 	const modalStore = useModalStore();
@@ -14,7 +14,7 @@
 	const router = useRouter();
 
 	const code = ref<string>(modalStore.data?.code ?? '');
-	const info = ref<Invitation | null>(null);
+	const info = ref<InvitationInfo | null>(null);
 	const status = ref<'loading' | 'ready' | 'joining' | 'error'>('loading');
 	const errorMessage = ref('');
 
