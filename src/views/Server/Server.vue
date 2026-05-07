@@ -185,7 +185,7 @@
 
 	.server-info span {
 		font-size: 16px;
-		font-weight: 800;
+		font-weight: 500;
 		color: var(--text);
 	}
 
@@ -213,6 +213,7 @@
 		display: flex;
 		align-items: center;
 		font-size: 1.1rem;
+		font-weight: 100;
 		margin: 0;
 	}
 

@@ -14,7 +14,7 @@ export interface Invitation {
 }
 
 export async function createInvitation(group_id: id, expires_at: string, max_uses?: number): Promise<Invitation> {
-	return await msgFetch<Invitation>(`${API_URL}/invitation/create`, {
+	return msgFetch<Invitation>(`${API_URL}/invitation/create`, {
 		method: 'POST',
 		credentials: 'include',
 		body: encode({ group_id, expires_at, max_uses: max_uses ?? null }),
@@ -22,31 +22,31 @@ export async function createInvitation(group_id: id, expires_at: string, max_use
 }
 
 export async function joinInvitation(code: string): Promise<void> {
-	return await msgFetch<void>(`${API_URL}/invitation/join`, {
+	return msgFetch<void>(`${API_URL}/invitation/join`, {
 		method: 'POST',
 		credentials: 'include',
 		body: encode(code),
 	});
 }
 
-export interface Invitation {
+export interface InvitationInfo {
 	group_id: id;
 	group_name: string;
-	group_icon: string | undefined;
-	group_description: string | undefined;
+	group_icon?: string;
+	group_description?: string;
 	member_count: number;
 }
 
-export async function getInvitationInfo(code: string): Promise<Invitation> {
+export async function getInvitationInfo(code: string): Promise<InvitationInfo> {
 	const params = new URLSearchParams();
 	params.append('code', code);
-	return await msgFetch<Invitation>(`${API_URL}/invitation/info?${params.toString()}`, {
+	return msgFetch<InvitationInfo>(`${API_URL}/invitation/info?${params.toString()}`, {
 		credentials: 'include',
 	});
 }
 
 export async function getGroupInvitations(group_id: id): Promise<Invitation[]> {
-	return await msgFetch<Invitation[]>(`${API_URL}/invitation/list`, {
+	return msgFetch<Invitation[]>(`${API_URL}/invitation/list`, {
 		method: 'POST',
 		credentials: 'include',
 		body: encode(group_id),
@@ -54,7 +54,7 @@ export async function getGroupInvitations(group_id: id): Promise<Invitation[]> {
 }
 
 export async function deleteInvitation(id: id): Promise<void> {
-	return await msgFetch<void>(`${API_URL}/invitation/delete`, {
+	return msgFetch<void>(`${API_URL}/invitation/delete`, {
 		method: 'POST',
 		credentials: 'include',
 		body: encode(id),

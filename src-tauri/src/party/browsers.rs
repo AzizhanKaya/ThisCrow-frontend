@@ -29,6 +29,55 @@ impl fmt::Display for Browser {
 
 impl Browser {
     pub fn path(&self) -> Result<PathBuf> {
+        #[cfg(target_os = "windows")]
+        {
+            let exe_names = match self {
+                Browser::Chrome => vec!["chrome.exe"],
+                Browser::Chromium => vec!["chrome.exe", "chromium.exe"],
+                Browser::Brave => vec!["brave.exe"],
+                Browser::Opera => vec!["opera.exe", "launcher.exe"],
+                Browser::Safari => vec!["safari.exe"],
+            };
+
+            for exe in exe_names {
+                if let Some(path) = self.find_in_registry(exe) {
+                    if path.exists() {
+                        return Ok(path);
+                    }
+                }
+            }
+
+            // Fallback to common paths
+            let pf = env::var("PROGRAMFILES").unwrap_or_else(|_| "C:\\Program Files".to_string());
+            let pfx86 = env::var("PROGRAMFILES(X86)").unwrap_or_else(|_| "C:\\Program Files (x86)".to_string());
+            let local = env::var("LOCALAPPDATA").unwrap_or_else(|_| "".to_string());
+
+            let search_dirs = vec![pf, pfx86, local];
+            let relative_paths = match self {
+                Browser::Chrome => vec!["Google\\Chrome\\Application\\chrome.exe"],
+                Browser::Chromium => vec!["Chromium\\Application\\chrome.exe"],
+                Browser::Brave => vec!["BraveSoftware\\Brave-Browser\\Application\\brave.exe"],
+                Browser::Opera => vec![
+                    "Opera\\launcher.exe",
+                    "Programs\\Opera\\launcher.exe",
+                    "Opera Software\\Opera Stable\\launcher.exe",
+                ],
+                Browser::Safari => vec![],
+            };
+
+            for dir in search_dirs {
+                if dir.is_empty() {
+                    continue;
+                }
+                for rel in &relative_paths {
+                    let full = PathBuf::from(&dir).join(rel);
+                    if full.exists() {
+                        return Ok(full);
+                    }
+                }
+            }
+        }
+
         Ok(match self {
             Browser::Chrome => which("chrome")
                 .or_else(|_| which("google-chrome"))
@@ -39,6 +88,26 @@ impl Browser {
             Browser::Opera => which("opera").or_else(|_| which("opera-browser")),
         }
         .map_err(|e| anyhow::anyhow!(e))?)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn find_in_registry(&self, exe_name: &str) -> Option<PathBuf> {
+        use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+        use winreg::RegKey;
+
+        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+        let subkey = format!(
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{}",
+            exe_name
+        );
+
+        hkcu.open_subkey(&subkey)
+            .or_else(|_| hklm.open_subkey(&subkey))
+            .ok()
+            .and_then(|key| key.get_value::<String, _>("").ok())
+            .map(PathBuf::from)
     }
 }
 

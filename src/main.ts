@@ -2,7 +2,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import router from '@/router.ts';
 import { createPinia } from 'pinia';
-import '@purge-icons/generated';
+import { webrtcService } from './services/webrtc';
 
 if (!Array.prototype.hasOwnProperty('last')) {
 	Object.defineProperty(Array.prototype, 'last', {

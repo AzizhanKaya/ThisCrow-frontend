@@ -5,7 +5,8 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::process::Command;
+use std::process::{Child, Command};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::fs;
@@ -14,9 +15,17 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use url::Url;
 
+const NETFLIX_URL: &str = "https://www.netflix.com";
+
 pub struct WatchState {
     pub tx: flume::Sender<Request>,
     pub rx: flume::Receiver<Request>,
+    pub session: Mutex<Option<Session>>,
+}
+
+pub struct Session {
+    pub browser: Child,
+    pub shutdown: Option<oneshot::Sender<()>>,
 }
 
 pub struct Request {
@@ -25,30 +34,24 @@ pub struct Request {
     pub response_tx: Option<oneshot::Sender<Value>>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub enum PartyPlatform {
-    Netflix,
-    Prime,
-}
-
-impl PartyPlatform {
-    fn url(&self) -> &str {
-        match self {
-            PartyPlatform::Netflix => "https://www.netflix.com",
-            PartyPlatform::Prime => "https://www.primevideo.com",
-        }
-    }
-}
-
 static MSG_ID: AtomicUsize = AtomicUsize::new(1);
 
 #[tauri::command]
 pub async fn open_party(
     app: AppHandle,
     browser: Browser,
-    platform: PartyPlatform,
     state: State<'_, WatchState>,
 ) -> Result<()> {
+    println!("[Watch Party] open_party");
+
+    {
+        let mut session = state.session.lock().expect("session mutex poisoned");
+        if session.is_some() {
+            return Err(anyhow!("A watch party browser is already open").into());
+        }
+        *session = None;
+    }
+
     let mut data_dir = app
         .path()
         .app_data_dir()
@@ -62,10 +65,10 @@ pub async fn open_party(
             .context("Failed to create browser profile directory")?;
     }
 
-    let mut browser_process = Command::new(browser.path()?)
+    let browser_process = Command::new(browser.path()?)
         .args([
             "--remote-debugging-port=9222",
-            &format!("--app={}", platform.url()),
+            &format!("--app={}", NETFLIX_URL),
             &format!("--user-data-dir={}", data_dir.display()),
         ])
         .stdout(std::process::Stdio::null())
@@ -109,14 +112,21 @@ pub async fn open_party(
 
     let (mut write, mut read) = ws_stream.split();
 
+    let watching_src = include_str!("scripts/watching.js");
     let init_commands = [
         serde_json::json!({"id": MSG_ID.fetch_add(1, Ordering::SeqCst), "method": "Runtime.enable" }),
+        serde_json::json!({"id": MSG_ID.fetch_add(1, Ordering::SeqCst), "method": "Page.enable" }),
         serde_json::json!({"id": MSG_ID.fetch_add(1, Ordering::SeqCst), "method": "Runtime.addBinding", "params": { "name": "sendToTauri" } }),
+        serde_json::json!({
+            "id": MSG_ID.fetch_add(1, Ordering::SeqCst),
+            "method": "Page.addScriptToEvaluateOnNewDocument",
+            "params": { "source": watching_src }
+        }),
         serde_json::json!({
             "id": MSG_ID.fetch_add(1, Ordering::SeqCst),
             "method": "Runtime.evaluate",
             "params": {
-                "expression": include_str!("scripts/watching.js"),
+                "expression": watching_src,
                 "awaitPromise": true
             }
         }),
@@ -129,13 +139,27 @@ pub async fn open_party(
     }
 
     let rx = state.rx.clone();
+    let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
+
+    {
+        let mut session = state.session.lock().expect("session mutex poisoned");
+        *session = Some(Session {
+            browser: browser_process,
+            shutdown: Some(shutdown_tx),
+        });
+    }
 
     tokio::spawn(async move {
         let mut pending_requests: HashMap<usize, oneshot::Sender<serde_json::Value>> =
             HashMap::new();
+        let mut external_shutdown = false;
 
         loop {
             tokio::select! {
+                _ = &mut shutdown_rx => {
+                    external_shutdown = true;
+                    break;
+                }
                 Ok(req) = rx.recv_async() => {
                     if let Some(tx) = req.response_tx {
                         pending_requests.insert(req.id, tx);
@@ -145,7 +169,8 @@ pub async fn open_party(
                         break;
                     }
                 }
-                Some(Ok(msg)) = read.next() => {
+                msg_opt = read.next() => {
+                    let Some(Ok(msg)) = msg_opt else { break; };
                     let WsMessage::Text(text) = msg else {
                         continue;
                     };
@@ -160,7 +185,26 @@ pub async fn open_party(
                             continue;
                         }
                     }
-                    if cdp_msg.get("method").and_then(|m| m.as_str()) != Some("Runtime.bindingCalled") {
+
+                    let method = cdp_msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
+
+                    if method == "Page.frameNavigated" {
+                        if let Some(frame) = cdp_msg
+                            .get("params")
+                            .and_then(|p| p.get("frame"))
+                        {
+                            let is_main = frame.get("parentId").is_none();
+                            if is_main {
+                                let url = frame.get("url").and_then(|u| u.as_str()).unwrap_or("?");
+                                if !url.is_empty() && url != "about:blank" {
+                                    println!("[Watch Party] nav → {}", url);
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if method != "Runtime.bindingCalled" {
                         continue;
                     }
 
@@ -171,10 +215,11 @@ pub async fn open_party(
                     #[derive(Serialize, Deserialize, Clone, Debug)]
                     #[serde(tag = "type")]
                     enum Message {
-                        Watch{id: usize},
+                        Watch { id: usize },
                         Unwatch,
                         JumpTo { offset: f64, play: bool },
                         Error(String),
+                        Log { text: String },
                     }
 
                     let Ok(msg) = serde_json::from_str::<Message>(payload_str) else {
@@ -183,26 +228,57 @@ pub async fn open_party(
                     };
 
                     match msg {
-                        Message::Watch{..} | Message::JumpTo{..} | Message::Unwatch => {
-                            println!("Watch Party Event: {:?}", msg);
+                        Message::Log { text } => {
+                            println!("[Watch Party] {}", text);
+                        }
+                        Message::Watch { .. } | Message::JumpTo { .. } | Message::Unwatch => {
                             if let Err(e) = app.emit("watch_party", msg) {
-                                println!("Failed to emit event: {}", e);
+                                println!("[Watch Party] emit fail: {}", e);
                             }
                         }
                         Message::Error(error) => {
-                            println!("Watch Party Error: {}", error);
-                            if let Err(e) = browser_process.kill() {
-                                println!("Failed to kill browser process: {}", e);
-                            }
+                            println!("[Watch Party] js error: {}", error);
                         }
                     }
                 }
-                else => break,
             }
         }
-        println!("WebSocket connection closed.");
+        if !external_shutdown {
+            println!("[Watch Party] browser closed");
+            let watch_state = app.state::<WatchState>();
+            let session_opt = {
+                let mut guard = watch_state.session.lock().expect("session mutex poisoned");
+                guard.take()
+            };
+            if let Some(mut session) = session_opt {
+                let _ = session.browser.kill();
+                let _ = session.browser.wait();
+            }
+            if let Err(e) = app.emit("watch_party_closed", ()) {
+                println!("[Watch Party] emit fail: {}", e);
+            }
+        }
     });
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn close_party(state: State<'_, WatchState>) -> Result<()> {
+    println!("[Watch Party] close_party");
+    let session_opt = {
+        let mut guard = state.session.lock().expect("session mutex poisoned");
+        guard.take()
+    };
+    if let Some(mut session) = session_opt {
+        if let Some(tx) = session.shutdown.take() {
+            let _ = tx.send(());
+        }
+        if let Err(e) = session.browser.kill() {
+            println!("[Watch Party] kill fail: {}", e);
+        }
+        let _ = session.browser.wait();
+    }
     Ok(())
 }
 
@@ -249,13 +325,16 @@ pub async fn jump_to(offset: f64, play: bool, state: State<'_, WatchState>) -> R
         }
     }
 
-    println!("Jump command executed successfully!");
-
     Ok(())
 }
 
 #[tauri::command]
-pub async fn locate_video(video_id: usize, state: State<'_, WatchState>) -> Result<()> {
+pub async fn locate_video(
+    video_id: usize,
+    offset: Option<f64>,
+    play: Option<bool>,
+    state: State<'_, WatchState>,
+) -> Result<()> {
     let tx = state.tx.clone();
 
     let js_code = include_str!("scripts/locate.js").replace("MOVIE_ID", &video_id.to_string());
@@ -294,7 +373,11 @@ pub async fn locate_video(video_id: usize, state: State<'_, WatchState>) -> Resu
         }
     }
 
-    println!("Successfully routed to video ID: {}", video_id);
+    if video_id != 0 {
+        if let (Some(offset), Some(play)) = (offset, play) {
+            jump_to(offset, play, state).await?;
+        }
+    }
 
     Ok(())
 }

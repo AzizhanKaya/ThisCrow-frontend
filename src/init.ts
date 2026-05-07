@@ -11,6 +11,7 @@ import { useWatchStore } from './stores/watch';
 import { useAppStore } from './stores/app';
 import { useKeyStore } from './stores/key';
 import { useActivityStore } from './stores/activity';
+import { webrtcService } from './services/webrtc';
 
 export async function initApp() {
 	const friendStore = useFriendStore();
@@ -26,6 +27,8 @@ export async function initApp() {
 	const watchStore = useWatchStore();
 
 	const me: Me = await websocketService.waitForSessionInit();
+	websocketService.clearMessageHandlers();
+	webrtcService.setupWebSocketHandlers();
 	userStore.init(me);
 	meStore.setMe(me);
 	messageStore.init();

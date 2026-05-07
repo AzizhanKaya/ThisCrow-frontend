@@ -7,6 +7,8 @@ mod error;
 pub use error::Result;
 
 mod activity;
+mod log_filter;
+pub use log_filter::install_stderr_filter;
 
 mod party;
 
@@ -14,30 +16,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_os::init())
         .setup(|app| {
-            #[cfg(target_os = "linux")]
-            {
-                use tauri::Manager;
-                use webkit2gtk::{PermissionRequestExt, SettingsExt, WebViewExt};
-
-                if let Some(window) = app.get_webview_window("app") {
-                    let _ = window.with_webview(|webview| {
-                        let inner = webview.inner();
-                        if let Some(settings) = inner.settings() {
-                            settings.set_enable_webrtc(true);
-                            settings.set_enable_media_stream(true);
-                        }
-
-                        inner.connect_permission_request(|_, request| {
-                            request.allow();
-                            true
-                        });
-                    });
-                } else {
-                    println!("App window not found.");
-                }
-            }
-
             let handle_update = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
@@ -100,12 +80,18 @@ pub fn run() {
         })
         .manage({
             let (tx, rx) = flume::unbounded();
-            party::watch::WatchState { tx, rx }
+            party::watch::WatchState {
+                tx,
+                rx,
+                session: std::sync::Mutex::new(None),
+            }
         })
         .invoke_handler(tauri::generate_handler![
             party::browsers::get_browsers,
             party::watch::open_party,
+            party::watch::close_party,
             party::watch::jump_to,
+            party::watch::locate_video,
             activity::game::get_current_game,
             activity::music::get_current_music
         ])

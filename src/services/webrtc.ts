@@ -5,7 +5,6 @@ import { useVoiceStore } from '@/stores/voice';
 import type { User, id } from '@/types';
 import { generate_uid } from '@/utils/uid';
 import { markRaw, reactive, ref } from 'vue';
-import { encode } from '@/utils/msgpack';
 
 export enum MediaType {
 	Audio = 'audio',
@@ -61,16 +60,12 @@ class WebRTCService {
 		});
 	}
 
-	private constructor() {
-		this.setupWebSocketHandlers();
-	}
-
 	public static getInstance(): WebRTCService {
 		if (!WebRTCService.instance) WebRTCService.instance = new WebRTCService();
 		return WebRTCService.instance;
 	}
 
-	private setupWebSocketHandlers() {
+	public setupWebSocketHandlers() {
 		websocketService.onMessage<Event>(MessageType.Info, async (message) => {
 			const { from, data } = message;
 

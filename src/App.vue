@@ -6,6 +6,7 @@
 	import Modals from './components/Modals.vue';
 	import GlobalVoiceOverlay from './components/Voice/GlobalVoiceOverlay.vue';
 	import ErrorToasts from './components/ErrorToasts.vue';
+	import { platform } from '@tauri-apps/plugin-os';
 
 	const appStore = useAppStore();
 	const router = useRouter();
@@ -13,7 +14,7 @@
 
 	onMounted(async () => {
 		if (appStore.isTauri) {
-			document.documentElement.classList.add('tauri');
+			document.documentElement.classList.add('tauri', platform());
 		}
 
 		window.addEventListener('beforeunload', appStore.handleBeforeUnload);
@@ -159,8 +160,8 @@
 		font-family: inherit;
 	}
 
-	.tauri #app {
-		border-radius: 12px;
+	.tauri:not(.windows) #app {
+		border-radius: 16px;
 	}
 
 	.tauri.maximized #app {

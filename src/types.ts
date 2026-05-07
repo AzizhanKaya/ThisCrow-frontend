@@ -453,8 +453,8 @@ export type Ack =
 
 	/* ===== WATCH PARTY ===== */
 	| { ack: AckType.CreatedParty; payload: id }
-	| { ack: AckType.JoinedParty; payload: id }
-	| { ack: AckType.LeftParty; payload: id }
+	| { ack: AckType.JoinedParty; payload: { channel: id; state: WatchParty } }
+	| { ack: AckType.LeftParty; payload: { channel: id; new_host: id | null } }
 	| { ack: AckType.Watching; payload: id }
 	| { ack: AckType.UnWatched; payload: undefined }
 	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } }

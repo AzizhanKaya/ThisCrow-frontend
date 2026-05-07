@@ -30,7 +30,7 @@
 
 	const privateKey = ref<Uint8Array | null | undefined>(undefined);
 
-	const messages = computed(() => messageStore.getMessages(chatTarget.value)?.toSorted((a, b) => Number(a.id - b.id)));
+	const messages = computed(() => messageStore.getMessages(chatTarget.value));
 
 	const scroller = ref<HTMLElement | null>(null);
 	const isLoadingMore = ref(false);

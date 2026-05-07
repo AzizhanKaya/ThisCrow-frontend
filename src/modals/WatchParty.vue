@@ -23,13 +23,9 @@
 
 	const browsers = ref<Browser[]>([]);
 	const selectedBrowser = ref<Browser | null>(null);
-	const selectedPlatform = ref({ name: 'Netflix', icon: 'logos:netflix-icon' });
 	const isLoading = ref(true);
 
 	const showBrowserDropdown = ref(false);
-	const showPlatformDropdown = ref(false);
-
-	const platforms = [{ name: 'Netflix', icon: 'logos:netflix-icon' }];
 
 	const getBrowserIcon = (kind: string) => {
 		switch (kind.toLowerCase()) {
@@ -70,29 +66,16 @@
 
 	const closeDropdowns = () => {
 		showBrowserDropdown.value = false;
-		showPlatformDropdown.value = false;
 	};
 
 	const toggleBrowserDropdown = (e: MouseEvent) => {
 		e.stopPropagation();
 		showBrowserDropdown.value = !showBrowserDropdown.value;
-		showPlatformDropdown.value = false;
-	};
-
-	const togglePlatformDropdown = (e: MouseEvent) => {
-		e.stopPropagation();
-		showPlatformDropdown.value = !showPlatformDropdown.value;
-		showBrowserDropdown.value = false;
 	};
 
 	const selectBrowser = (browser: Browser) => {
 		selectedBrowser.value = browser;
 		showBrowserDropdown.value = false;
-	};
-
-	const selectPlatform = (platform: any) => {
-		selectedPlatform.value = platform;
-		showPlatformDropdown.value = false;
 	};
 
 	const startWatchParty = async () => {
@@ -101,10 +84,10 @@
 		try {
 			await invoke('open_party', {
 				browser: selectedBrowser.value,
-				platform: selectedPlatform.value.name,
 			});
 
 			const watchStore = useWatchStore();
+			watchStore.joinParty(server_id, channel_id);
 
 			modalStore.closeModal();
 		} catch (err) {
@@ -166,33 +149,14 @@
 					</div>
 				</div>
 
-				<!-- Platform Select -->
+				<!-- Platform -->
 				<div class="form-group">
 					<label>Platform</label>
-					<div class="custom-select-container">
-						<div class="select-trigger" @click="togglePlatformDropdown">
-							<div class="selected-content">
-								<Icon :icon="selectedPlatform.icon" />
-								<span>{{ selectedPlatform.name }}</span>
-							</div>
-							<Icon icon="mdi:chevron-down" class="chevron" :class="{ rotated: showPlatformDropdown }" />
+					<div class="select-trigger" style="cursor: default">
+						<div class="selected-content">
+							<Icon icon="logos:netflix-icon" />
+							<span>Netflix</span>
 						</div>
-
-						<Transition name="slide-up">
-							<div class="dropdown-list" v-if="showPlatformDropdown">
-								<div
-									v-for="platform in platforms"
-									:key="platform.name"
-									class="dropdown-item"
-									:class="{ active: selectedPlatform.name === platform.name }"
-									@click="selectPlatform(platform)"
-								>
-									<Icon :icon="platform.icon" />
-									<span>{{ platform.name }}</span>
-									<Icon v-if="selectedPlatform.name === platform.name" icon="mdi:check" class="check-icon" />
-								</div>
-							</div>
-						</Transition>
 					</div>
 				</div>
 			</div>

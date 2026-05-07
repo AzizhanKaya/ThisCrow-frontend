@@ -182,6 +182,10 @@ class WebSocketService {
 		this.errorHandlers.add(callback);
 	}
 
+	clearMessageHandlers() {
+		this.messageHandlers.forEach((handlers) => handlers.clear());
+	}
+
 	disconnect() {
 		if (this.reconnectTimeout) {
 			clearTimeout(this.reconnectTimeout);

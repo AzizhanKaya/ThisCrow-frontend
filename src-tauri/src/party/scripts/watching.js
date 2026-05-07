@@ -1,83 +1,72 @@
-let lastMovieId;
-let initialPositionSent = false;
-
-function handleUrlChange() {
-    const currentUrl = window.location.pathname;
-
-    if (currentUrl.includes('/watch/')) {
-        const urlParts = currentUrl.split('/');
-        const currentMovieId = urlParts[urlParts.length - 1];
-
-        if (currentMovieId !== lastMovieId) {
-            lastMovieId = currentMovieId;
-            initialPositionSent = false;
-            sendToTauri(JSON.stringify({ type: "Watch", id: Number(lastMovieId) }));
-        }
-    } else {
-        if (lastMovieId !== undefined) {
-            lastMovieId = undefined;
-            initialPositionSent = false;
-            sendToTauri(JSON.stringify({ type: "Unwatch" }));
-        }
-    }
-}
-
 (function () {
-    const pushState = history.pushState;
-    const replaceState = history.replaceState;
+    if (window.__watchPartyInstalled) return;
+    window.__watchPartyInstalled = true;
 
-    history.pushState = function () {
-        pushState.apply(this, arguments);
-        window.dispatchEvent(new Event('locationchange'));
+    const log = (msg) => {
+        try { sendToTauri(JSON.stringify({ type: "Log", text: "watching: " + msg })); } catch (e) {}
     };
-
-    history.replaceState = function () {
-        replaceState.apply(this, arguments);
-        window.dispatchEvent(new Event('locationchange'));
+    const send = (payload) => {
+        try { sendToTauri(JSON.stringify(payload)); } catch (e) {}
     };
+    const isSuppressed = () => Date.now() < (window.__watchPartySuppressUntil || 0);
 
-    window.addEventListener('popstate', () => {
-        window.dispatchEvent(new Event('locationchange'));
-    });
-})();
+    let lastMovieId;
 
-window.addEventListener('locationchange', handleUrlChange);
+    const handleUrlChange = () => {
+        const path = window.location.pathname;
+        const match = path.match(/\/watch\/(\d+)/);
 
-document.addEventListener('seeked', (event) => {
-    if (lastMovieId !== undefined && event.target.tagName === 'VIDEO') {
-        const videoElement = event.target;
-        const isPlaying = !videoElement.paused;
-        const videoTimeMs = Math.floor(videoElement.currentTime * 1000);
-
-        const offset = isPlaying 
-            ? Date.now() - videoTimeMs 
-            : videoTimeMs;
-
-        sendToTauri(JSON.stringify({
-            type: "JumpTo",
-            offset: offset,
-            play: isPlaying
-        }));
-        
-        initialPositionSent = true; 
-    }
-}, true);
-
-document.addEventListener('playing', (event) => {
-    if (lastMovieId !== undefined && event.target.tagName === 'VIDEO') {
-        if (!initialPositionSent) {
-            const videoElement = event.target;
-            const videoTimeMs = Math.floor(videoElement.currentTime * 1000);
-            
-            const offset = Date.now() - videoTimeMs;
-            
-            sendToTauri(JSON.stringify({
-                type: "JumpTo",
-                offset: offset,
-                play: true
-            }));
-            
-            initialPositionSent = true;
+        if (match) {
+            const id = match[1];
+            if (id === lastMovieId) return;
+            lastMovieId = id;
+            window.__watchPartyInitialPositionSent = false;
+            if (isSuppressed()) return log("Watch suppressed id=" + id);
+            log("emit Watch id=" + id);
+            send({ type: "Watch", id: Number(id) });
+            return;
         }
-    }
-}, true);
+
+        if (lastMovieId === undefined) return;
+        lastMovieId = undefined;
+        window.__watchPartyInitialPositionSent = false;
+        if (isSuppressed()) return log("Unwatch suppressed");
+        log("emit Unwatch");
+        send({ type: "Unwatch" });
+    };
+
+    const dispatchChange = () => window.dispatchEvent(new Event('locationchange'));
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    history.pushState = function () { origPush.apply(this, arguments); dispatchChange(); };
+    history.replaceState = function () { origReplace.apply(this, arguments); dispatchChange(); };
+    window.addEventListener('popstate', dispatchChange);
+    window.addEventListener('locationchange', handleUrlChange);
+
+    const onPlayerEvent = (kind, getOffsetAndPlay) => (event) => {
+        if (lastMovieId === undefined || event.target.tagName !== 'VIDEO') return;
+        if (isSuppressed()) return log(kind + " suppressed");
+
+        const { offset, play } = getOffsetAndPlay(event.target);
+        log("emit JumpTo (" + kind + ") offset=" + offset + " play=" + play);
+        send({ type: "JumpTo", offset, play });
+        window.__watchPartyInitialPositionSent = true;
+    };
+
+    document.addEventListener('seeked', onPlayerEvent('seeked', (video) => {
+        const playing = !video.paused;
+        const videoMs = Math.floor(video.currentTime * 1000);
+        return { offset: playing ? Date.now() - videoMs : videoMs, play: playing };
+    }), true);
+
+    document.addEventListener('playing', (event) => {
+        if (window.__watchPartyInitialPositionSent) return;
+        return onPlayerEvent('playing', (video) => ({
+            offset: Date.now() - Math.floor(video.currentTime * 1000),
+            play: true,
+        }))(event);
+    }, true);
+
+    log("loaded href=" + window.location.href);
+    handleUrlChange();
+})();

@@ -28,8 +28,9 @@ export const useUserStore = defineStore('user', {
 			});
 		},
 		init(me: Me) {
-			this.setupListeners();
+			this.users = new Map();
 			this.setUser(me);
+			this.setupListeners();
 		},
 		setUser(user: User) {
 			const existing = this.users.get(user.id);

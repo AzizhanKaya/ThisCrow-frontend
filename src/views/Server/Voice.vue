@@ -189,10 +189,15 @@
 		<!-- Control Bar -->
 		<div v-if="voiceStore.voice_channel" class="voice-controls">
 			<button
-				v-if="appStore.isTauri"
+				v-if="appStore.isTauri && !watchStore.inParty"
 				class="control-btn"
+				:class="{ 'is-active': props.channel.watch_party }"
+				:title="props.channel.watch_party ? 'Join Watch Party' : 'Start Watch Party'"
 				@click="watchStore.createWatchParty(Number($route.params.serverId), props.channel.id)"
 			>
+				<Icon icon="streamline:film-slate-solid" />
+			</button>
+			<button v-else-if="appStore.isTauri && watchStore.inParty" class="control-btn is-active" title="Leave Watch Party" @click="watchStore.leaveParty()">
 				<Icon icon="streamline:film-slate-solid" />
 			</button>
 			<button class="control-btn" :class="{ 'is-active': voiceStore.isVideoOn }" @click="voiceStore.toggleVideo()">

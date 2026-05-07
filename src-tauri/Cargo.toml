@@ -20,6 +20,7 @@ log = "0.4"
 tauri = { version = "2.10.1", features = ["macos-private-api", "devtools"] }
 tauri-plugin-updater = "2.9"
 tauri-plugin-process = "2.2"
+tauri-plugin-os = "2.3"
 reqwest = { version = "0.13", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 flume = "0.12"
@@ -34,7 +35,8 @@ win-gsmtc = "0.1.0"
 webkit2gtk = "2.0.2"
 zbus = "4.0"
 notify = "6.1"
+libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.52", features = ["Media_Control", "Foundation", "Storage_Streams", "Win32_System_Registry", "Win32_Foundation"] }
+windows = { version = "0.52", features = ["Media_Control", "Foundation", "Foundation_Collections", "Storage_Streams", "Win32_System_Registry", "Win32_Foundation"] }
 winreg = "0.52"

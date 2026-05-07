@@ -17,14 +17,15 @@
 				"title": "ThisCrow",
 				"width": 1200,
 				"height": 800,
-				"minWidth": 910,
+				"minWidth": 300,
 				"minHeight": 300,
 				"resizable": true,
 				"decorations": false,
 				"transparent": true,
 				"shadow": true,
 				"visible": false,
-				"devtools": true
+				"devtools": true,
+				"center": true
 			}
 		],
 		"security": {

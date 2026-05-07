@@ -221,11 +221,11 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
             },
 
             Some(signal) = name_owner_stream.next() => {
-            if let Ok(args) = signal.args() {
-                if args.name() == "org.mpris.MediaPlayer2.spotify" && args.new_owner().is_none() {
-                    emit_activity(&app, MusicActivity::Stopped);
+                if let Ok(args) = signal.args() {
+                    if args.name() == "org.mpris.MediaPlayer2.spotify" && args.new_owner().is_none() {
+                        emit_activity(&app, MusicActivity::Stopped);
+                    }
                 }
-            }
             },
 
             Some(signal) = seeked_stream.next() => {

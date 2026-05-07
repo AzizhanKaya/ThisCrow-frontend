@@ -24,7 +24,20 @@ function mergeUnique(...arrays: Message[][]): Message[] {
 			}
 		}
 	}
+	result.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 	return result;
+}
+
+function insertSorted(arr: Message[], msg: Message) {
+	let lo = 0;
+	let hi = arr.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if (arr[mid].id < msg.id) lo = mid + 1;
+		else hi = mid;
+	}
+	if (arr[lo]?.id === msg.id) return;
+	arr.splice(lo, 0, msg);
 }
 
 export const useMessageStore = defineStore('message', {
@@ -42,6 +55,9 @@ export const useMessageStore = defineStore('message', {
 
 	actions: {
 		init() {
+			this.messages = new Map();
+			this.loadingChats = new Map();
+			this.hasMore = new Map();
 			websocketService.onMessage(MessageType.Direct, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Group, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Server, this.handleAck);
@@ -54,11 +70,7 @@ export const useMessageStore = defineStore('message', {
 				this.messages.set(key, []);
 			}
 
-			const chatMessages = this.messages.get(key)!;
-			const exists = chatMessages.some((m) => m.id === message.id);
-			if (!exists) {
-				chatMessages.push(message);
-			}
+			insertSorted(this.messages.get(key)!, message);
 		},
 
 		async handleAck(message: Message<Ack>) {
@@ -70,9 +82,16 @@ export const useMessageStore = defineStore('message', {
 				const messages = this.messages.get(key);
 				if (!messages) return;
 
-				const msg = messages.find((m) => m.id === payload);
-				if (msg) {
+				const idx = messages.findIndex((m) => m.id === payload);
+				if (idx !== -1) {
+					const msg = messages[idx];
 					msg.id = message.id;
+					const next = messages[idx + 1];
+					const prev = messages[idx - 1];
+					if ((next && next.id < msg.id) || (prev && prev.id > msg.id)) {
+						messages.splice(idx, 1);
+						insertSorted(messages, msg);
+					}
 				}
 			} else if (ack == AckType.Overwritten) {
 				const updated = payload as Message;

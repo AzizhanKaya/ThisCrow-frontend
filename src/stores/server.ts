@@ -227,23 +227,6 @@ export const useServerStore = defineStore('server', {
 							if (!channel || !channel.users) return;
 							const user = await userStore.getUser(target_id);
 							channel.users.delete(user);
-
-							const watchParty = channel.watch_party;
-							if (!watchParty) return;
-
-							const userIndex = watchParty.users.indexOf(target_id);
-							if (userIndex === -1) return;
-							watchParty.users.splice(userIndex, 1);
-
-							if (watchParty.users.length === 0) {
-								channel.watch_party = undefined;
-								break;
-							}
-
-							if (watchParty.host === target_id) {
-								watchParty.host = watchParty.users[0];
-							}
-
 							break;
 						}
 
@@ -261,32 +244,30 @@ export const useServerStore = defineStore('server', {
 						}
 
 						case AckType.JoinedParty: {
-							const channel = server.channels?.get(payload);
-							if (!channel || !channel.watch_party) return;
-							channel.watch_party.users.push(target_id);
+							const channel = server.channels?.get(payload.channel);
+							if (!channel) return;
+							channel.watch_party = {
+								...payload.state,
+								users: [...payload.state.users],
+							};
 							break;
 						}
 
 						case AckType.LeftParty: {
-							const channel = server.channels?.get(payload);
+							const channel = server.channels?.get(payload.channel);
 							if (!channel?.watch_party) return;
 
-							const watchParty = channel.watch_party;
-							const userIndex = watchParty.users.indexOf(target_id);
-
-							if (userIndex === -1) return;
-
-							watchParty.users.splice(userIndex, 1);
-
-							if (watchParty.users.length === 0) {
+							if (payload.new_host === null) {
 								channel.watch_party = undefined;
 								break;
 							}
 
-							if (watchParty.host === target_id) {
-								watchParty.host = watchParty.users[0];
+							const watchParty = channel.watch_party;
+							const userIndex = watchParty.users.indexOf(target_id);
+							if (userIndex !== -1) {
+								watchParty.users.splice(userIndex, 1);
 							}
-
+							watchParty.host = payload.new_host;
 							break;
 						}
 					}
