@@ -11,6 +11,7 @@ export type Server = {
 	members?: Map<id, Member>;
 	channels?: Map<id, Channel>;
 	roles?: Map<id, Role>;
+	everyone?: number;
 };
 
 export type Channel = {
@@ -22,6 +23,15 @@ export type Channel = {
 	messages?: Message[];
 	users?: Set<User>;
 	watch_party?: WatchParty;
+	permission_overrides?: PermissionOverride[];
+};
+
+export type OverrideTarget = { role: id } | { user: id };
+
+export type PermissionOverride = {
+	target: OverrideTarget;
+	allow: number;
+	deny: number;
 };
 
 export interface Watch {
@@ -268,6 +278,14 @@ export type Event =
 			payload: { name?: string; title?: string; position?: number };
 	  }
 	| { event: EventType.DeleteChannel }
+	| {
+			event: EventType.SetPermissionOverride;
+			payload: { target: OverrideTarget; allow: number; deny: number };
+	  }
+	| {
+			event: EventType.DeletePermissionOverride;
+			payload: { target: OverrideTarget };
+	  }
 
 	/* ===== VOICE ===== */
 	| { event: EventType.JoinVoice }
@@ -287,7 +305,6 @@ export type Event =
 	| { event: EventType.JoinParty }
 	| { event: EventType.LeaveParty }
 	| { event: EventType.Watch; payload: id }
-	| { event: EventType.UnWatch }
 	| { event: EventType.JumpTo; payload: { offset: number; play: boolean } }
 	| {
 			event: EventType.Music;
@@ -330,6 +347,8 @@ export enum EventType {
 	CreateChannel = 'create_channel',
 	UpdateChannel = 'update_channel',
 	DeleteChannel = 'delete_channel',
+	SetPermissionOverride = 'set_permission_override',
+	DeletePermissionOverride = 'delete_permission_override',
 
 	/* ===== VOICE ===== */
 	JoinVoice = 'join_voice',
@@ -349,7 +368,6 @@ export enum EventType {
 	JoinParty = 'join_party',
 	LeaveParty = 'leave_party',
 	Watch = 'watch',
-	UnWatch = 'unwatch',
 	JumpTo = 'jump_to',
 
 	// ==== ACTIVITY ==== */
@@ -440,11 +458,20 @@ export type Ack =
 				name?: string;
 				permissions?: number;
 				color?: string;
+				position?: number;
 			};
 	  }
 	| { ack: AckType.DeletedGroup; payload: undefined }
 	| { ack: AckType.DeletedChannel; payload: undefined }
 	| { ack: AckType.DeletedRole; payload: undefined }
+	| {
+			ack: AckType.SetPermissionOverride;
+			payload: { target: OverrideTarget; allow: number; deny: number };
+	  }
+	| {
+			ack: AckType.DeletedPermissionOverride;
+			payload: { target: OverrideTarget };
+	  }
 
 	/* ===== VOICE ===== */
 	| { ack: AckType.JoinedVoice; payload: id }
@@ -452,11 +479,9 @@ export type Ack =
 	| { ack: AckType.MovedToVoice; payload: id }
 
 	/* ===== WATCH PARTY ===== */
-	| { ack: AckType.CreatedParty; payload: id }
-	| { ack: AckType.JoinedParty; payload: { channel: id; state: WatchParty } }
-	| { ack: AckType.LeftParty; payload: { channel: id; new_host: id | null } }
-	| { ack: AckType.Watching; payload: id }
-	| { ack: AckType.UnWatched; payload: undefined }
+	| { ack: AckType.JoinedParty; payload: undefined }
+	| { ack: AckType.LeftParty; payload: undefined }
+	| { ack: AckType.Watching; payload: { video: id } }
 	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } }
 	// ===== ACTIVITY ===== */
 	| { ack: AckType.MusicActivity; payload: MusicEvent }
@@ -494,16 +519,16 @@ export enum AckType {
 	DeletedGroup = 'deleted_group',
 	DeletedChannel = 'deleted_channel',
 	DeletedRole = 'deleted_role',
+	SetPermissionOverride = 'set_permission_override',
+	DeletedPermissionOverride = 'deleted_permission_override',
 	// VOICE
 	JoinedVoice = 'joined_voice',
 	ExitedVoice = 'exited_voice',
 	MovedToVoice = 'moved_to_voice',
 	// WATCH PARTY
-	CreatedParty = 'created_party',
 	JoinedParty = 'joined_party',
 	LeftParty = 'left_party',
 	Watching = 'watching',
-	UnWatched = 'unwatched',
 	JumpedTo = 'jumped_to',
 	MusicActivity = 'music_activity',
 	GameActivity = 'game_activity',

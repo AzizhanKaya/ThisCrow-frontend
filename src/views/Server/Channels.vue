@@ -200,7 +200,12 @@
 						@end="onDragEnd"
 					>
 						<template #item="{ element: channel }">
-							<ChannelComponent :channel="channel" :active="channel_id === channel.id" @click="selectChannel" />
+							<ChannelComponent
+								:channel="channel"
+								:active="channel_id === channel.id"
+								:server_id="props.server_id"
+								@click="selectChannel"
+							/>
 						</template>
 					</draggable>
 				</div>

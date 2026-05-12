@@ -191,7 +191,7 @@ async fn build_music(session: &GlobalSystemMediaTransportControlsSession) -> Opt
     Some(music)
 }
 
-pub async fn current_music() -> Option<MusicActivity> {
+pub async fn current_music() -> Option<Music> {
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
         .ok()?
         .await
@@ -206,7 +206,7 @@ pub async fn current_music() -> Option<MusicActivity> {
         GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing
         | GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused => {
             let music = build_music(&session).await?;
-            Some(MusicActivity::Playing(music))
+            Some(music)
         }
         _ => None,
     }
@@ -312,33 +312,45 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
                 }
 
                 MediaEvent::TimelineChanged => {
-                    let Some(ref session) = current_session else { continue };
-                    let Ok(timeline) = session.GetTimelineProperties() else { continue };
+                    let Some(ref session) = current_session else {
+                        continue;
+                    };
+                    let Ok(timeline) = session.GetTimelineProperties() else {
+                        continue;
+                    };
                     let paused = session
                         .GetPlaybackInfo()
                         .and_then(|i| i.PlaybackStatus())
-                        .map(|s| s == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused)
+                        .map(|s| {
+                            s == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused
+                        })
                         .unwrap_or(false);
 
                     let (pos_ms, last_updated_ms) = read_timeline(&timeline);
-                    let offset = if paused { pos_ms } else { last_updated_ms - pos_ms };
+                    let offset_for_dedup = if paused {
+                        pos_ms
+                    } else {
+                        last_updated_ms - pos_ms
+                    };
 
                     // During steady playback, periodic timeline updates produce
                     // the same `offset` (song-start instant). Only emit when
                     // it shifts materially (>1s) — that's an actual seek.
                     let now = Instant::now();
                     if let Some(prev) = last_emitted_offset {
-                        if (offset - prev).abs() < 1000
-                            && now.duration_since(last_emit_time) < std::time::Duration::from_millis(500)
+                        if (offset_for_dedup - prev).abs() < 1000
+                            && now.duration_since(last_emit_time)
+                                < std::time::Duration::from_millis(500)
                         {
                             continue;
                         }
                     }
-                    last_emitted_offset = Some(offset);
+                    last_emitted_offset = Some(offset_for_dedup);
                     last_emit_time = now;
 
-                    println!("Music activity: {:?}", MusicActivity::Seek(offset));
-                    let _ = app.emit("music_activity", MusicActivity::Seek(offset));
+                    let emit_offset = last_updated_ms - pos_ms;
+                    println!("Music activity: {:?}", MusicActivity::Seek(emit_offset));
+                    let _ = app.emit("music_activity", MusicActivity::Seek(emit_offset));
                 }
             }
         }

@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::process::{Child, Command};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::fs;
+use tokio::sync::Mutex;
 use tokio::sync::oneshot;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
@@ -45,7 +45,7 @@ pub async fn open_party(
     println!("[Watch Party] open_party");
 
     {
-        let mut session = state.session.lock().expect("session mutex poisoned");
+        let mut session = state.session.lock().await;
         if session.is_some() {
             return Err(anyhow!("A watch party browser is already open").into());
         }
@@ -142,7 +142,7 @@ pub async fn open_party(
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
 
     {
-        let mut session = state.session.lock().expect("session mutex poisoned");
+        let mut session = state.session.lock().await;
         *session = Some(Session {
             browser: browser_process,
             shutdown: Some(shutdown_tx),
@@ -215,9 +215,16 @@ pub async fn open_party(
                     #[derive(Serialize, Deserialize, Clone, Debug)]
                     #[serde(tag = "type")]
                     enum Message {
-                        Watch { id: usize },
-                        Unwatch,
-                        JumpTo { offset: f64, play: bool },
+                        Player {
+                            kind: String,
+                            seq_local: u64,
+                            #[serde(default)]
+                            offset_ms: f64,
+                            #[serde(default)]
+                            paused: bool,
+                            #[serde(default)]
+                            video_id: Option<usize>,
+                        },
                         Error(String),
                         Log { text: String },
                     }
@@ -231,7 +238,7 @@ pub async fn open_party(
                         Message::Log { text } => {
                             println!("[Watch Party] {}", text);
                         }
-                        Message::Watch { .. } | Message::JumpTo { .. } | Message::Unwatch => {
+                        Message::Player { .. } => {
                             if let Err(e) = app.emit("watch_party", msg) {
                                 println!("[Watch Party] emit fail: {}", e);
                             }
@@ -247,7 +254,7 @@ pub async fn open_party(
             println!("[Watch Party] browser closed");
             let watch_state = app.state::<WatchState>();
             let session_opt = {
-                let mut guard = watch_state.session.lock().expect("session mutex poisoned");
+                let mut guard = watch_state.session.lock().await;
                 guard.take()
             };
             if let Some(mut session) = session_opt {
@@ -266,86 +273,40 @@ pub async fn open_party(
 #[tauri::command]
 pub async fn close_party(state: State<'_, WatchState>) -> Result<()> {
     println!("[Watch Party] close_party");
-    let session_opt = {
-        let mut guard = state.session.lock().expect("session mutex poisoned");
-        guard.take()
-    };
-    if let Some(mut session) = session_opt {
+
+    if let Some(mut session) = state.session.lock().await.take() {
         if let Some(tx) = session.shutdown.take() {
             let _ = tx.send(());
         }
-        if let Err(e) = session.browser.kill() {
-            println!("[Watch Party] kill fail: {}", e);
-        }
-        let _ = session.browser.wait();
+        session.browser.kill().context("close browser process")?;
+        session.browser.wait().context("wait for browser process")?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn jump_to(offset: f64, play: bool, state: State<'_, WatchState>) -> Result<()> {
-    let tx = state.tx.clone();
-
-    let js_code = include_str!("scripts/jump_to.js")
-        .replace("OFFSET", &offset.to_string())
-        .replace("PLAY", &play.to_string());
-
-    let req_id = MSG_ID.fetch_add(1, Ordering::SeqCst);
-
-    let payload = serde_json::json!({
-        "id": req_id,
-        "method": "Runtime.evaluate",
-        "params": {
-            "expression": js_code,
-            "awaitPromise": true
-        }
-    });
-
-    let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
-
-    tx.send_async(Request {
-        id: req_id,
-        payload: payload.to_string(),
-        response_tx: Some(resp_tx),
-    })
-    .await
-    .context("Failed to send command to background worker")?;
-
-    let cdp_response = resp_rx
-        .await
-        .context("Background worker dropped the response channel")?;
-
-    if let Some(err) = cdp_response.get("error") {
-        return Err(anyhow::anyhow!("CDP Error while jumping: {}", err).into());
-    }
-
-    if let Some(result) = cdp_response.get("result") {
-        if let Some(exception) = result.get("exceptionDetails") {
-            return Err(anyhow::anyhow!("JS Execution Error: {}", exception).into());
-        }
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn locate_video(
-    video_id: usize,
-    offset: Option<f64>,
-    play: Option<bool>,
+pub async fn apply_state(
+    video: usize,
+    offset: f64,
+    playing: bool,
     state: State<'_, WatchState>,
-) -> Result<()> {
+) -> Result<String> {
     let tx = state.tx.clone();
 
-    let js_code = include_str!("scripts/locate.js").replace("MOVIE_ID", &video_id.to_string());
+    let js_code = format!(
+        "window.__watchPartyApplyState({}, {}, {})",
+        video, offset, playing
+    );
 
     let req_id = MSG_ID.fetch_add(1, Ordering::SeqCst);
+
     let payload = serde_json::json!({
         "id": req_id,
         "method": "Runtime.evaluate",
         "params": {
             "expression": js_code,
-            "awaitPromise": false
+            "awaitPromise": true,
+            "returnByValue": true,
         }
     });
 
@@ -357,27 +318,28 @@ pub async fn locate_video(
         response_tx: Some(resp_tx),
     })
     .await
-    .context("Failed to send locate command to background worker")?;
+    .context("Failed to send apply_state to background worker")?;
 
     let cdp_response = resp_rx
         .await
         .context("Background worker dropped the response channel")?;
 
     if let Some(err) = cdp_response.get("error") {
-        return Err(anyhow::anyhow!("CDP Error while locating: {}", err).into());
+        return Err(anyhow::anyhow!("CDP Error while applying state: {}", err).into());
     }
 
     if let Some(result) = cdp_response.get("result") {
         if let Some(exception) = result.get("exceptionDetails") {
             return Err(anyhow::anyhow!("JS Execution Error: {}", exception).into());
         }
+        let value = result
+            .get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("ok")
+            .to_string();
+        return Ok(value);
     }
 
-    if video_id != 0 {
-        if let (Some(offset), Some(play)) = (offset, play) {
-            jump_to(offset, play, state).await?;
-        }
-    }
-
-    Ok(())
+    Ok("ok".to_string())
 }

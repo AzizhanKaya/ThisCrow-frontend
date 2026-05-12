@@ -45,9 +45,9 @@ export const useActivityStore = defineStore('activity', {
 					this.sendGameActivity({ game: 'playing', payload: game });
 				}
 
-				const currentMusic = await invoke<MusicEvent | null>('get_current_music');
+				const currentMusic = await invoke<Music | null>('get_current_music');
 				if (currentMusic != null) {
-					this.sendMusicActivity(currentMusic);
+					this.sendMusicActivity({ music: 'playing', payload: currentMusic });
 				}
 
 				await listen<MusicEvent>('music_activity', (event) => {

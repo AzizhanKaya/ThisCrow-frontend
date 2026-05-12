@@ -136,7 +136,7 @@ async fn build_music<'a>(
     music
 }
 
-pub async fn current_music() -> Option<MusicActivity> {
+pub async fn current_music() -> Option<Music> {
     let connection = zbus::Connection::session().await.ok()?;
     let proxy = MPRISPropertiesProxy::new(&connection).await.ok()?;
 
@@ -146,7 +146,7 @@ pub async fn current_music() -> Option<MusicActivity> {
         "Playing" | "Paused" => {
             let metadata_val = proxy.get(PLAYER_INTERFACE, METADATA).await.ok()?;
             let music = build_music(&proxy, &metadata_val, &status).await;
-            Some(MusicActivity::Playing(music))
+            Some(music)
         }
         _ => None,
     }

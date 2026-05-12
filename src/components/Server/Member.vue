@@ -101,11 +101,10 @@
 			return;
 		}
 		document.dispatchEvent(new Event('click'));
-		const target = ((e.currentTarget as HTMLElement).querySelector('.name') || e.currentTarget) as HTMLElement;
-		const rect = target.getBoundingClientRect();
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		profileCard.value = {
 			show: true,
-			x: rect.right - 430,
+			x: rect.left - 350,
 			y: rect.top,
 		};
 	}

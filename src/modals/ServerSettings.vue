@@ -7,6 +7,7 @@
 	import { Icon } from '@iconify/vue';
 	import { useFiles } from '@/composables/useFiles';
 	import { useErrorStore } from '@/stores/error';
+	import draggable from 'vuedraggable';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
@@ -104,10 +105,46 @@
 	});
 
 	/* ───── Roles tab ───── */
-	const roles = computed(() => {
-		if (!server.value?.roles) return [];
-		return Array.from(server.value.roles.values()).sort((a, b) => a.position - b.position);
-	});
+	const isDragging = ref(false);
+	const roleList = ref<Role[]>([]);
+
+	const everyoneRole = computed<Role>(() => ({
+		id: 0,
+		name: '@everyone',
+		color: '#ffffff',
+		position: -1,
+		permissions: server.value?.everyone ?? 0,
+	}));
+
+	const roles = computed<Role[]>(() => [...roleList.value, everyoneRole.value]);
+
+	watch(
+		() => (server.value?.roles ? Array.from(server.value.roles.keys()).sort().join(',') : ''),
+		() => {
+			if (isDragging.value) return;
+			roleList.value = server.value?.roles
+				? Array.from(server.value.roles.values()).sort((a, b) => b.position - a.position)
+				: [];
+		},
+		{ immediate: true }
+	);
+
+	function onRoleDragEnd() {
+		isDragging.value = false;
+		if (!server_id) return;
+
+		const total = roleList.value.length;
+		roleList.value.forEach((role, idx) => {
+			const newPos = total - idx;
+			const target = server.value?.roles?.get(role.id);
+			if (!target) return;
+			if (target.position !== newPos) {
+				target.position = newPos;
+				serverStore.updateRole(server_id, role.id, undefined, newPos, undefined, undefined);
+			}
+		});
+	}
+
 	const selectedRoleId = ref<number | null>(null);
 	const selectedRole = computed(() => roles.value.find((r) => r.id === selectedRoleId.value) ?? null);
 	const editRoleName = ref('');
@@ -116,8 +153,13 @@
 
 	const newRoleColor = ref('#5865f2');
 
+	const isEveryoneSelected = computed(() => selectedRoleId.value === 0);
+
 	const hasRoleChanges = computed(() => {
 		if (!selectedRole.value) return false;
+		if (isEveryoneSelected.value) {
+			return editRolePermissions.value !== (selectedRole.value.permissions ?? 0);
+		}
 		return (
 			editRoleName.value !== selectedRole.value.name ||
 			editRoleColor.value !== selectedRole.value.color ||
@@ -193,7 +235,11 @@
 	}
 
 	async function saveRole() {
-		if (!server_id || !selectedRoleId.value) return;
+		if (!server_id || selectedRoleId.value === null) return;
+		if (selectedRoleId.value === 0) {
+			await serverStore.updateRole(server_id, 0, undefined, undefined, undefined, editRolePermissions.value);
+			return;
+		}
 		await serverStore.updateRole(
 			server_id,
 			selectedRoleId.value,
@@ -304,19 +350,38 @@
 					<div class="roles-list-pane">
 						<div class="section-label">ROLES — {{ roles.length }}</div>
 
-						<div class="role-list">
-							<div
-								v-for="role in roles"
-								:key="role.id"
-								class="role-row"
-								:class="{ selected: role.id === selectedRoleId }"
-								@click="selectedRoleId = role.id"
+						<div class="role-list" :class="{ 'is-dragging': isDragging }">
+							<draggable
+								v-model="roleList"
+								item-key="id"
+								tag="div"
+								class="draggable-zone"
+								ghost-class="ghost-role"
+								:animation="200"
+								@start="isDragging = true"
+								@end="onRoleDragEnd"
 							>
-								<div class="role-dot" :style="{ backgroundColor: role.color }"></div>
-								<span class="role-name">{{ role.name }}</span>
-								<button class="icon-btn danger" @click.stop="removeRole(role.id)" title="Delete">
-									<Icon icon="mdi:trash-can-outline" />
-								</button>
+								<template #item="{ element: role }">
+									<div
+										class="role-row"
+										:class="{ selected: role.id === selectedRoleId }"
+										@click="selectedRoleId = role.id"
+									>
+										<div class="role-dot" :style="{ backgroundColor: role.color || 'var(--border)' }"></div>
+										<span class="role-name">{{ role.name }}</span>
+										<button class="icon-btn danger" @click.stop="removeRole(role.id)" title="Delete">
+											<Icon icon="mdi:trash-can-outline" />
+										</button>
+									</div>
+								</template>
+							</draggable>
+							<div
+								class="role-row everyone-row"
+								:class="{ selected: 0 === selectedRoleId }"
+								@click="selectedRoleId = 0"
+							>
+								<div class="role-dot" :style="{ backgroundColor: '#ffffff' }"></div>
+								<span class="role-name">@everyone</span>
 							</div>
 						</div>
 
@@ -326,7 +391,7 @@
 					<!-- Right: role editor -->
 					<div class="roles-editor-pane">
 						<template v-if="selectedRole">
-							<div class="role-header">
+							<div class="role-header" v-if="!isEveryoneSelected">
 								<div class="color-pick">
 									<div class="color-preview" :style="{ backgroundColor: editRoleColor }"></div>
 									<input type="color" v-model="editRoleColor" class="color-input-hidden" />
@@ -335,6 +400,14 @@
 									<label>ROLE NAME</label>
 									<div class="input-wrapper">
 										<input type="text" v-model="editRoleName" />
+									</div>
+								</div>
+							</div>
+							<div class="role-header" v-else>
+								<div class="input-group flex-1" style="margin-bottom: 0">
+									<label>ROLE NAME</label>
+									<div class="input-wrapper">
+										<input type="text" value="@everyone" disabled />
 									</div>
 								</div>
 							</div>
@@ -700,26 +773,97 @@
 		flex: 1;
 	}
 
+	.draggable-zone {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
 	.role-row {
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 9px 10px;
+		padding: 4px 10px;
+		min-height: 32px;
 		border-radius: 6px;
-		cursor: pointer;
-		transition: all 0.15s;
+		cursor: grab;
+		transition: background-color 0.15s, color 0.15s;
 		color: var(--text-muted);
+		-webkit-user-drag: element;
 	}
 
-	.role-row:hover {
-		background-color: var(--bg-light);
+	.role-row .icon-btn {
+		width: 22px;
+		height: 22px;
+		font-size: 0.9rem;
+	}
+
+	.role-row:active {
+		cursor: grabbing;
+	}
+
+	.role-row.everyone-row {
+		cursor: pointer;
+		-webkit-user-drag: none;
+	}
+
+	.role-list.is-dragging,
+	.role-list.is-dragging * {
+		cursor: grabbing !important;
+	}
+
+	.ghost-role {
+		position: relative !important;
+		height: 36px !important;
+		min-height: 0 !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		background: transparent !important;
+		border: none !important;
+		overflow: visible !important;
+		opacity: 1 !important;
+	}
+
+	.ghost-role > * {
+		display: none !important;
+	}
+
+	.ghost-role::before {
+		content: '';
+		position: absolute;
+		top: calc(50% - 2px);
+		left: 4px;
+		right: 4px;
+		height: 4px;
+		border-radius: 2px;
+		background-color: var(--color, #5865f2);
+		box-shadow: 0 0 8px var(--color, #5865f2);
+	}
+
+	.drag-role {
+		width: 188px !important;
+		box-sizing: border-box !important;
+		background-color: var(--bg-light) !important;
+		color: var(--text) !important;
+		box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3) !important;
+		border-radius: 6px !important;
+		opacity: 0.95 !important;
+	}
+
+	.drag-role .icon-btn {
+		opacity: 0 !important;
+	}
+
+	.role-list:not(.is-dragging) .role-row:hover {
+		background-color: var(--bg-lighter);
 		color: var(--text);
 	}
 
 	.role-row.selected {
-		background-color: rgba(114, 137, 218, 0.12);
+		background-color: var(--bg-light);
 		color: var(--text);
 	}
+
 
 	.role-dot {
 		width: 12px;
@@ -738,28 +882,31 @@
 	}
 
 	.new-role-btn {
-		margin-top: 8px;
+		margin-top: 12px;
 		width: 100%;
 		padding: 9px 0;
-		background: transparent;
-		border: 1px dashed var(--border);
+		background-color: var(--color);
+		border: none;
 		border-radius: 6px;
-		color: var(--text-muted);
-		font-size: 0.82rem;
+		color: #fff;
+		font-size: 0.85rem;
 		font-weight: 600;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
-		transition: all 0.15s;
+		transition: background-color 0.15s, transform 0.1s;
 		flex-shrink: 0;
 	}
 
 	.new-role-btn:hover {
-		background-color: var(--bg-light);
-		border-color: var(--color);
-		color: var(--color);
+		background-color: var(--color-light, var(--color));
+		filter: brightness(1.1);
+	}
+
+	.new-role-btn:active {
+		transform: translateY(1px);
 	}
 
 	.icon-btn {
@@ -779,7 +926,7 @@
 		opacity: 0;
 	}
 
-	.role-row:hover .icon-btn,
+	.role-list:not(.is-dragging) .role-row:hover .icon-btn,
 	.invite-row:hover .icon-btn {
 		opacity: 1;
 	}

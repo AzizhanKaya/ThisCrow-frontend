@@ -1,33 +1,39 @@
 import { defineStore } from 'pinia';
-import { MessageType, type id, type Message, type Ack, AckType, EventType, type WatchParty } from '@/types';
+import { MessageType, type id, type Message, type Ack, AckType, EventType } from '@/types';
 import { websocketService } from '@/services/websocket.ts';
 import { ModalView, useModalStore } from './modal.ts';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { generate_uid } from '@/utils/uid.ts';
 import { useMeStore } from './me.ts';
+import { useServerStore } from './server.ts';
 
-type WatchPartyTauriEvent = { type: 'Watch'; id: id } | { type: 'Unwatch' } | { type: 'JumpTo'; offset: number; play: boolean };
-
-type DeferredAck =
-	| { ack: AckType.Watching; payload: id }
-	| { ack: AckType.UnWatched }
-	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } };
+type PlayerEvent = {
+	type: 'Player';
+	kind: 'play' | 'pause' | 'seek' | 'ratechange' | 'buffering' | 'ended' | 'watch' | 'heartbeat';
+	seq_local: number;
+	offset_ms?: number;
+	paused?: boolean;
+	video_id?: number;
+};
 
 export const useWatchStore = defineStore('watch', {
 	state: () => ({
 		group_id: undefined as id | undefined,
 		channel_id: undefined as id | undefined,
-		host_id: undefined as id | undefined,
 		browser_open: false,
-		syncing: false,
-		queue: [] as DeferredAck[],
 	}),
 
 	getters: {
-		isHost(state): boolean {
-			const meStore = useMeStore();
-			return state.host_id !== undefined && meStore.me?.id === state.host_id;
+		party(state) {
+			if (!state.group_id || !state.channel_id) return undefined;
+			const serverStore = useServerStore();
+			const server = serverStore.servers.get(state.group_id);
+			return server?.channels?.get(state.channel_id)?.watch_party;
+		},
+		isHost(): boolean {
+			const me = useMeStore().me;
+			return me !== undefined && this.party?.host === me!.id;
 		},
 		inParty(state): boolean {
 			return state.group_id !== undefined && state.channel_id !== undefined;
@@ -35,163 +41,104 @@ export const useWatchStore = defineStore('watch', {
 	},
 
 	actions: {
-		setupListeners() {
-			websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
+		async setupListeners() {
+			await listen('watch_party_closed', () => {
+				if (!this.inParty) return;
+				this.browser_open = false;
+				this.leaveParty().catch((e) => console.error('[WatchParty] leaveParty', e));
+			});
+
+			await listen<PlayerEvent>('watch_party', (event) => {
+				const payload = event.payload;
+				if (!this.inParty || payload.type !== 'Player') return;
+				this.handlePlayerEvent(payload);
+			});
+
+			websocketService.onMessage(MessageType.Server, (message: Message<Ack>) => {
 				const { ack, payload } = message.data;
 				const me_id = useMeStore().me?.id;
 
-				try {
-					switch (ack) {
-						case AckType.CreatedParty: {
-							if (message.to === me_id && payload === this.channel_id) {
-								this.host_id = me_id;
-							}
-							break;
-						}
-
-						case AckType.JoinedParty: {
-							const { channel, state } = payload as { channel: id; state: WatchParty };
-							if (message.to === me_id && channel === this.channel_id) {
-								await this.syncToParty(state);
-							}
-							break;
-						}
-
-						case AckType.LeftParty: {
-							const { channel, new_host } = payload as { channel: id; new_host: id | null };
-							if (channel !== this.channel_id) break;
-							if (new_host === null) {
-								await this.cleanup();
-							} else {
-								this.host_id = new_host;
-							}
-							break;
-						}
-
-						case AckType.Watching: {
-							if (this.syncing) {
-								this.queue.push({ ack: AckType.Watching, payload: payload as id });
-								break;
-							}
-							await invoke('locate_video', { videoId: Number(payload), offset: null, play: null });
-							break;
-						}
-
-						case AckType.UnWatched: {
-							if (this.syncing) {
-								this.queue.push({ ack: AckType.UnWatched });
-								break;
-							}
-							await invoke('locate_video', { videoId: 0, offset: null, play: null });
-							break;
-						}
-
-						case AckType.JumpedTo: {
-							const data = payload as { offset: number; play: boolean };
-							if (this.syncing) {
-								this.queue.push({ ack: AckType.JumpedTo, payload: data });
-								break;
-							}
-							await invoke('jump_to', { offset: data.offset, play: data.play });
-							break;
-						}
-
-						case AckType.ExitedVoice: {
-							if (message.to === me_id && payload === this.channel_id) {
-								await this.cleanup();
-							}
-							break;
-						}
+				switch (ack) {
+					case AckType.Watching: {
+						if (!this.inParty) return;
+						if (message.to === me_id) return;
+						const { video } = payload;
+						this.applyState(video, 0, false);
+						return;
 					}
-				} catch (error) {
-					console.error('[WatchParty]', error);
+
+					case AckType.JumpedTo: {
+						if (!this.inParty) return;
+						if (message.to === me_id) return;
+						const p = payload as { offset: number; play: boolean };
+						this.applyState(this.party?.video ?? 0, p.offset, p.play);
+						return;
+					}
 				}
 			});
+		},
 
-			listen('watch_party_closed', async () => {
-				if (!this.inParty) return;
-				this.browser_open = false;
-				await this.leaveParty();
-			});
+		handlePlayerEvent(ev: PlayerEvent) {
+			const meStore = useMeStore();
+			const base = {
+				id: generate_uid(meStore.me!.id),
+				from: 0,
+				to: this.channel_id!,
+				group_id: this.group_id,
+				type: MessageType.InfoGroup,
+			} as const;
 
-			listen<WatchPartyTauriEvent>('watch_party', (event) => {
-				const payload = event.payload;
-				if (!this.inParty) return;
+			const party = this.party;
 
-				const meStore = useMeStore();
-				const base = {
-					id: generate_uid(meStore.me!.id),
-					from: 0,
-					to: this.channel_id!,
-					group_id: this.group_id,
-					type: MessageType.InfoGroup,
-				} as const;
-
-				switch (payload.type) {
-					case 'Watch':
-						if (!this.isHost) return;
-						websocketService.sendMessage({ ...base, data: { event: EventType.Watch, payload: payload.id } });
-						break;
-
-					case 'Unwatch':
-						if (!this.isHost) return;
-						websocketService.sendMessage({ ...base, data: { event: EventType.UnWatch } });
-						break;
-
-					case 'JumpTo':
-						if (this.syncing) return;
+			switch (ev.kind) {
+				case 'watch': {
+					if (!this.isHost) return;
+					if (ev.video_id === party?.video) return;
+					websocketService.sendMessage({
+						...base,
+						data: { event: EventType.Watch, payload: (ev.video_id ?? 0) as id },
+					});
+					return;
+				}
+				case 'play':
+				case 'pause':
+				case 'seek':
+				case 'heartbeat': {
+					if (!this.isHost) return;
+					if (ev.video_id && ev.video_id !== party?.video) {
 						websocketService.sendMessage({
 							...base,
-							data: { event: EventType.JumpTo, payload: { offset: payload.offset, play: payload.play } },
+							data: { event: EventType.Watch, payload: ev.video_id as id },
 						});
-						break;
+						return;
+					}
+					if (!party?.video) return;
+					const offset_ms = ev.offset_ms ?? 0;
+					const play = !(ev.paused ?? true);
+					websocketService.sendMessage({
+						...base,
+						data: { event: EventType.JumpTo, payload: { offset: offset_ms, play } },
+					});
+					return;
 				}
-			});
+				case 'ratechange':
+				case 'buffering':
+				case 'ended':
+				default:
+					return;
+			}
 		},
 
 		async init() {
 			this.setupListeners();
 		},
 
-		async syncToParty(state: WatchParty) {
-			this.host_id = state.host;
-			if (!this.browser_open || state.video === 0) return;
-
-			this.syncing = true;
-			this.queue = [];
+		async applyState(video: id, offset: number, playing: boolean) {
+			if (!this.browser_open) return;
 			try {
-				await invoke('locate_video', {
-					videoId: Number(state.video),
-					offset: state.offset,
-					play: state.playing,
-				});
+				await invoke('apply_state', { video, offset, playing });
 			} catch (e) {
-				console.error('[WatchParty] sync failed', e);
-			} finally {
-				const queued = this.queue;
-				this.queue = [];
-				this.syncing = false;
-				for (const evt of queued) {
-					try {
-						await this.applyDeferred(evt);
-					} catch (e) {
-						console.error('[WatchParty] queued apply failed', e);
-					}
-				}
-			}
-		},
-
-		async applyDeferred(evt: DeferredAck) {
-			switch (evt.ack) {
-				case AckType.Watching:
-					await invoke('locate_video', { videoId: Number(evt.payload), offset: null, play: null });
-					break;
-				case AckType.UnWatched:
-					await invoke('locate_video', { videoId: 0, offset: null, play: null });
-					break;
-				case AckType.JumpedTo:
-					await invoke('jump_to', { offset: evt.payload.offset, play: evt.payload.play });
-					break;
+				console.error('[WatchParty] apply_state failed', e);
 			}
 		},
 
@@ -232,9 +179,9 @@ export const useWatchStore = defineStore('watch', {
 		async cleanup() {
 			this.group_id = undefined;
 			this.channel_id = undefined;
-			this.host_id = undefined;
-			this.syncing = false;
-			this.queue = [];
+		},
+
+		async closeParty() {
 			if (this.browser_open) {
 				this.browser_open = false;
 				try {

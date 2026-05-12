@@ -29,7 +29,7 @@
 					this.profileCard.show = false;
 					return;
 				}
-				document.dispatchEvent(new Event('click')); // Close any other open popovers
+				document.dispatchEvent(new Event('click'));
 				const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 				this.profileCard = { show: true, x: rect.right + 10, y: rect.top };
 			},

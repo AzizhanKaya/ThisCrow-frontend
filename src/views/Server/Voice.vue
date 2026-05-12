@@ -74,6 +74,27 @@
 			}
 		}
 	};
+
+	type PartyMember = { id: id; name: string; avatar: string | undefined; username: string; isHost: boolean };
+
+	const partyMembers = computed<PartyMember[]>(() => {
+		const wp = props.channel.watch_party;
+		if (!wp) return [];
+		const list = Array.from(props.channel.users || []);
+		const out: PartyMember[] = [];
+		for (const uid of wp.users) {
+			const u = list.find((x) => x.id === uid);
+			if (!u) continue;
+			out.push({
+				id: u.id,
+				name: u.name,
+				avatar: u.avatar,
+				username: u.username,
+				isHost: u.id === wp.host,
+			});
+		}
+		return out;
+	});
 </script>
 
 <template>
@@ -183,6 +204,24 @@
 						</button>
 					</div>
 				</template>
+			</div>
+		</div>
+
+		<!-- Watch-party participant strip -->
+		<div v-if="watchStore.inParty && partyMembers.length > 0" class="watch-party-strip">
+			<Icon icon="streamline:film-slate-solid" class="strip-icon" />
+			<span class="strip-label">Watch Party</span>
+			<div class="strip-avatars">
+				<div
+					v-for="member in partyMembers"
+					:key="member.id"
+					class="strip-avatar"
+					:class="{ 'is-host': member.isHost }"
+					:title="member.isHost ? member.name + ' (Host)' : member.name"
+				>
+					<img :src="member.avatar || getDefaultAvatar(member.username)" alt="" />
+					<Icon v-if="member.isHost" icon="mdi:crown" class="strip-crown" />
+				</div>
 			</div>
 		</div>
 
@@ -363,6 +402,62 @@
 
 	.text-red {
 		color: var(--error);
+	}
+
+	.watch-party-strip {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 8px 24px;
+		background-color: var(--bg-dark);
+		border-top: 1px solid var(--border-muted);
+	}
+
+	.strip-icon {
+		font-size: 1.1rem;
+		color: var(--color, #e50914);
+	}
+
+	.strip-label {
+		font-weight: 700;
+		font-size: 0.78rem;
+		text-transform: uppercase;
+		letter-spacing: 0.6px;
+		color: var(--text-muted);
+		margin-right: 8px;
+	}
+
+	.strip-avatars {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.strip-avatar {
+		position: relative;
+		width: 28px;
+		height: 28px;
+	}
+
+	.strip-avatar img {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		object-fit: cover;
+		border: 2px solid transparent;
+	}
+
+	.strip-avatar.is-host img {
+		border-color: var(--color, #e50914);
+	}
+
+	.strip-crown {
+		position: absolute;
+		top: -6px;
+		right: -4px;
+		font-size: 0.85rem;
+		color: gold;
 	}
 
 	.voice-controls {

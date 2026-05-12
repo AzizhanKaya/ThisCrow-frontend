@@ -1,17 +1,28 @@
 <script setup lang="ts">
-	import { type Channel, ChannelType } from '@/types';
+	import { type Channel, ChannelType, type id } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import { webrtcService } from '@/services/webrtc';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useWatchStore } from '@/stores/watch';
+	import { useModalStore, ModalView } from '@/stores/modal';
 
 	const watchStore = useWatchStore();
+	const modalStore = useModalStore();
 	const props = defineProps<{
 		channel: Channel;
 		active: boolean;
+		server_id: id;
 	}>();
 
 	const emit = defineEmits(['click']);
+
+	function openSettings(e: MouseEvent) {
+		e.stopPropagation();
+		modalStore.openModal(ModalView.CHANNEL_SETTINGS, {
+			server_id: props.server_id,
+			channel_id: props.channel.id,
+		});
+	}
 </script>
 
 <template>
@@ -20,6 +31,9 @@
 			<Icon v-if="channel.type === ChannelType.Text" icon="octicon:hash-16" class="channel-icon hash" />
 			<Icon v-else icon="mdi:volume-high" class="channel-icon voice-icon" />
 			<span class="channel-name">{{ channel.name }}</span>
+			<button class="settings-btn" @click="openSettings" title="Channel settings">
+				<Icon icon="mdi:cog" />
+			</button>
 		</div>
 
 		<div v-if="channel.users && channel.users.size > 0" class="channel-users">
@@ -63,6 +77,34 @@
 		font-size: 16px;
 		font-weight: 500;
 		white-space: nowrap;
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.settings-btn {
+		margin-left: auto;
+		background: none;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2px;
+		font-size: 1rem;
+		opacity: 0;
+		pointer-events: none;
+		transition: color 0.15s ease, opacity 0.15s ease;
+	}
+
+	.channel-item:hover .settings-btn {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.settings-btn:hover {
+		color: var(--text);
 	}
 
 	.channel-icon {

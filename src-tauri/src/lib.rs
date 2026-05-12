@@ -2,6 +2,7 @@ use tauri::Manager;
 use tauri::WebviewUrl;
 use tauri::WebviewWindowBuilder;
 use tauri_plugin_updater::UpdaterExt;
+use tokio::sync::Mutex;
 
 mod error;
 pub use error::Result;
@@ -83,15 +84,14 @@ pub fn run() {
             party::watch::WatchState {
                 tx,
                 rx,
-                session: std::sync::Mutex::new(None),
+                session: Mutex::new(None),
             }
         })
         .invoke_handler(tauri::generate_handler![
             party::browsers::get_browsers,
             party::watch::open_party,
             party::watch::close_party,
-            party::watch::jump_to,
-            party::watch::locate_video,
+            party::watch::apply_state,
             activity::game::get_current_game,
             activity::music::get_current_music
         ])

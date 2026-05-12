@@ -11,6 +11,7 @@
 	import WatchParty from '@/modals/WatchParty.vue';
 	import ProfileCard from '@/modals/ProfileCard.vue';
 	import ServerSettings from '@/modals/ServerSettings.vue';
+	import ChannelSettings from '@/modals/ChannelSettings.vue';
 
 	const modalStore = useModalStore();
 </script>
@@ -29,6 +30,7 @@
 			<WatchParty v-else-if="modalStore.view === ModalView.WATCH_PARTY" />
 			<ProfileCard v-else-if="modalStore.view === ModalView.PROFILE_CARD" />
 			<ServerSettings v-else-if="modalStore.view === ModalView.SERVER_SETTINGS" />
+			<ChannelSettings v-else-if="modalStore.view === ModalView.CHANNEL_SETTINGS" />
 		</Transition>
 	</div>
 </template>

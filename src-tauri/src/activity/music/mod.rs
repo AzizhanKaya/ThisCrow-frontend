@@ -37,7 +37,7 @@ pub fn monitor_music() {
 }
 
 #[tauri::command]
-pub async fn get_current_music() -> Option<MusicActivity> {
+pub async fn get_current_music() -> Option<Music> {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
         return current_music().await;

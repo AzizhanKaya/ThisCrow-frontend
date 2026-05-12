@@ -14,6 +14,7 @@ export enum ModalView {
 	WATCH_PARTY = 'WATCH_PARTY',
 	PROFILE_CARD = 'PROFILE_CARD',
 	SERVER_SETTINGS = 'SERVER_SETTINGS',
+	CHANNEL_SETTINGS = 'CHANNEL_SETTINGS',
 }
 
 export const useModalStore = defineStore('modal', () => {
