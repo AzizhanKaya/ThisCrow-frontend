@@ -4,7 +4,7 @@ import { msgFetch, encode } from '@/utils/msgpack';
 export async function login(username: string, password: string) {
 	const body = encode({ username, password });
 
-	await msgFetch(API_URL + '/auth/login', {
+	return msgFetch(API_URL + '/auth/login', {
 		method: 'POST',
 		body,
 		credentials: 'include',
@@ -14,7 +14,7 @@ export async function login(username: string, password: string) {
 export async function register(username: string, name: string, email: string, password: string, public_key: Uint8Array) {
 	const body = encode({ username, name, email, password, public_key });
 
-	await msgFetch(API_URL + '/auth/register', {
+	return msgFetch(API_URL + '/auth/register', {
 		method: 'POST',
 		body,
 		credentials: 'include',

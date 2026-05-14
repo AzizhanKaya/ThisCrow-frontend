@@ -196,7 +196,7 @@
 		const paused = el.paused;
 		recordKnown(offsetMs, paused);
 		bridge.send(kind, {
-			offset_ms: offsetMs,
+			offset: offsetMs,
 			paused,
 			video_id: state.videoId,
 		});
@@ -245,7 +245,7 @@
 
 			recordKnown(offsetMs, paused);
 			bridge.send('heartbeat', {
-				offset_ms: offsetMs,
+				offset: offsetMs,
 				paused,
 				video_id: state.videoId,
 			});

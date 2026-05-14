@@ -1,6 +1,6 @@
 <script setup lang="ts">
 	import { Icon } from '@iconify/vue';
-	import { ref, watch, nextTick, onUnmounted } from 'vue';
+	import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
 
 	export type ContextMenuOption = {
 		label?: string;
@@ -15,6 +15,7 @@
 		checked?: boolean;
 		stayOpen?: boolean;
 		data?: any;
+		color?: string;
 	};
 
 	const props = defineProps<{
@@ -23,6 +24,7 @@
 		y: number;
 		options: ContextMenuOption[];
 		minWidth?: number;
+		submenuDirection?: 'left' | 'right';
 	}>();
 
 	const emit = defineEmits<{
@@ -43,10 +45,38 @@
 		}
 	};
 
+	const updatePosition = async () => {
+		await nextTick();
+		if (!menuRef.value) return;
+
+		const width = menuRef.value.offsetWidth;
+		const height = menuRef.value.offsetHeight;
+		const viewportWidth = window.innerWidth;
+		const viewportHeight = window.innerHeight;
+
+		let finalX = props.x;
+		let finalY = props.y;
+
+		if (finalX + width > viewportWidth) {
+			finalX = viewportWidth - width - 5;
+		}
+		if (finalY + height > viewportHeight) {
+			finalY = viewportHeight - height - 5;
+		}
+
+		if (finalX < 5) finalX = 5;
+		if (finalY < 5) finalY = 5;
+
+		menuRef.value.style.left = `${finalX}px`;
+		menuRef.value.style.top = `${finalY}px`;
+	};
+
+	let resizeObserver: ResizeObserver | null = null;
+
 	watch(
-		() => props.show,
-		async (newVal) => {
-			if (newVal) {
+		() => [props.show, props.x, props.y],
+		async ([newShow]) => {
+			if (newShow) {
 				await nextTick();
 
 				requestAnimationFrame(() => {
@@ -54,46 +84,42 @@
 					document.addEventListener('contextmenu', handleContextOutside);
 				});
 
+				await updatePosition();
+
+				window.addEventListener('resize', updatePosition);
 				if (menuRef.value) {
-					const width = menuRef.value.offsetWidth;
-					const height = menuRef.value.offsetHeight;
-					const maxX = window.innerWidth - width;
-					const maxY = window.innerHeight - height;
-
-					let finalX = props.x;
-					let finalY = props.y;
-
-					if (finalX > maxX) finalX = maxX - 5;
-					if (finalY > maxY) finalY = maxY - 5;
-
-					menuRef.value.style.left = `${finalX}px`;
-					menuRef.value.style.top = `${finalY}px`;
+					resizeObserver = new ResizeObserver(() => updatePosition());
+					resizeObserver.observe(menuRef.value);
 				}
 			} else {
 				document.removeEventListener('click', handleClickOutside);
 				document.removeEventListener('contextmenu', handleContextOutside);
+				window.removeEventListener('resize', updatePosition);
+				if (resizeObserver) {
+					resizeObserver.disconnect();
+					resizeObserver = null;
+				}
 			}
 		},
-		{ immediate: true }
+		{ immediate: true, deep: true }
 	);
 
 	onUnmounted(() => {
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('contextmenu', handleContextOutside);
+		window.removeEventListener('resize', updatePosition);
+		if (resizeObserver) {
+			resizeObserver.disconnect();
+		}
 	});
 </script>
 
 <template>
 	<Transition name="context-menu">
-		<div v-if="show" ref="menuRef" class="context-menu" @click.stop @contextmenu.prevent>
+		<div v-if="show" ref="menuRef" class="context-menu" @click.stop @contextmenu.prevent.stop>
 			<template v-for="(option, index) in options" :key="option.action || index">
 				<div v-if="option.divider" class="menu-divider"></div>
-				<div
-					v-else
-					class="menu-item-wrapper"
-					@mouseenter="activeSubmenu = index"
-					@mouseleave="activeSubmenu = null"
-				>
+				<div v-else class="menu-item-wrapper" @mouseenter="activeSubmenu = index" @mouseleave="activeSubmenu = null">
 					<button
 						class="menu-item"
 						:class="option.variant"
@@ -108,6 +134,7 @@
 							<div v-if="option.checked !== undefined" class="check-box">
 								<Icon v-if="option.checked" icon="mdi:check" class="check-icon" />
 							</div>
+							<div v-if="option.color" class="role-color" :style="{ backgroundColor: option.color }"></div>
 							<Icon v-if="option.icon" :icon="option.icon" class="item-icon" />
 							<div class="item-text">
 								<span class="label">{{ option.label }}</span>
@@ -120,9 +147,13 @@
 							<Icon v-if="option.children" icon="mdi:chevron-right" class="right-icon" />
 						</div>
 					</button>
-					
+
 					<!-- Nested Menu -->
-					<div v-if="option.children && activeSubmenu === index" class="submenu-container">
+					<div
+						v-if="option.children && activeSubmenu === index"
+						class="submenu-container"
+						:class="{ 'open-left': submenuDirection === 'left' }"
+					>
 						<div class="context-menu nested-menu">
 							<template v-for="(child, childIndex) in option.children" :key="child.action || childIndex">
 								<div v-if="child.divider" class="menu-divider"></div>
@@ -141,6 +172,7 @@
 										<div v-if="child.checked !== undefined" class="check-box">
 											<Icon v-if="child.checked" icon="mdi:check" class="check-icon" />
 										</div>
+										<div v-if="child.color" class="role-color" :style="{ backgroundColor: child.color }"></div>
 										<Icon v-if="child.icon" :icon="child.icon" class="item-icon" />
 										<div class="item-text">
 											<span class="label">{{ child.label }}</span>
@@ -177,7 +209,7 @@
 
 	.context-menu {
 		position: fixed;
-		z-index: 100;
+		z-index: 200;
 		background-color: var(--bg-darker);
 		border-radius: 8px;
 		padding: 8px;
@@ -202,14 +234,34 @@
 	.submenu-container {
 		position: absolute;
 		left: 100%;
-		top: -8px;
-		padding-left: 6px;
-		z-index: 101;
+		top: 0px;
+		padding-left: 4px;
+		z-index: 201;
+	}
+
+	.submenu-container.open-left {
+		left: auto;
+		right: 100%;
+		padding-left: 0;
+		padding-right: 8px;
 	}
 
 	.nested-menu {
 		position: static;
 		min-width: 180px;
+		max-height: 400px;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		scrollbar-color: var(--border) transparent;
+	}
+
+	.nested-menu::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.nested-menu::-webkit-scrollbar-thumb {
+		background-color: var(--border);
+		border-radius: 4px;
 	}
 
 	.menu-item {
@@ -329,5 +381,12 @@
 	.check-icon {
 		font-size: 16px;
 		color: var(--text);
+	}
+
+	.role-color {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 </style>

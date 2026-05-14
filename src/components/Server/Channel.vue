@@ -95,7 +95,9 @@
 		font-size: 1rem;
 		opacity: 0;
 		pointer-events: none;
-		transition: color 0.15s ease, opacity 0.15s ease;
+		transition:
+			color 0.15s ease,
+			opacity 0.15s ease;
 	}
 
 	.channel-item:hover .settings-btn {

@@ -2,46 +2,52 @@
 	import MemberItem from '@/components/Server/Member.vue';
 	import type { id, Member, Role } from '@/types';
 	import { computed } from 'vue';
-	import { useServerStore } from '@/stores/server';
-	import { useRoute } from 'vue-router';
 
 	const props = defineProps<{ members: Map<id, Member> }>();
 
-	const membersByRole = computed(() => {
-		const getHighestRole = (roles: Role[]): Role | undefined => {
-			if (!roles || roles.length === 0) return undefined;
-			return roles.reduce((highest, current) => (current.position > highest.position ? current : highest));
-		};
+	const getHighestRole = (roles: Role[]): Role | undefined => {
+		if (!roles || roles.length === 0) return undefined;
+		return roles.reduce((highest, current) => (current.position > highest.position ? current : highest));
+	};
 
-		const sortedMembers = Array.from(props.members.values()).sort((a, b) => {
+	const sortedMembers = computed(() => {
+		return Array.from(props.members.values()).sort((a, b) => {
 			const aMax = getHighestRole(a.roles)?.position || 0;
 			const bMax = getHighestRole(b.roles)?.position || 0;
-			return bMax - aMax;
+			if (aMax !== bMax) return bMax - aMax;
+			return a.user.name.localeCompare(b.user.name);
 		});
-
-		const res = new Map<string, { title: string; members: Member[] }>();
-
-		sortedMembers.forEach((member) => {
-			const highestRole = getHighestRole(member.roles);
-			const roleName = highestRole?.name || 'Members';
-
-			if (!res.has(roleName)) {
-				res.set(roleName, { title: roleName, members: [] });
-			}
-
-			res.get(roleName)!.members.push(member);
-		});
-
-		return res;
 	});
+
+	const roleGroups = computed(() => {
+		const groups = new Map<string, number>();
+		sortedMembers.value.forEach((m) => {
+			const name = getHighestRole(m.roles)?.name || 'Members';
+			groups.set(name, (groups.get(name) || 0) + 1);
+		});
+		return groups;
+	});
+
+	const isFirstInGroup = (index: number) => {
+		if (index === 0) return true;
+		const currentRole = getHighestRole(sortedMembers.value[index].roles)?.name || 'Members';
+		const prevRole = getHighestRole(sortedMembers.value[index - 1].roles)?.name || 'Members';
+		return currentRole !== prevRole;
+	};
+
+	const getGroupName = (member: Member) => {
+		return getHighestRole(member.roles)?.name || 'Members';
+	};
 </script>
 
 <template>
 	<div class="rightbar">
-		<div class="member-group" v-for="[roleName, group] in membersByRole" :key="roleName">
-			<h4>{{ group.title }} - {{ group.members.length }}</h4>
-			<MemberItem v-for="member in group.members" :key="member.user.id.toString()" :member="member" />
-		</div>
+		<template v-for="(member, index) in sortedMembers" :key="member.user.id.toString()">
+			<h4 v-if="isFirstInGroup(index)" class="group-title">
+				{{ getGroupName(member) }} - {{ roleGroups.get(getGroupName(member)) }}
+			</h4>
+			<MemberItem :member="member" />
+		</template>
 	</div>
 </template>
 
@@ -55,7 +61,7 @@
 		overflow-y: auto;
 	}
 
-	.member-group h4 {
+	.group-title {
 		text-transform: uppercase;
 		font-size: 12px;
 		font-weight: 600;
@@ -65,33 +71,7 @@
 		padding-left: 8px;
 	}
 
-	.member-group:first-child h4 {
+	.group-title:first-of-type {
 		margin-top: 0;
-	}
-
-	.member-item {
-		display: flex;
-		align-items: center;
-
-		cursor: pointer;
-		transition: background-color 0.1s ease;
-	}
-
-	.avatar {
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
-		margin-right: 12px;
-		background-color: var(--bg);
-		object-fit: cover;
-	}
-
-	.member-name {
-		color: var(--text-muted);
-		font-weight: 500;
-	}
-
-	.member-item:hover .member-name {
-		color: var(--text);
 	}
 </style>

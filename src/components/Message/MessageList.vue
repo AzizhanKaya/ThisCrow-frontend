@@ -1,27 +1,36 @@
 <script setup lang="ts">
 	import { computed, watch, ref, nextTick } from 'vue';
 	import Message from '@/components/Message/Message.vue';
-	import type { Message as MessageType, id } from '@/types';
+	import type { Message as MessageType, id, snowflake_id } from '@/types';
 	import { useUserStore } from '@/stores/user';
 	import { useMeStore } from '@/stores/me';
 	import { useMessageStore, chatKey, type ChatTarget } from '@/stores/message';
 	import { Icon } from '@iconify/vue';
-	import { overwriteMessage, deleteMessage } from '@/api/message';
+	import { deleteMessage } from '@/api/message';
 	import ContextMenu from '@/components/ContextMenu.vue';
 	import { useKeyStore } from '@/stores/key';
-	import { encrypt_message, generate_nonce } from '@/../pkg/wasm_lib';
-	import { encode } from '@/utils/msgpack';
+	import { useErrorStore } from '@/stores/error';
 	import ProfileCard from '@/components/ProfileCard.vue';
+	import { ModalView, useModalStore } from '@/stores/modal';
+	import { useServerStore } from '@/stores/server';
 
 	const props = defineProps<{
 		to: id;
 		group_id?: id;
 	}>();
 
+	const emit = defineEmits<{
+		(e: 'reply', id: snowflake_id): void;
+	}>();
+
 	const messageStore = useMessageStore();
 	const userStore = useUserStore();
 	const keyStore = useKeyStore();
+	const errorStore = useErrorStore();
 	const meStore = useMeStore();
+	const modalStore = useModalStore();
+	const serverStore = useServerStore();
+
 	const me = $computed(() => meStore.me!);
 
 	const chatTarget = computed<ChatTarget>(() =>
@@ -32,8 +41,18 @@
 
 	const messages = computed(() => messageStore.getMessages(chatTarget.value));
 
+	function getTopRoleColor(userId: id): string | undefined {
+		if (!props.group_id) return undefined;
+		const server = serverStore.servers.get(props.group_id);
+		if (!server) return undefined;
+		const member = server.members?.get(userId);
+		if (!member || !member.roles || member.roles.length === 0) return undefined;
+		return member.roles.reduce((top, r) => (r.position > top.position ? r : top)).color || undefined;
+	}
+
 	const scroller = ref<HTMLElement | null>(null);
 	const isLoadingMore = ref(false);
+	const isNavigatingToMessage = ref(false);
 	const canLoadMore = computed(() => messageStore.hasMore.get(chatKey(chatTarget.value)) !== false);
 	const hoveredMessageId = ref<MessageType['id'] | null>(null);
 
@@ -103,32 +122,71 @@
 		}
 	};
 
-	const handleReply = (message: MessageType) => {};
+	const handleReply = (message: MessageType) => {
+		emit('reply', message.id);
+	};
+
+	const repliedLookup = (id: snowflake_id) => messageStore.findMessage(chatTarget.value, id);
+
+	const highlightedId = ref<snowflake_id | null>(null);
+	let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+
+	async function scrollToMessage(id: snowflake_id) {
+		const msg = await messageStore.findMessage(chatTarget.value, id);
+		if (!msg) {
+			errorStore.pushFrom(new Error('Original message unavailable'), 'Original message unavailable');
+			return;
+		}
+
+		isNavigatingToMessage.value = true;
+
+		try {
+			await messageStore.loadMessagesUntil(chatTarget.value, id);
+		} catch (e: any) {
+			isNavigatingToMessage.value = false;
+			errorStore.pushFrom(e instanceof Error ? e : new Error(String(e)), 'Failed to load messages');
+			return;
+		}
+
+		await nextTick();
+		await nextTick();
+
+		const el = scroller.value?.querySelector(`[data-message-id="${id.toString()}"]`) as HTMLElement | null;
+		if (!el) {
+			isNavigatingToMessage.value = false;
+			return;
+		}
+
+		el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		highlightedId.value = id;
+		if (highlightTimer) clearTimeout(highlightTimer);
+		highlightTimer = setTimeout(() => {
+			highlightedId.value = null;
+			highlightTimer = null;
+		}, 1500);
+
+		setTimeout(() => {
+			isNavigatingToMessage.value = false;
+		}, 1000);
+	}
 
 	const handleOverwrite = async (message: MessageType) => {
-		const newText = prompt('Edit message');
-		if (!newText) return;
-
-		if (!props.group_id) {
-			const privateKey = await keyStore.get_private_key(props.to);
-			const nonce = generate_nonce();
-			const cipher = encrypt_message(privateKey, encode(newText), nonce);
-
-			const messageData = {
-				nonce,
-				cipher,
-			};
-
-			await overwriteMessage(message.id, messageData);
-		} else {
-			await overwriteMessage(message.id, newText);
-		}
+		modalStore.openModal(ModalView.EDIT_MESSAGE, {
+			message,
+			group_id: props.group_id,
+			to: props.to,
+		});
 	};
 
 	const handleDelete = async (message: MessageType) => {
-		if (confirm('Are you sure you want to delete this message?')) {
-			await deleteMessage(message.id);
-		}
+		modalStore.openModal(ModalView.CONFIRM, {
+			icon: 'mdi:trash-can-outline',
+			title: 'Delete Message',
+			text: 'Are you sure you want to delete this message? This action cannot be undone.',
+			command: async () => {
+				await deleteMessage(message.id);
+			},
+		});
 	};
 
 	const scrollToBottom = () => {
@@ -165,7 +223,7 @@
 
 	const onScroll = async () => {
 		const el = scroller.value;
-		if (!el || isLoadingMore.value || !canLoadMore.value) return;
+		if (!el || isLoadingMore.value || !canLoadMore.value || isNavigatingToMessage.value) return;
 
 		if (el.scrollTop < 50) {
 			isLoadingMore.value = true;
@@ -204,7 +262,7 @@
 		() => messages.value?.length,
 		async (newLen, oldLen) => {
 			if (!newLen || !oldLen) return;
-			if (!isLoadingMore.value && newLen > oldLen) {
+			if (!isLoadingMore.value && !isNavigatingToMessage.value && newLen > oldLen) {
 				await scrollToBottom();
 			}
 		},
@@ -231,7 +289,9 @@
 			v-if="messages && privateKey !== undefined"
 			v-for="(message, index) in messages"
 			:key="message.id.toString()"
+			:data-message-id="message.id.toString()"
 			class="message-wrapper"
+			:class="{ highlighted: highlightedId === message.id }"
 			@mouseenter="hoveredMessageId = message.id"
 			@mouseleave="hoveredMessageId = null"
 			@contextmenu.prevent="handleContextMenu($event, message)"
@@ -240,13 +300,25 @@
 				:message="message"
 				:user="index === 0 || messages[index - 1].from !== message.from ? userStore.users.get(message.from) : undefined"
 				:privateKey="privateKey"
+				:repliedLookup="repliedLookup"
+				:color="getTopRoleColor(message.from)"
 				@open-profile="handleOpenProfile"
+				@scroll-to="scrollToMessage"
 			/>
 			<div v-if="hoveredMessageId === message.id" class="message-actions">
-				<Icon icon="mdi:reply" class="action-icon" @click="handleReply(message)" title="Reply" />
+				<div class="action-btn" title="Add Reaction">
+					<Icon icon="mdi:emoticon-outline" />
+				</div>
+				<div class="action-btn" title="Reply" @click="handleReply(message)">
+					<Icon icon="mdi:reply" />
+				</div>
 				<template v-if="me.id === message.from">
-					<Icon icon="mdi:pencil" class="action-icon" @click="handleOverwrite(message)" title="Edit" />
-					<Icon icon="mdi:delete" class="action-icon action-delete" @click="handleDelete(message)" title="Delete" />
+					<div class="action-btn" title="Edit" @click="handleOverwrite(message)">
+						<Icon icon="mdi:pencil-outline" />
+					</div>
+					<div class="action-btn action-delete" title="Delete" @click="handleDelete(message)">
+						<Icon icon="mdi:trash-can-outline" />
+					</div>
 				</template>
 			</div>
 		</div>
@@ -304,46 +376,73 @@
 		position: relative;
 	}
 
+	.message-wrapper.highlighted {
+		animation: reply-highlight 1.5s ease-out;
+	}
+
+	@keyframes reply-highlight {
+		0% {
+			background-color: hsla(261, 68%, 50%, 0.32);
+		}
+		60% {
+			background-color: hsla(261, 68%, 50%, 0.32);
+		}
+		100% {
+			background-color: transparent;
+		}
+	}
+
 	.message-actions {
 		position: absolute;
-		right: 20px;
-		top: -34px;
+		right: 16px;
+		top: -16px;
 		display: flex;
-		gap: 4px;
-		background: var(--bg-dark);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		padding: 4px;
-		box-shadow: 0 4px 8px var(--overlay);
-		z-index: 10;
 		align-items: center;
+		gap: 2px;
+		background: var(--bg-dark, #2b2d31);
+		border: 1px solid var(--border-muted, rgba(0, 0, 0, 0.2));
+		border-radius: 8px;
+		padding: 2px 4px;
+		box-shadow:
+			0 0 0 1px var(--bg, #313338),
+			0 2px 6px rgba(0, 0, 0, 0.15);
+		z-index: 10;
+		height: 32px;
 	}
 
-	.action-icon {
+	.action-btn {
 		cursor: pointer;
-		font-size: 1.5rem;
 		color: var(--text-muted);
-		padding: 6px;
-		border-radius: 6px;
+		padding: 4px 6px;
+		border-radius: 4px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		transition:
-			background-color 0.15s ease-in-out,
-			color 0.15s ease-in-out,
-			transform 0.1s ease-in-out;
+			background-color 0.1s ease,
+			color 0.1s ease;
 	}
 
-	.action-icon:hover {
-		background: var(--bg-lighter);
+	.action-btn svg {
+		font-size: 1.15rem;
+	}
+
+	.action-btn:hover {
+		background-color: var(--bg-lighter, rgba(255, 255, 255, 0.08));
 		color: var(--text);
-		transform: scale(1.1);
 	}
 
 	.message-wrapper:has(.message-actions:hover) {
 		background-color: var(--bg-light);
 	}
 
+	.action-delete {
+		color: var(--danger, #f23f42);
+	}
+
 	.action-delete:hover {
-		color: var(--error);
-		background: var(--bg-light);
+		background-color: rgba(242, 63, 66, 0.1);
+		color: var(--danger, #f23f42);
 	}
 
 	.no-messages {

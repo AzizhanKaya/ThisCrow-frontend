@@ -25,11 +25,9 @@
 			description: 'Change channel-specific overrides',
 			category: 'General',
 		},
-		{ label: 'Create Invite', bit: Permissions.CREATE_INVITE, description: 'Generate invite links', category: 'General' },
 
 		{ label: 'View Messages', bit: Permissions.VIEW_MESSAGES, description: 'Read messages in this channel', category: 'Messages' },
 		{ label: 'Send Messages', bit: Permissions.SEND_MESSAGE, description: 'Send new messages', category: 'Messages' },
-		{ label: 'Send TTS', bit: Permissions.SEND_TTS_MESSAGES, description: 'Use /tts to send text-to-speech', category: 'Messages' },
 		{ label: 'Manage Messages', bit: Permissions.MANAGE_MESSAGES, description: 'Delete or pin any message', category: 'Messages' },
 		{ label: 'Embed Links', bit: Permissions.EMBED_LINKS, description: 'Render link previews', category: 'Messages' },
 		{ label: 'Attach Files', bit: Permissions.ATTACH_FILES, description: 'Upload files and media', category: 'Messages' },
@@ -116,7 +114,7 @@
 			key: 'r:0',
 			kind: 'role',
 			role_id: 0,
-			label: '@everyone',
+			label: 'everyone',
 			color: '#ffffff',
 			hasOverride: isOverrideActive('r:0'),
 		});
@@ -467,21 +465,17 @@
 		right: 20px;
 		z-index: 2;
 		background: none;
-		border: 1px solid var(--border);
+		border: none;
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 1.1rem;
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
+		font-size: 1.5rem;
+		transition: color 0.2s;
+		padding: 0;
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		transition: all 0.2s;
 	}
 
 	.close-btn:hover {
-		background-color: var(--bg-light);
 		color: var(--text);
 	}
 

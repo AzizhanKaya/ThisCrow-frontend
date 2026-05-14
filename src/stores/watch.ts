@@ -12,7 +12,7 @@ type PlayerEvent = {
 	type: 'Player';
 	kind: 'play' | 'pause' | 'seek' | 'ratechange' | 'buffering' | 'ended' | 'watch' | 'heartbeat';
 	seq_local: number;
-	offset_ms?: number;
+	offset?: number;
 	paused?: boolean;
 	video_id?: number;
 };
@@ -113,11 +113,11 @@ export const useWatchStore = defineStore('watch', {
 						return;
 					}
 					if (!party?.video) return;
-					const offset_ms = ev.offset_ms ?? 0;
+					const offset = ev.offset ?? 0;
 					const play = !(ev.paused ?? true);
 					websocketService.sendMessage({
 						...base,
-						data: { event: EventType.JumpTo, payload: { offset: offset_ms, play } },
+						data: { event: EventType.JumpTo, payload: { offset: offset, play } },
 					});
 					return;
 				}

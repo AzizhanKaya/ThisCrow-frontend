@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import { useDMStore } from '@/stores/dm';
 	import { useFriendStore } from '@/stores/friend';
-	import { type Member, type User, Status } from '@/types';
+	import { type Member, type User, Status, Permissions } from '@/types';
 	import { ref, computed } from 'vue';
 	import ContextMenu from '@/components/ContextMenu.vue';
 	import ProfileCard from '@/components/ProfileCard.vue';
@@ -10,12 +10,19 @@
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useServerStore } from '@/stores/server';
 	import { useUserStore } from '@/stores/user';
+	import { useMeStore } from '@/stores/me';
+	import { useErrorStore } from '@/stores/error';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useModalStore, ModalView } from '@/stores/modal';
+	import { computeGroupPermissions } from '@/utils/permissions';
+	import { useVoiceStore } from '@/stores/voice';
 
 	const friendStore = useFriendStore();
 	const serverStore = useServerStore();
 	const userStore = useUserStore();
+	const meStore = useMeStore();
+	const errorStore = useErrorStore();
+	const voiceStore = useVoiceStore();
 	const modalStore = useModalStore();
 	const router = useRouter();
 
@@ -24,6 +31,12 @@
 	}>();
 
 	const user = computed(() => userStore.users.get(props.member.user.id) || props.member.user);
+
+	const topRoleColor = computed(() => {
+		const roles = props.member.roles;
+		if (!roles || roles.length === 0) return undefined;
+		return roles.reduce((top, r) => (r.position > top.position ? r : top)).color || undefined;
+	});
 
 	function getStatusClass(user: User): string {
 		switch (user.status) {
@@ -37,6 +50,14 @@
 			default:
 				return 'status-offline';
 		}
+	}
+
+	function getUserStatusText(user: User): string {
+		if (user.activities?.game) return `Playing ${user.activities.game.payload.name}`;
+		if (user.activities?.music) return `Listening to ${user.activities.music.payload.title}`;
+		if (user.activities?.watching) return `Watching`;
+		if (user.activities?.streaming) return `Streaming`;
+		return user.status;
 	}
 
 	function handleMessage(user: User) {
@@ -67,23 +88,37 @@
 					checked: hasRole,
 					stayOpen: true,
 					data: role.id,
+					color: role.color,
 				} as ContextMenuOption;
 			});
 	});
 
-	const contextMenuOptions = computed<ContextMenuOption[]>(() => [
-		{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
-		{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
-		{ label: 'Call', action: 'call', icon: 'mdi:phone' },
-		{ divider: true },
-		{ label: 'Roles', icon: 'mdi:shield-account', children: roleOptions.value },
-		{ divider: true },
-		{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' },
-		{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
-		{ divider: true },
-		{ label: 'Kick @' + props.member.user.username, action: 'kick', icon: 'mdi:account-remove', variant: 'danger' },
-		{ label: 'Ban @' + props.member.user.username, action: 'ban', icon: 'mdi:account-cancel', variant: 'danger' },
-	]);
+	const contextMenuOptions = computed<ContextMenuOption[]>(() => {
+		const opts: ContextMenuOption[] = [
+			{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
+			{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
+			{ label: 'Call', action: 'call', icon: 'mdi:phone' },
+			{ divider: true },
+			{ label: 'Roles', icon: 'mdi:shield-account', children: roleOptions.value },
+			{
+				label: 'Kick @' + props.member.user.username,
+				action: 'kick',
+				icon: 'mdi:account-remove',
+				variant: 'danger',
+			},
+			{
+				label: 'Ban @' + props.member.user.username,
+				action: 'ban',
+				icon: 'mdi:account-cancel',
+				variant: 'danger',
+			},
+			{ divider: true },
+			{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' },
+			{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
+		];
+
+		return opts;
+	});
 
 	function openContextMenu(e: MouseEvent) {
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -109,7 +144,7 @@
 		};
 	}
 
-	function handleContextAction(action: string, option?: ContextMenuOption) {
+	async function handleContextAction(action: string, option?: ContextMenuOption) {
 		const user = props.member.user;
 		const server_id = serverStore.server?.id;
 
@@ -119,6 +154,10 @@
 				break;
 			case 'profile':
 				modalStore.openModal(ModalView.PROFILE_CARD, { user });
+				break;
+			case 'call':
+				await voiceStore.joinVoice(undefined, undefined, user);
+				router.push({ name: 'user', params: { userId: user.id.toString() } });
 				break;
 			case 'unfriend':
 				friendStore.removeFriend(user);
@@ -130,11 +169,39 @@
 				if (server_id && option?.data !== undefined) {
 					const roleId = option.data;
 					const hasRole = props.member.roles.some((r) => r.id === roleId);
-					if (hasRole) {
-						serverStore.removeRole(server_id, user.id, roleId);
-					} else {
-						serverStore.assignRole(server_id, user.id, roleId);
+					try {
+						if (hasRole) {
+							await serverStore.removeRole(server_id, user.id, roleId);
+						} else {
+							await serverStore.assignRole(server_id, user.id, roleId);
+						}
+					} catch (e) {
+						errorStore.pushFrom(e);
 					}
+				}
+				break;
+			case 'kick':
+				if (server_id) {
+					modalStore.openModal(ModalView.CONFIRM, {
+						icon: 'mdi:account-remove',
+						title: `Kick @${user.username}`,
+						text: `Are you sure you want to kick ${user.name}? They can rejoin with a new invite.`,
+						command: async () => {
+							await serverStore.kickUser(server_id, user.id).catch((e) => errorStore.pushFrom(e, 'Failed to kick member'));
+						},
+					});
+				}
+				break;
+			case 'ban':
+				if (server_id) {
+					modalStore.openModal(ModalView.CONFIRM, {
+						icon: 'mdi:account-cancel',
+						title: `Ban @${user.username}`,
+						text: `Are you sure you want to ban ${user.name}? They will not be able to rejoin.`,
+						command: async () => {
+							await serverStore.banUser(server_id, user.id).catch((e) => errorStore.pushFrom(e, 'Failed to ban member'));
+						},
+					});
 				}
 				break;
 		}
@@ -154,10 +221,10 @@
 			</div>
 			<div class="user-text">
 				<div class="names">
-					<span class="name">{{ user.name }}</span>
+					<span class="name" :style="topRoleColor ? { color: topRoleColor } : undefined">{{ user.name }}</span>
 					<span class="username">@{{ user.username }}</span>
 				</div>
-				<span class="status">{{ user.status }}</span>
+				<span class="status">{{ getUserStatusText(user) }}</span>
 			</div>
 			<Icon class="crown" icon="mdi:crown" v-if="user.id === serverStore.server?.owner" />
 		</div>
@@ -167,6 +234,7 @@
 			:x="contextMenu.x"
 			:y="contextMenu.y"
 			:options="contextMenuOptions"
+			submenuDirection="left"
 			@select="handleContextAction"
 			@close="closeContextMenu"
 			:min-width="260"
@@ -174,6 +242,7 @@
 
 		<ProfileCard
 			:user="member.user"
+			:roles="member.roles"
 			:show="profileCard.show"
 			:x="profileCard.x"
 			:y="profileCard.y"
@@ -250,12 +319,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		min-width: 0;
 	}
 
 	.names {
 		display: flex;
 		align-items: center;
 		gap: 4px;
+		min-width: 0;
 	}
 
 	.name {
@@ -270,6 +341,8 @@
 		font-weight: 100;
 		font-size: 0.8rem;
 		color: var(--text-muted);
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 	.name:hover {
 		text-decoration: underline;
@@ -285,5 +358,8 @@
 	.status {
 		color: #b9bbbe;
 		font-size: 13px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 </style>

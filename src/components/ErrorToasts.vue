@@ -5,11 +5,17 @@
 
 	const errorStore = useErrorStore();
 	const { errors } = storeToRefs(errorStore);
+
+	function onBeforeLeave(el: Element) {
+		const htmlEl = el as HTMLElement;
+		const { width } = htmlEl.getBoundingClientRect();
+		htmlEl.style.width = `${width}px`;
+	}
 </script>
 
 <template>
 	<div class="error-toast-container">
-		<TransitionGroup name="error-toast" tag="div" class="error-toast-list">
+		<TransitionGroup name="error-toast" tag="div" class="error-toast-list" @before-leave="onBeforeLeave">
 			<div v-for="err in errors" :key="err.id" class="error-toast" @click="errorStore.dismiss(err.id)">
 				<Icon icon="mdi:alert-circle" class="icon" />
 				<span class="message">{{ err.message }}</span>
@@ -29,6 +35,7 @@
 	}
 
 	.error-toast-list {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;

@@ -10,9 +10,11 @@
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { getDefaultAvatar } from '@/utils/avatar';
+	import { useVoiceStore } from '@/stores/voice';
 
 	const friendStore = useFriendStore();
 	const userStore = useUserStore();
+	const voiceStore = useVoiceStore();
 	const modalStore = useModalStore();
 	const router = useRouter();
 
@@ -94,7 +96,7 @@
 		};
 	}
 
-	function handleContextAction(action: string) {
+	async function handleContextAction(action: string) {
 		const user = props.user;
 
 		switch (action) {
@@ -103,6 +105,10 @@
 				break;
 			case 'profile':
 				modalStore.openModal(ModalView.PROFILE_CARD, { user });
+				break;
+			case 'call':
+				await voiceStore.joinVoice(undefined, undefined, user);
+				router.push({ name: 'user', params: { userId: user.id.toString() } });
 				break;
 			case 'unfriend':
 				friendStore.removeFriend(user);

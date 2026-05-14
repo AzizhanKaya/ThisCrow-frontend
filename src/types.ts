@@ -181,7 +181,12 @@ export type CallData = {
 	end_time: number | null;
 };
 
-export type MessageData = string | EncryptedData | MultiData | CallData | Event | Ack;
+export type ReplyData = {
+	replied: snowflake_id;
+	data: MultiData;
+};
+
+export type MessageData = string | EncryptedData | MultiData | CallData | ReplyData | Event | Ack;
 
 export interface Message<T = MessageData> {
 	id: snowflake_id;
@@ -190,7 +195,7 @@ export interface Message<T = MessageData> {
 	data: T;
 	type: MessageType;
 	group_id?: id;
-	overwrited?: null;
+	overwrited?: boolean;
 }
 
 export type MessageBlock = {
@@ -411,6 +416,7 @@ export type Ack =
 	| { ack: AckType.AddedMember; payload: undefined }
 	| { ack: AckType.JoinedMember; payload: undefined }
 	| { ack: AckType.RemovedMember; payload: undefined }
+	| { ack: AckType.UserLeft; payload: undefined }
 	| {
 			ack: AckType.CreatedGroup;
 			payload: {
@@ -510,6 +516,7 @@ export enum AckType {
 	AddedMember = 'added_member',
 	JoinedMember = 'joined_member',
 	RemovedMember = 'removed_member',
+	UserLeft = 'user_left',
 	CreatedGroup = 'created_group',
 	CreatedChannel = 'created_channel',
 	CreatedRole = 'created_role',

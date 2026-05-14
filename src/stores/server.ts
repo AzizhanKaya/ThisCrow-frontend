@@ -146,6 +146,7 @@ export const useServerStore = defineStore('server', {
 
 					case AckType.DeletedGroup:
 						this.servers.delete(server_id);
+						if (this.server?.id === server_id) this.server = null;
 						break;
 
 					case AckType.UpdatedGroup:
@@ -161,6 +162,15 @@ export const useServerStore = defineStore('server', {
 
 					case AckType.RemovedMember:
 						server.members?.delete(target_id);
+						break;
+
+					case AckType.UserLeft:
+						if (target_id === meStore.me?.id) {
+							this.servers.delete(server_id);
+							if (this.server?.id === server_id) this.server = null;
+						} else {
+							server.members?.delete(target_id);
+						}
 						break;
 
 					case AckType.CreatedChannel:
@@ -419,19 +429,22 @@ export const useServerStore = defineStore('server', {
 		async updateRole(
 			server_id: id,
 			role_id: id,
-			name?: string,
-			position?: number,
-			color?: string,
-			permissions?: number
+			fields: { name?: string; position?: number; color?: string; permissions?: number }
 		): Promise<any> {
 			const meStore = useMeStore();
+			const payload: Record<string, any> = { role: role_id };
+			if (fields.name !== undefined) payload.name = fields.name;
+			if (fields.position !== undefined) payload.position = fields.position;
+			if (fields.color !== undefined) payload.color = fields.color;
+			if (fields.permissions !== undefined) payload.permissions = fields.permissions;
+
 			const message: Message<Event> = {
 				id: generate_uid(meStore.me!.id),
 				from: meStore.me!.id,
 				to: 0,
 				group_id: server_id,
 				type: MessageType.InfoGroup,
-				data: { event: EventType.UpdateRole, payload: { role: role_id, name, position, color, permissions } },
+				data: { event: EventType.UpdateRole, payload: payload as any },
 			};
 			return websocketService.request(message);
 		},
@@ -475,13 +488,7 @@ export const useServerStore = defineStore('server', {
 			return websocketService.request(message);
 		},
 
-		async updateChannel(
-			server_id: id,
-			channel_id: id,
-			name?: string,
-			title?: string,
-			position?: number
-		): Promise<any> {
+		async updateChannel(server_id: id, channel_id: id, name?: string, title?: string, position?: number): Promise<any> {
 			const meStore = useMeStore();
 			const message: Message<Event> = {
 				id: generate_uid(meStore.me!.id),
@@ -494,13 +501,7 @@ export const useServerStore = defineStore('server', {
 			return websocketService.request(message);
 		},
 
-		async setPermissionOverride(
-			server_id: id,
-			channel_id: id,
-			target: OverrideTarget,
-			allow: number,
-			deny: number
-		): Promise<any> {
+		async setPermissionOverride(server_id: id, channel_id: id, target: OverrideTarget, allow: number, deny: number): Promise<any> {
 			const meStore = useMeStore();
 			const message: Message<Event> = {
 				id: generate_uid(meStore.me!.id),
@@ -522,6 +523,45 @@ export const useServerStore = defineStore('server', {
 				group_id: server_id,
 				type: MessageType.InfoGroup,
 				data: { event: EventType.DeletePermissionOverride, payload: { target } },
+			};
+			return websocketService.request(message);
+		},
+
+		async kickUser(server_id: id, user_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: user_id,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.KickUser },
+			};
+			return websocketService.request(message);
+		},
+
+		async banUser(server_id: id, user_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: user_id,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.BanUser },
+			};
+			return websocketService.request(message);
+		},
+
+		async deleteServer(server_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.DeleteGroup },
 			};
 			return websocketService.request(message);
 		},

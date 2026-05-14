@@ -107,7 +107,12 @@
 
 	.skeleton-pulse {
 		/* Gradient aralığını biraz daralttım (40-50-60) ki kenarlar temiz kalsın */
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 40%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.05) 60%);
+		background: linear-gradient(
+			135deg,
+			rgba(255, 255, 255, 0.05) 40%,
+			rgba(255, 255, 255, 0.15) 50%,
+			rgba(255, 255, 255, 0.05) 60%
+		);
 		/* 400% idealdir, 700% çok büyük olduğu için render hatası yapar */
 		background-size: 400% 400%;
 		animation: shimmer 1s infinite linear;

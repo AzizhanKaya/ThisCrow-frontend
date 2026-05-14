@@ -6,7 +6,7 @@
 	import { Icon } from '@iconify/vue';
 	import { useModalStore } from '@/stores/modal';
 	import { ModalView } from '@/stores/modal';
-	import { ChannelType, MessageType, type Member, type Role, type id, type Server } from '@/types';
+	import { ChannelType, MessageType, type Member, type Role, type id, type Server, type snowflake_id } from '@/types';
 	import Channels from './Channels.vue';
 	import Members from './Members.vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -33,6 +33,9 @@
 	});
 
 	const channel = $computed(() => server.channels?.get(channel_id.value ?? 0));
+
+	const replyTo = ref<snowflake_id | null>(null);
+	watch([channel_id, server_id], () => (replyTo.value = null));
 
 	watch(
 		server_id,
@@ -84,6 +87,7 @@
 	const handleServerMenuSelect = (action: string) => {
 		switch (action) {
 			case 'server-info':
+				modalStore.openModal(ModalView.SERVER_INFO, { server_id: server_id.value });
 				break;
 			case 'invite':
 				modalStore.openModal(ModalView.INVITE, { server_id: server_id.value, server_name: server.name });
@@ -96,7 +100,10 @@
 </script>
 
 <template>
-	<div class="server-view" v-if="server.channels !== undefined && server.members !== undefined && server.roles !== undefined">
+	<div
+		class="server-view"
+		v-if="server && server.channels !== undefined && server.members !== undefined && server.roles !== undefined"
+	>
 		<div class="sidebar">
 			<div class="server-header">
 				<div class="server-info">
@@ -118,11 +125,22 @@
 				</h3>
 			</div>
 
-			<MessageList v-if="channel?.type === ChannelType.Text" :to="channel_id!" :group_id="server_id" />
+			<MessageList
+				v-if="channel?.type === ChannelType.Text"
+				:to="channel_id!"
+				:group_id="server_id"
+				@reply="(id) => (replyTo = id)"
+			/>
 			<Voice v-else-if="channel?.type === ChannelType.Voice" :channel="channel" />
 
 			<div v-if="channel?.type === ChannelType.Text">
-				<MessageInput :to="channel_id!" :group_id="server_id" :type="MessageType.Group" />
+				<MessageInput
+					:to="channel_id!"
+					:group_id="server_id"
+					:type="MessageType.Group"
+					:reply-to="replyTo"
+					@clear-reply="replyTo = null"
+				/>
 				<div class="input-cover"></div>
 			</div>
 		</div>

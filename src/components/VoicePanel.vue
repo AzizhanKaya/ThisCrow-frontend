@@ -24,6 +24,11 @@
 		const allConnected = peers.every((p) => p.connection.connectionState === 'connected');
 		if (allConnected) return 'connected';
 
+		if (voiceStore.voice_direct) {
+			const anyActive = peers.some((p) => ['connecting', 'checking'].includes(p.connection.connectionState));
+			if (!anyActive) return 'connected';
+		}
+
 		return 'connecting';
 	});
 
@@ -56,7 +61,7 @@
 					<div class="signal-dot"></div>
 					<span class="connection-text" v-if="connectionStatus === 'connected'">Connected</span>
 					<span class="connection-text" v-else-if="connectionStatus === 'connecting'">Connecting...</span>
-					<span class="connection-text" v-else>Failed</span>
+					<span class="connection-text" v-else-if="connectionStatus === 'failed'">Failed</span>
 					<span v-if="webrtcService.pcs.size > 0" class="latency-badge">{{ webrtcService.latencyMs.value }}ms</span>
 				</div>
 				<div class="voice-meta">

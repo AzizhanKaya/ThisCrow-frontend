@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import { ref, onMounted, reactive, type Reactive, watch, computed } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import { type Message as MessageType, MessageType as MessageEnum, type id, type User } from '@/types';
+	import { type Message as MessageType, MessageType as MessageEnum, type id, type User, type snowflake_id } from '@/types';
 	import { useMeStore } from '@/stores/me';
 	import { useRoute } from 'vue-router';
 	import { useDMStore } from '@/stores/dm';
@@ -26,6 +26,9 @@
 	const targetUser = ref<User | undefined>(undefined);
 
 	const chatTarget = computed<ChatTarget>(() => ({ kind: 'user', user_id: to.value }));
+
+	const replyTo = ref<snowflake_id | null>(null);
+	watch(to, () => (replyTo.value = null));
 
 	const showSkeleton = ref(false);
 	let skeletonTimer: any = null;
@@ -121,10 +124,10 @@
 			</div>
 		</header>
 		<main>
-			<MessageList :to="to" />
+			<MessageList :to="to" @reply="(id) => (replyTo = id)" />
 			<ChatSkeleton v-if="showSkeleton" class="skeleton-overlay" />
 		</main>
-		<MessageInput :to="to" :type="MessageEnum.Direct" />
+		<MessageInput :to="to" :type="MessageEnum.Direct" :reply-to="replyTo" @clear-reply="replyTo = null" />
 		<div class="input-cover"></div>
 	</div>
 </template>

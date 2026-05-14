@@ -219,7 +219,7 @@ pub async fn open_party(
                             kind: String,
                             seq_local: u64,
                             #[serde(default)]
-                            offset_ms: f64,
+                            offset: f64,
                             #[serde(default)]
                             paused: bool,
                             #[serde(default)]

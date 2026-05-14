@@ -12,11 +12,13 @@
 	import ContextMenu, { type ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import { useFriendStore } from '@/stores/friend';
+	import { useVoiceStore } from '@/stores/voice';
 
 	const dmStore = useDMStore();
 	const userStore = useUserStore();
 	const friendStore = useFriendStore();
 	const modalStore = useModalStore();
+	const voiceStore = useVoiceStore();
 
 	const router = useRouter();
 	const route = useRoute();
@@ -71,7 +73,7 @@
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
-	function handleContextAction(action: string) {
+	async function handleContextAction(action: string) {
 		const user = contextMenu.value.user;
 		if (!user) return;
 
@@ -83,7 +85,8 @@
 				handleMessage(user);
 				break;
 			case 'call':
-				// TODO: Implement call
+				await voiceStore.joinVoice(undefined, undefined, user);
+				router.push({ name: 'user', params: { userId: user.id.toString() } });
 				break;
 			case 'note':
 				// TODO: Implement note

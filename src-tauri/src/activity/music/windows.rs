@@ -244,7 +244,7 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
         }));
     };
 
-    let mut last_emitted_offset: Option<i64> = None;
+    let mut last_emitted_state: Option<(bool, i64)> = None;
     let mut last_emit_time = Instant::now();
     let mut current_session: Option<GlobalSystemMediaTransportControlsSession> =
         find_spotify_session(&manager);
@@ -262,12 +262,12 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
                         (None, Some(session)) => {
                             attach_events(session, tx.clone());
                             if let Some(music) = build_music(session).await {
-                                last_emitted_offset = Some(music.offset);
+                                last_emitted_state = Some((music.paused, music.offset));
                                 emit_activity(&app, MusicActivity::Playing(music));
                             }
                         }
                         (Some(_), None) => {
-                            last_emitted_offset = None;
+                            last_emitted_state = None;
                             emit_activity(&app, MusicActivity::Stopped);
                         }
                         _ => {}
@@ -278,7 +278,7 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
                 MediaEvent::MetadataChanged => {
                     if let Some(ref session) = current_session {
                         if let Some(music) = build_music(session).await {
-                            last_emitted_offset = Some(music.offset);
+                            last_emitted_state = Some((music.paused, music.offset));
                             emit_activity(&app, MusicActivity::Playing(music));
                         }
                     }
@@ -291,17 +291,20 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
                                 match status {
                                     GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing => {
                                         if let Some(music) = build_music(session).await {
-                                            last_emitted_offset = Some(music.offset);
+                                            last_emitted_state = Some((music.paused, music.offset));
                                             emit_activity(&app, MusicActivity::Playing(music));
                                         }
                                     }
                                     GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused => {
-                                        last_emitted_offset = None;
+                                        if let Ok(timeline) = session.GetTimelineProperties() {
+                                            let (pos_ms, _) = read_timeline(&timeline);
+                                            last_emitted_state = Some((true, pos_ms));
+                                        }
                                         emit_activity(&app, MusicActivity::Paused);
                                     }
                                     GlobalSystemMediaTransportControlsSessionPlaybackStatus::Stopped
                                     | GlobalSystemMediaTransportControlsSessionPlaybackStatus::Closed => {
-                                        last_emitted_offset = None;
+                                        last_emitted_state = None;
                                         emit_activity(&app, MusicActivity::Stopped);
                                     }
                                     _ => {}
@@ -333,24 +336,30 @@ pub async fn monitor_music<R: tauri::Runtime>(app: AppHandle<R>) -> Result<()> {
                         last_updated_ms - pos_ms
                     };
 
-                    // During steady playback, periodic timeline updates produce
-                    // the same `offset` (song-start instant). Only emit when
-                    // it shifts materially (>1s) — that's an actual seek.
                     let now = Instant::now();
-                    if let Some(prev) = last_emitted_offset {
-                        if (offset_for_dedup - prev).abs() < 1000
-                            && now.duration_since(last_emit_time)
-                                < std::time::Duration::from_millis(500)
-                        {
-                            continue;
+                    let mut is_seek = false;
+
+                    if let Some((prev_paused, prev_offset)) = last_emitted_state {
+                        if prev_paused == paused {
+                            if (offset_for_dedup - prev_offset).abs() > 1000
+                                && now.duration_since(last_emit_time)
+                                    >= std::time::Duration::from_millis(500)
+                            {
+                                is_seek = true;
+                            }
                         }
                     }
-                    last_emitted_offset = Some(offset_for_dedup);
-                    last_emit_time = now;
 
-                    let emit_offset = last_updated_ms - pos_ms;
-                    println!("Music activity: {:?}", MusicActivity::Seek(emit_offset));
-                    let _ = app.emit("music_activity", MusicActivity::Seek(emit_offset));
+                    if is_seek {
+                        last_emitted_state = Some((paused, offset_for_dedup));
+                        last_emit_time = now;
+
+                        let emit_offset = current_time_ms() - pos_ms;
+                        println!("Music activity: {:?}", MusicActivity::Seek(emit_offset));
+                        let _ = app.emit("music_activity", MusicActivity::Seek(emit_offset));
+                    } else if last_emitted_state.map(|(p, _)| p) != Some(paused) {
+                        last_emitted_state = Some((paused, offset_for_dedup));
+                    }
                 }
             }
         }

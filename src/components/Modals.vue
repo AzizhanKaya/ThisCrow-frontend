@@ -10,8 +10,11 @@
 	import Calling from '@/modals/Calling.vue';
 	import WatchParty from '@/modals/WatchParty.vue';
 	import ProfileCard from '@/modals/ProfileCard.vue';
+	import ServerInfo from '@/modals/ServerInfo.vue';
 	import ServerSettings from '@/modals/ServerSettings.vue';
 	import ChannelSettings from '@/modals/ChannelSettings.vue';
+	import EditMessage from '@/modals/EditMessage.vue';
+	import Confirm from '@/modals/Confirm.vue';
 
 	const modalStore = useModalStore();
 </script>
@@ -29,8 +32,11 @@
 			<Calling v-else-if="modalStore.view === ModalView.CALLING" />
 			<WatchParty v-else-if="modalStore.view === ModalView.WATCH_PARTY" />
 			<ProfileCard v-else-if="modalStore.view === ModalView.PROFILE_CARD" />
+			<ServerInfo v-else-if="modalStore.view === ModalView.SERVER_INFO" />
 			<ServerSettings v-else-if="modalStore.view === ModalView.SERVER_SETTINGS" />
 			<ChannelSettings v-else-if="modalStore.view === ModalView.CHANNEL_SETTINGS" />
+			<EditMessage v-else-if="modalStore.view === ModalView.EDIT_MESSAGE" />
+			<Confirm v-else-if="modalStore.view === ModalView.CONFIRM" />
 		</Transition>
 	</div>
 </template>

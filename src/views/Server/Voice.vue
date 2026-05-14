@@ -236,7 +236,12 @@
 			>
 				<Icon icon="streamline:film-slate-solid" />
 			</button>
-			<button v-else-if="appStore.isTauri && watchStore.inParty" class="control-btn is-active" title="Leave Watch Party" @click="watchStore.leaveParty()">
+			<button
+				v-else-if="appStore.isTauri && watchStore.inParty"
+				class="control-btn is-active"
+				title="Leave Watch Party"
+				@click="watchStore.leaveParty()"
+			>
 				<Icon icon="streamline:film-slate-solid" />
 			</button>
 			<button class="control-btn" :class="{ 'is-active': voiceStore.isVideoOn }" @click="voiceStore.toggleVideo()">

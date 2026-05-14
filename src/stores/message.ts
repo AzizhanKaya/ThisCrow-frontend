@@ -3,9 +3,8 @@ import { AckType, MessageType, type Message } from '@/types';
 import { websocketService } from '@/services/websocket';
 import { useMeStore } from './me';
 import { useErrorStore } from './error';
-import { fetchMessages } from '@/api/message';
-import type { Ack, id } from '@/types';
-import { snowflake_to_date } from '@/utils/snowflake';
+import { fetchMessages, fetchMessage } from '@/api/message';
+import type { Ack, id, snowflake_id } from '@/types';
 
 export type ChatTarget = { kind: 'user'; user_id: id } | { kind: 'channel'; channel_id: id; group_id: id };
 
@@ -45,6 +44,7 @@ export const useMessageStore = defineStore('message', {
 		messages: new Map<string, Message[]>(),
 		loadingChats: new Map<string, boolean>(),
 		hasMore: new Map<string, boolean>(),
+		isolatedMessages: new Map<snowflake_id, Message>(),
 	}),
 
 	getters: {
@@ -58,6 +58,7 @@ export const useMessageStore = defineStore('message', {
 			this.messages = new Map();
 			this.loadingChats = new Map();
 			this.hasMore = new Map();
+			this.isolatedMessages = new Map();
 			websocketService.onMessage(MessageType.Direct, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Group, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Server, this.handleAck);
@@ -75,39 +76,108 @@ export const useMessageStore = defineStore('message', {
 
 		async handleAck(message: Message<Ack>) {
 			const { ack, payload } = message.data;
-			if (ack == AckType.Received) {
-				const key = message.from
-					? chatKey({ kind: 'channel', channel_id: message.to, group_id: message.from })
-					: chatKey({ kind: 'user', user_id: message.to });
-				const messages = this.messages.get(key);
-				if (!messages) return;
+			switch (ack) {
+				case AckType.Received: {
+					const key = message.from
+						? chatKey({ kind: 'channel', channel_id: message.to, group_id: message.from })
+						: chatKey({ kind: 'user', user_id: message.to });
+					const messages = this.messages.get(key);
+					if (!messages) return;
 
-				const idx = messages.findIndex((m) => m.id === payload);
-				if (idx !== -1) {
-					const msg = messages[idx];
-					msg.id = message.id;
-					const next = messages[idx + 1];
-					const prev = messages[idx - 1];
-					if ((next && next.id < msg.id) || (prev && prev.id > msg.id)) {
-						messages.splice(idx, 1);
-						insertSorted(messages, msg);
+					const idx = messages.findIndex((m) => m.id === payload);
+					if (idx !== -1) {
+						const msg = messages[idx];
+						msg.id = message.id;
+						const next = messages[idx + 1];
+						const prev = messages[idx - 1];
+						if ((next && next.id < msg.id) || (prev && prev.id > msg.id)) {
+							messages.splice(idx, 1);
+							insertSorted(messages, msg);
+						}
 					}
+					break;
 				}
-			} else if (ack == AckType.Overwritten) {
-				const updated = payload as Message;
-				const key = this.getChatKey(updated);
-				const messages = this.messages.get(key);
-				if (!messages) return;
+				case AckType.Deleted: {
+					const deletedId = payload as snowflake_id;
+					for (const messages of this.messages.values()) {
+						const idx = messages.findIndex((m) => m.id === deletedId);
+						if (idx !== -1) {
+							messages.splice(idx, 1);
+							break;
+						}
+					}
+					this.isolatedMessages.delete(deletedId);
+					break;
+				}
+				case AckType.Overwritten: {
+					const updated = payload as Message;
+					const key = this.getChatKey(updated);
+					const messages = this.messages.get(key);
+					if (!messages) return;
 
-				const idx = messages.findIndex((m) => m.id === updated.id);
-				if (idx !== -1) {
-					messages[idx] = { ...messages[idx], ...updated };
+					const idx = messages.findIndex((m) => m.id === updated.id);
+					if (idx !== -1) {
+						messages[idx] = { ...messages[idx], ...updated };
+					}
+					break;
 				}
 			}
 		},
 
 		getMessages(target: ChatTarget) {
 			return this.messages.get(chatKey(target));
+		},
+
+		async findMessage(target: ChatTarget, id: snowflake_id): Promise<Message | undefined> {
+			const key = chatKey(target);
+			const arr = this.messages.get(key);
+			if (arr) {
+				const m = arr.find((x) => x.id === id);
+				if (m) return m;
+			}
+			const isolated = this.isolatedMessages.get(id);
+			if (isolated) return isolated;
+
+			const fetched = await fetchMessage(id);
+			if (!fetched) return undefined;
+			
+			this.isolatedMessages.set(id, fetched);
+			return fetched;
+		},
+
+		async loadMessagesUntil(target: ChatTarget, untilId: snowflake_id): Promise<void> {
+			const key = chatKey(target);
+			const isChannel = target.kind === 'channel';
+			const fromId = isChannel ? target.channel_id : target.user_id;
+			const groupId = isChannel ? target.group_id : undefined;
+			const BATCH = 50;
+
+			let arr = this.messages.get(key);
+			if (!arr || arr.length === 0) return;
+
+			if (arr.some((m) => m.id === untilId)) return;
+
+			while (true) {
+				const currentOldest = arr[0];
+
+				if (currentOldest.id <= untilId) {
+					break;
+				}
+
+				const batch = await fetchMessages({
+					from: fromId,
+					group_id: groupId,
+					before: currentOldest.id,
+					len: BATCH,
+				});
+
+				if (!batch || batch.length === 0) break;
+
+				this.messages.set(key, mergeUnique(arr, batch));
+				arr = this.messages.get(key)!;
+
+				if (batch.length < BATCH) break;
+			}
 		},
 
 		sendMessage(message: Message) {
@@ -151,12 +221,13 @@ export const useMessageStore = defineStore('message', {
 			const oldMessages = await fetchMessages({
 				from: isChannel ? target.channel_id : target.user_id,
 				group_id: isChannel ? target.group_id : undefined,
-				end: snowflake_to_date(oldestMessage.id),
+				before: oldestMessage.id,
 				len: 50,
 			});
 
 			if (oldMessages?.length) {
 				this.messages.set(key, mergeUnique(oldMessages, currentMessages));
+				this.hasMore.set(key, oldMessages.length >= 50);
 			} else {
 				this.hasMore.set(key, false);
 			}
@@ -165,24 +236,22 @@ export const useMessageStore = defineStore('message', {
 
 		async initChat(target: ChatTarget) {
 			const key = chatKey(target);
-			if (this.hasMore.has(key) || this.loadingChats.get(key)) return;
+			if (this.loadingChats.get(key)) return;
+			if (this.hasMore.get(key) !== undefined && this.messages.has(key)) return;
 			this.loadingChats.set(key, true);
-
-			const oldestMessageId = this.messages.get(key)?.[0]?.id;
-			const oldest_date = oldestMessageId ? snowflake_to_date(oldestMessageId) : undefined;
 
 			const isChannel = target.kind === 'channel';
 
 			const msgs = await fetchMessages({
 				from: isChannel ? target.channel_id : target.user_id,
 				group_id: isChannel ? target.group_id : undefined,
-				end: oldest_date || new Date(),
+				len: 50,
 			});
 
 			const current = this.messages.get(key) || [];
 			this.messages.set(key, mergeUnique(msgs, current));
 			this.loadingChats.set(key, false);
-			this.hasMore.set(key, msgs.length > 0);
+			this.hasMore.set(key, msgs.length >= 50);
 		},
 	},
 });

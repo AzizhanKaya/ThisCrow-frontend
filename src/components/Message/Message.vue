@@ -1,11 +1,14 @@
 <script setup lang="ts">
 	import { computed, type PropType, ref, onBeforeUnmount, watch } from 'vue';
-	import type { CallData, Message, MessageData, MultiData, User } from '@/types';
+	import { computedAsync } from '@vueuse/core';
+	import type { CallData, Message, MessageData, MultiData, ReplyData, User, snowflake_id } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import { get_timestamp_from_snowflake, is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
 	import { decrypt_message } from '@/../pkg/wasm_lib';
 	import { decode } from '@/utils/msgpack';
 	import { getDefaultAvatar } from '@/utils/avatar';
+	import { summarizeMessageData } from '@/utils/messagePreview';
+	import { useUserStore } from '@/stores/user';
 
 	const props = defineProps({
 		message: {
@@ -20,7 +23,17 @@
 			type: Object as PropType<Uint8Array | null | undefined>,
 			required: false,
 		},
+		repliedLookup: {
+			type: Function as PropType<(id: snowflake_id) => Promise<Message | undefined>>,
+			required: false,
+		},
+		color: {
+			type: String,
+			required: false,
+		},
 	});
+
+	const userStore = useUserStore();
 
 	const message = $computed(() => {
 		if (props.privateKey === undefined) return;
@@ -49,9 +62,18 @@
 		return undefined;
 	});
 
-	const multiData = $computed<MultiData | undefined>(() => {
+	const replyData = $computed<ReplyData | undefined>(() => {
 		const data = message?.data;
-		if (data && typeof data === 'object' && !('end_time' in data) && !('cipher' in data)) {
+		if (data && typeof data === 'object' && 'replied' in data && 'data' in data) {
+			return data as ReplyData;
+		}
+		return undefined;
+	});
+
+	const multiData = $computed<MultiData | undefined>(() => {
+		if (replyData) return replyData.data;
+		const data = message?.data;
+		if (data && typeof data === 'object' && !('end_time' in data) && !('cipher' in data) && !('replied' in data)) {
 			return data as MultiData;
 		}
 		return undefined;
@@ -67,6 +89,22 @@
 		}
 		return undefined;
 	});
+
+	const repliedPreview = $(
+		computedAsync(async () => {
+			if (!replyData || !props.repliedLookup) {
+				return null;
+			}
+			const original = await props.repliedLookup(replyData.replied);
+			if (!original) {
+				return { user: undefined, snippet: '(message unavailable)' };
+			}
+			return {
+				user: userStore.users.get(original.from),
+				snippet: summarizeMessageData(original.data, props.privateKey ?? undefined),
+			};
+		}, null)
+	);
 
 	function formatCallDuration(ms: number): string {
 		const total = Math.max(0, Math.floor(ms / 1000));
@@ -106,12 +144,17 @@
 				callTimer = null;
 			}
 		},
-		{ immediate: true },
+		{ immediate: true }
 	);
 
 	const emit = defineEmits<{
 		(e: 'open-profile', payload: { user: User; x: number; y: number }): void;
+		(e: 'scroll-to', id: snowflake_id): void;
 	}>();
+
+	function onReplyClick() {
+		if (replyData) emit('scroll-to', replyData.replied);
+	}
 
 	function openProfileCard(e: MouseEvent) {
 		if (!props.user) return;
@@ -172,9 +215,28 @@
 		if (['mp4', 'mkv', 'mov', 'avi', 'webm', 'wmv'].includes(ext)) return 'mdi:file-video';
 		if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'mdi:file-image';
 		if (
-			['js', 'ts', 'tsx', 'jsx', 'rs', 'py', 'go', 'java', 'c', 'cpp', 'h', 'cs', 'rb', 'php', 'sh', 'json', 'xml', 'html', 'css', 'vue'].includes(
-				ext,
-			)
+			[
+				'js',
+				'ts',
+				'tsx',
+				'jsx',
+				'rs',
+				'py',
+				'go',
+				'java',
+				'c',
+				'cpp',
+				'h',
+				'cs',
+				'rb',
+				'php',
+				'sh',
+				'json',
+				'xml',
+				'html',
+				'css',
+				'vue',
+			].includes(ext)
 		)
 			return 'mdi:file-code';
 		if (['txt', 'md', 'log'].includes(ext)) return 'mdi:file-document';
@@ -193,10 +255,16 @@
 
 		<div class="content">
 			<div v-if="user" class="message-header">
-				<span class="name" @click.stop="openProfileCard($event)">{{ user.name }}</span>
+				<span class="name" :style="props.color ? { color: props.color } : undefined" @click.stop="openProfileCard($event)">{{ user.name }}</span>
 				<span class="time-header">
 					{{ snowflake_to_date(props.message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
+			</div>
+
+			<div v-if="repliedPreview" class="reply-preview" @click.stop="onReplyClick">
+				<Icon icon="mdi:reply" class="reply-preview-icon" />
+				<span class="reply-preview-user" v-if="repliedPreview.user">@{{ repliedPreview.user.username }}</span>
+				<span class="reply-preview-snippet">{{ repliedPreview.snippet }}</span>
 			</div>
 
 			<div class="data">
@@ -214,13 +282,7 @@
 				</div>
 
 				<div v-if="multiData?.images" class="media-container">
-					<img
-						v-for="img in multiData.images"
-						:key="img"
-						:src="img"
-						class="image"
-						@click="openLightbox(img)"
-					/>
+					<img v-for="img in multiData.images" :key="img" :src="img" class="image" @click="openLightbox(img)" />
 				</div>
 
 				<div v-if="multiData?.videos" class="media-container">
@@ -234,12 +296,7 @@
 						</div>
 
 						<div class="file-info">
-							<a
-								:href="file.url"
-								target="_blank"
-								rel="noopener noreferrer"
-								class="file-name"
-							>
+							<a :href="file.url" target="_blank" rel="noopener noreferrer" class="file-name">
 								{{ file.name }}
 							</a>
 							<span class="file-meta">
@@ -261,9 +318,10 @@
 					</div>
 				</div>
 
-				<span v-if="messageText" class="text" :class="{ sent: is_sent_from_snowflake(props.message.id) }">
-					{{ messageText }}
-				</span>
+				<div v-if="messageText || message?.overwrited" class="text-content">
+					<span v-if="messageText" class="text" :class="{ sent: is_sent_from_snowflake(props.message.id) }">{{ messageText }}</span>
+					<span v-if="message?.overwrited" class="edited-indicator">(edited)</span>
+				</div>
 
 				<span class="time">
 					{{ snowflake_to_date(props.message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
@@ -345,6 +403,48 @@
 		padding-right: 50px;
 	}
 
+	.reply-preview {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		margin-bottom: 2px;
+		padding-left: 4px;
+		border-left: 2px solid var(--border);
+		max-width: 100%;
+		overflow: hidden;
+		cursor: pointer;
+		transition: color 0.15s ease;
+	}
+
+	.reply-preview:hover {
+		color: var(--text-secondary);
+	}
+
+	.reply-preview:hover .reply-preview-snippet {
+		color: var(--text);
+	}
+
+	.reply-preview-icon {
+		font-size: 0.95rem;
+		color: var(--color-lighter);
+		flex-shrink: 0;
+	}
+
+	.reply-preview-user {
+		color: var(--text-secondary);
+		font-weight: 600;
+		flex-shrink: 0;
+	}
+
+	.reply-preview-snippet {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
 	.data:hover .time {
 		opacity: 1;
 	}
@@ -370,6 +470,14 @@
 		word-break: break-word;
 		-webkit-user-select: text;
 		user-select: text;
+		white-space: pre-wrap;
+	}
+
+	.edited-indicator {
+		font-size: 0.72rem;
+		color: var(--text-muted, #949ba4);
+		margin-left: 4px;
+		user-select: none;
 	}
 
 	.sent {
@@ -444,7 +552,9 @@
 		border-radius: 8px;
 		max-width: 420px;
 		min-width: 0;
-		transition: background-color 0.15s ease, border-color 0.15s ease;
+		transition:
+			background-color 0.15s ease,
+			border-color 0.15s ease;
 	}
 
 	.file-item:hover {
@@ -501,7 +611,9 @@
 		color: var(--text-secondary);
 		font-size: 1.25rem;
 		text-decoration: none;
-		transition: background-color 0.15s ease, color 0.15s ease;
+		transition:
+			background-color 0.15s ease,
+			color 0.15s ease;
 	}
 
 	.file-download:hover {
@@ -520,7 +632,10 @@
 		max-width: 340px;
 		margin: 4px 0;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-		transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+		transition:
+			transform 0.18s ease,
+			box-shadow 0.18s ease,
+			border-color 0.18s ease;
 	}
 
 	.call-card:hover {
@@ -554,7 +669,9 @@
 	.call-card.ongoing .call-icon {
 		background: linear-gradient(135deg, hsl(141, 55%, 42%), hsl(141, 55%, 32%));
 		color: #fff;
-		box-shadow: 0 0 0 4px hsla(141, 55%, 45%, 0.18), inset 0 0 0 1px hsla(141, 55%, 60%, 0.4);
+		box-shadow:
+			0 0 0 4px hsla(141, 55%, 45%, 0.18),
+			inset 0 0 0 1px hsla(141, 55%, 60%, 0.4);
 	}
 
 	.call-card.ended .call-icon {

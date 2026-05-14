@@ -1,11 +1,22 @@
 <script setup lang="ts">
-	import { ref, onMounted, onBeforeUnmount } from 'vue';
+	import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
+	import { computedAsync } from '@vueuse/core';
 	import { Icon } from '@iconify/vue';
-	import { type Message as MessageType, MessageType as MessageEnum, type id, type User, type MessageData } from '@/types';
+	import {
+		type Message as MessageType,
+		MessageType as MessageEnum,
+		type id,
+		type User,
+		type MessageData,
+		type MultiData,
+		type snowflake_id,
+	} from '@/types';
 	import { useFiles } from '@/composables/useFiles';
-	import { useMessageStore } from '@/stores/message';
+	import { useMessageStore, type ChatTarget } from '@/stores/message';
 	import { useMeStore } from '@/stores/me';
+	import { useUserStore } from '@/stores/user';
 	import { useKeyStore } from '@/stores/key';
+	import { summarizeMessageData } from '@/utils/messagePreview';
 	import { generate_snowflake } from '@/utils/snowflake';
 	import { generate_nonce, encrypt_message } from '@/../pkg/wasm_lib';
 	import { encode } from '@/utils/msgpack';
@@ -14,11 +25,46 @@
 		to: id;
 		group_id?: id;
 		type: MessageEnum;
+		replyTo?: snowflake_id | null;
+	}>();
+
+	const emit = defineEmits<{
+		(e: 'clear-reply'): void;
 	}>();
 
 	const messageStore = useMessageStore();
 	const meStore = useMeStore();
+	const userStore = useUserStore();
 	const keyStore = useKeyStore();
+
+	const chatTarget = $computed<ChatTarget>(() =>
+		props.group_id ? { kind: 'channel', channel_id: props.to, group_id: props.group_id } : { kind: 'user', user_id: props.to }
+	);
+
+	const repliedPreview = $(
+		computedAsync(async () => {
+			if (props.replyTo == null) return null;
+
+			const msg = await messageStore.findMessage(chatTarget, props.replyTo);
+			if (!msg) {
+				return { user: null, snippet: '(message unavailable)' };
+			}
+
+			let privateKey: Uint8Array | null = null;
+			if (!props.group_id) {
+				try {
+					privateKey = await keyStore.get_private_key(props.to);
+				} catch {
+					privateKey = null;
+				}
+			}
+
+			return {
+				user: (await userStore.getUser(msg.from)) ?? null,
+				snippet: summarizeMessageData(msg.data, privateKey),
+			};
+		}, null)
+	);
 
 	const input = ref('');
 
@@ -120,6 +166,11 @@
 							}),
 						};
 
+			if (props.replyTo != null) {
+				const inner: MultiData = typeof messageData === 'string' ? { text: messageData } : (messageData as MultiData);
+				messageData = { replied: props.replyTo, data: inner };
+			}
+
 			if (!props.group_id) {
 				const privateKey = await keyStore.get_private_key(props.to);
 				const nonce = generate_nonce();
@@ -141,9 +192,14 @@
 			input.value = '';
 
 			clearFiles();
+			if (props.replyTo != null) emit('clear-reply');
 		} finally {
 			sending = false;
 		}
+	}
+
+	function cancelReply() {
+		emit('clear-reply');
 	}
 
 	function onPlus() {
@@ -168,6 +224,20 @@
 
 	<div class="input-area">
 		<div class="input-container">
+			<div v-if="replyTo != null" class="reply-banner">
+				<div class="reply-accent"></div>
+				<Icon icon="mdi:reply" class="reply-icon" />
+				<div class="reply-text">
+					<div class="reply-header">
+						<span class="reply-label">Replying to</span>
+						<span class="reply-username">@{{ repliedPreview?.user?.username ?? '…' }}</span>
+					</div>
+					<div class="reply-snippet">{{ repliedPreview?.snippet || '…' }}</div>
+				</div>
+				<button class="reply-close" @click="cancelReply" aria-label="Cancel reply" title="Cancel reply">
+					<Icon icon="mdi:close" />
+				</button>
+			</div>
 			<div v-if="hasSelectedFiles" class="file-previews">
 				<div v-for="(img, index) in selectedFiles.images" :key="img.id" class="preview-item">
 					<img :src="img.url" class="preview-image" :class="{ 'is-uploading': img.uploading }" />
@@ -194,16 +264,8 @@
 					</button>
 				</div>
 				<div v-for="(file, index) in selectedFiles.files" :key="file.id" class="preview-item file-preview">
-					<Icon
-						v-if="file.uploading"
-						icon="mdi:loading"
-						class="spinner file-status-icon"
-					/>
-					<Icon
-						v-else-if="file.failed"
-						icon="mdi:alert-circle"
-						class="file-status-icon error"
-					/>
+					<Icon v-if="file.uploading" icon="mdi:loading" class="spinner file-status-icon" />
+					<Icon v-else-if="file.failed" icon="mdi:alert-circle" class="file-status-icon error" />
 					<Icon v-else icon="mdi:file" class="file-status-icon" />
 					<div class="file-info">
 						<span class="file-name">{{ file.name }}</span>
@@ -269,6 +331,97 @@
 		gap: 8px;
 		border-bottom: 1px solid #303030;
 		color: white;
+	}
+
+	.reply-banner {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 12px 8px 14px;
+		border-bottom: 1px solid #303030;
+		color: var(--text-muted);
+		font-size: 0.85rem;
+	}
+
+	.reply-accent {
+		position: absolute;
+		left: 0;
+		top: 6px;
+		bottom: 6px;
+		width: 3px;
+		background: var(--color-lighter);
+		border-radius: 0 2px 2px 0;
+	}
+
+	.reply-icon {
+		font-size: 1.1rem;
+		color: var(--color-lighter);
+		flex-shrink: 0;
+		transform: scaleX(-1);
+	}
+
+	.reply-text {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		flex: 1;
+		min-width: 0;
+		line-height: 1.25;
+	}
+
+	.reply-header {
+		display: flex;
+		align-items: baseline;
+		gap: 5px;
+		min-width: 0;
+	}
+
+	.reply-label {
+		color: var(--text-muted);
+		font-size: 0.78rem;
+	}
+
+	.reply-username {
+		color: var(--text);
+		font-weight: 600;
+		font-size: 0.85rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-width: 0;
+	}
+
+	.reply-snippet {
+		color: var(--text-secondary);
+		font-size: 0.8rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
+	.reply-close {
+		background: none;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		font-size: 1.1rem;
+		border-radius: 6px;
+		flex-shrink: 0;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
+	}
+
+	.reply-close:hover {
+		color: var(--text);
+		background: var(--bg-light);
 	}
 
 	.preview-item {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 	import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-	import type { User, Activity } from '@/types';
+	import type { User, Activity, Role } from '@/types';
 	import { Status } from '@/types';
 	import { useMeStore } from '@/stores/me';
 	import { useFriendStore } from '@/stores/friend';
@@ -11,10 +11,16 @@
 
 	const props = defineProps<{
 		user: User;
+		roles?: Role[];
 		show?: boolean;
 		x?: number;
 		y?: number;
 	}>();
+
+	const sortedRoles = computed(() => {
+		if (!props.roles || props.roles.length === 0) return undefined;
+		return [...props.roles].sort((a, b) => b.position - a.position);
+	});
 
 	const emit = defineEmits<{
 		(e: 'close'): void;
@@ -71,7 +77,7 @@
 	const hasActivities = computed(() => {
 		const acts = user.value.activities;
 		if (!acts) return false;
-		return Object.keys(acts).length > 0;
+		return !!(acts.game || acts.music || acts.watching || acts.streaming);
 	});
 
 	const getMusicProgress = (activity: any) => {
@@ -235,6 +241,16 @@
 						<div class="mutual-row">
 							<Icon icon="mdi:server" class="mutual-icon" />
 							<span>{{ mutualServersCount }} Servers</span>
+						</div>
+					</div>
+
+					<div v-if="sortedRoles" class="roles-section">
+						<h3 class="section-title">Roles</h3>
+						<div class="roles-list">
+							<span v-for="role in sortedRoles" :key="role.id" class="role-badge" :style="{ '--role-color': role.color }">
+								<span class="role-dot"></span>
+								{{ role.name }}
+							</span>
 						</div>
 					</div>
 				</div>
@@ -462,6 +478,7 @@
 		border-radius: 8px;
 		padding: 12px;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
@@ -513,6 +530,41 @@
 
 	.mutual-icon {
 		font-size: 0.95rem;
+	}
+
+	.roles-section {
+		width: 100%;
+		background-color: var(--bg-darker);
+		margin-top: 4px;
+		padding: 10px;
+		border-radius: 6px;
+	}
+
+	.roles-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.role-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 8px;
+		border-radius: 4px;
+		background-color: var(--bg-darker);
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text);
+		border: 1px solid color-mix(in srgb, var(--role-color) 40%, transparent);
+	}
+
+	.role-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background-color: var(--role-color);
+		flex-shrink: 0;
 	}
 
 	.activities-section {

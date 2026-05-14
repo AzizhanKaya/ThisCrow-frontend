@@ -27,11 +27,13 @@ export const useUserStore = defineStore('user', {
 				}
 			});
 		},
+
 		init(me: Me) {
 			this.users = new Map();
 			this.setUser(me);
 			this.setupListeners();
 		},
+
 		setUser(user: User) {
 			const existing = this.users.get(user.id);
 			if (existing) {
@@ -40,13 +42,9 @@ export const useUserStore = defineStore('user', {
 				this.users.set(user.id, user);
 			}
 		},
+
 		setUsers(users: User[]) {
 			users.forEach((user) => this.setUser(user));
-		},
-
-		async fetchUsers(ids: id[]) {
-			const users = await fetchUsers(ids);
-			this.setUsers(users);
 		},
 
 		async getUsers(ids: id[]): Promise<User[]> {
