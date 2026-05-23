@@ -216,6 +216,14 @@ export const useVoiceStore = defineStore('voice', {
 
 			const to = user?.id || channel?.id;
 
+			webrtcService.onPeerLost = (lostId: id) => {
+				const stillInChannel = !!this.voice_channel?.users && Array.from(this.voice_channel.users).some((u) => u.id === lostId);
+				const stillInDirect = this.voice_direct?.id === lostId;
+				if (stillInChannel || stillInDirect) {
+					webrtcService.connectPeers([lostId]).catch((e) => console.error('Reconnect failed', e));
+				}
+			};
+
 			const audioReady = webrtcService.addTrack(MediaType.Audio).catch((e) => {
 				console.error('Mic error during join:', e);
 				return null;
@@ -235,7 +243,7 @@ export const useVoiceStore = defineStore('voice', {
 			} catch (e) {
 				console.error(e);
 				useErrorStore().pushFrom(e, 'Failed to join voice channel.');
-				webrtcService.disconnectAll();
+				await webrtcService.disconnectAll();
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;
@@ -272,8 +280,17 @@ export const useVoiceStore = defineStore('voice', {
 							removedIds.forEach((id) => webrtcService.removePeerConnection(id));
 						}
 					},
-					{ immediate: true, deep: true }
+					{ deep: true }
 				);
+
+				const initialPeers = channel.users
+					? Array.from(channel.users)
+							.map((u) => u.id)
+							.filter((id) => id !== me.id)
+					: [];
+				if (initialPeers.length > 0) {
+					await webrtcService.connectPeers(initialPeers);
+				}
 			}
 
 			if (user) {
@@ -289,9 +306,10 @@ export const useVoiceStore = defineStore('voice', {
 						if (newUser) {
 							await webrtcService.connectPeers([newUser.id]);
 						}
-					},
-					{ immediate: true }
+					}
 				);
+
+				await webrtcService.connectPeers([user.id]);
 			}
 		},
 
@@ -328,7 +346,8 @@ export const useVoiceStore = defineStore('voice', {
 			} catch (e) {
 				console.error(e);
 			} finally {
-				webrtcService.disconnectAll();
+				webrtcService.onPeerLost = undefined;
+				await webrtcService.disconnectAll();
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;

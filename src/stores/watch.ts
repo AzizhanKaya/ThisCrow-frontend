@@ -11,7 +11,6 @@ import { useServerStore } from './server.ts';
 type PlayerEvent = {
 	type: 'Player';
 	kind: 'play' | 'pause' | 'seek' | 'ratechange' | 'buffering' | 'ended' | 'watch' | 'heartbeat';
-	seq_local: number;
 	offset?: number;
 	paused?: boolean;
 	video_id?: number;
@@ -43,7 +42,6 @@ export const useWatchStore = defineStore('watch', {
 	actions: {
 		async setupListeners() {
 			await listen('watch_party_closed', () => {
-				if (!this.inParty) return;
 				this.browser_open = false;
 				this.leaveParty().catch((e) => console.error('[WatchParty] leaveParty', e));
 			});
@@ -147,12 +145,12 @@ export const useWatchStore = defineStore('watch', {
 			modalStore.openModal(ModalView.WATCH_PARTY, { server_id, channel_id });
 		},
 
-		joinParty(group_id: id, channel_id: id) {
+		async joinParty(group_id: id, channel_id: id) {
 			this.group_id = group_id;
 			this.channel_id = channel_id;
 			this.browser_open = true;
 			const meStore = useMeStore();
-			websocketService.sendMessage({
+			return websocketService.sendMessage({
 				id: generate_uid(meStore.me!.id),
 				from: 0,
 				to: channel_id,

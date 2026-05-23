@@ -1,4 +1,4 @@
-import { type Message, type User, MessageType, type id, type snowflake_id, type MessageData } from '@/types';
+import { type Message, type User, MessageType, type id, type snowflake_id, type MessageData, type Reaction } from '@/types';
 import { API_URL } from '@/constants';
 import { msgFetch, encode, decode } from '@/utils/msgpack';
 import { useKeyStore } from '@/stores/key';
@@ -51,6 +51,12 @@ export function deleteMessage(message_id: snowflake_id): Promise<void> {
 	return msgFetch(API_URL + '/message/delete', {
 		method: 'POST',
 		body: encode(message_id),
+		credentials: 'include',
+	});
+}
+
+export function fetchReactions(message_id: snowflake_id): Promise<Reaction[]> {
+	return msgFetch<Reaction[]>(`${API_URL}/message/${message_id.toString()}/reactions`, {
 		credentials: 'include',
 	});
 }

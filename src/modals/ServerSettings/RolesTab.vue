@@ -1,10 +1,11 @@
 <script setup lang="ts">
-	import { ref, computed, watch } from 'vue';
+	import { ref, computed, watch, onMounted } from 'vue';
 	import { useServerStore } from '@/stores/server';
 	import { Icon } from '@iconify/vue';
 	import draggable from 'vuedraggable';
 	import type { Role, id } from '@/types';
 	import { Permissions } from '@/types';
+	import { fetchRolePermissions } from '@/api/permissions';
 
 	const props = defineProps<{
 		serverId: id;
@@ -13,6 +14,32 @@
 	const serverStore = useServerStore();
 
 	const server = computed(() => serverStore.getServerById(props.serverId));
+
+	onMounted(async () => {
+		try {
+			const data = await fetchRolePermissions(props.serverId);
+			const permsMap = new Map<id, number>(Object.entries(data.roles).map(([k, v]) => [Number(k) as id, v]));
+
+			if (server.value) {
+				server.value.everyone = data.everyone;
+				if (server.value.roles) {
+					for (const [id, perms] of permsMap) {
+						const role = server.value.roles.get(id);
+						if (role) {
+							role.permissions = perms;
+						}
+					}
+				}
+			}
+		} catch (err) {
+			console.error('Failed to load role permissions', err);
+		}
+	});
+
+	function rolePermFor(role_id: id): number {
+		if (role_id === 0) return server.value?.everyone ?? 0;
+		return server.value?.roles?.get(role_id)?.permissions ?? 0;
+	}
 
 	const PERMISSION_FLAGS = [
 		{ label: 'Administrator', bit: Permissions.ADMINISTRATOR, description: 'Full access to everything', category: 'Core' },
@@ -60,13 +87,17 @@
 		name: 'everyone',
 		color: '#ffffff',
 		position: -1,
-		permissions: server.value?.everyone ?? 0,
 	}));
 
 	const roles = computed<Role[]>(() => [...roleList.value, everyoneRole.value]);
 
 	watch(
-		() => (server.value?.roles ? Array.from(server.value.roles.keys()).sort().join(',') : ''),
+		() =>
+			server.value?.roles
+				? Array.from(server.value.roles.values())
+						.map((r) => `${r.id}:${r.position}`)
+						.join(',')
+				: '',
 		() => {
 			if (isDragging.value) return;
 			roleList.value = server.value?.roles ? Array.from(server.value.roles.values()).sort((a, b) => b.position - a.position) : [];
@@ -92,40 +123,100 @@
 
 	const selectedRoleId = ref<number | null>(null);
 	const selectedRole = computed(() => roles.value.find((r) => r.id === selectedRoleId.value) ?? null);
-	const editRoleName = ref('');
-	const editRoleColor = ref('#5865f2');
-	const editRolePermissions = ref(0);
 
 	const newRoleColor = ref('#5865f2');
 
 	const isEveryoneSelected = computed(() => selectedRoleId.value === 0);
 
+	// Snapshot of the last saved server state for the selected role. Used only as a
+	// diff anchor for the save bar. Tracks the store live when the user hasn't touched
+	// anything (so incoming WS acks don't falsely trigger the save bar); freezes once
+	// the user dirties the form, until save or selection change.
+	const savedSnapshot = ref<{ name: string; color: string; permissions: number } | null>(null);
+	const isDirty = ref(false);
+
+	function snapshotCurrent() {
+		if (selectedRole.value) {
+			savedSnapshot.value = {
+				name: selectedRole.value.name,
+				color: selectedRole.value.color,
+				permissions: rolePermFor(selectedRole.value.id),
+			};
+		} else {
+			savedSnapshot.value = null;
+		}
+	}
+
+	watch(
+		selectedRoleId,
+		() => {
+			isDirty.value = false;
+			snapshotCurrent();
+		},
+		{ immediate: true }
+	);
+
+	// Mirror external (WS ack) mutations into the snapshot while the form is clean,
+	// so the save bar only reflects the user's own pending edits.
+	watch(
+		() => selectedRole.value && [selectedRole.value.name, selectedRole.value.color, rolePermFor(selectedRole.value.id)],
+		() => {
+			if (!isDirty.value) snapshotCurrent();
+		}
+	);
+
+	function currentPermissions(): number {
+		if (!selectedRole.value) return 0;
+		return rolePermFor(selectedRole.value.id);
+	}
+
+	const editRoleName = computed({
+		get: () => selectedRole.value?.name ?? '',
+		set: (v) => {
+			if (selectedRole.value && selectedRole.value.id !== 0) {
+				selectedRole.value.name = v;
+				isDirty.value = true;
+			}
+		},
+	});
+
+	const editRoleColor = computed({
+		get: () => selectedRole.value?.color ?? '#5865f2',
+		set: (v) => {
+			if (selectedRole.value && selectedRole.value.id !== 0) {
+				selectedRole.value.color = v;
+				isDirty.value = true;
+			}
+		},
+	});
+
 	const hasRoleChanges = computed(() => {
-		if (!selectedRole.value) return false;
+		if (!selectedRole.value || !savedSnapshot.value) return false;
+		const snap = savedSnapshot.value;
 		if (isEveryoneSelected.value) {
-			return editRolePermissions.value !== (selectedRole.value.permissions ?? 0);
+			return currentPermissions() !== snap.permissions;
 		}
 		return (
-			editRoleName.value !== selectedRole.value.name ||
-			editRoleColor.value !== selectedRole.value.color ||
-			editRolePermissions.value !== (selectedRole.value.permissions ?? 0)
+			selectedRole.value.name !== snap.name ||
+			selectedRole.value.color !== snap.color ||
+			currentPermissions() !== snap.permissions
 		);
 	});
 
-	watch(selectedRole, (role) => {
-		if (role) {
-			editRoleName.value = role.name;
-			editRoleColor.value = role.color;
-			editRolePermissions.value = role.permissions ?? 0;
-		}
-	});
-
 	function hasPermission(bit: number) {
-		return (editRolePermissions.value & bit) !== 0;
+		return (currentPermissions() & bit) !== 0;
 	}
 
 	function togglePermission(bit: number) {
-		editRolePermissions.value ^= bit;
+		if (!selectedRole.value || !server.value) return;
+		const newPerms = currentPermissions() ^ bit;
+		if (selectedRole.value.id === 0) {
+			server.value.everyone = newPerms;
+		} else {
+			const role = server.value.roles?.get(selectedRole.value.id);
+			if (role) role.permissions = newPerms;
+		}
+		isDirty.value = true;
 	}
 
 	const isSaving = ref(false);
@@ -144,18 +235,18 @@
 	}
 
 	async function saveRole() {
-		if (!props.serverId || selectedRoleId.value === null || !selectedRole.value) return;
+		if (!props.serverId || selectedRoleId.value === null || !selectedRole.value || !savedSnapshot.value) return;
 		const role = selectedRole.value;
+		const snap = savedSnapshot.value;
+		const curPerms = currentPermissions();
 		const fields: { name?: string; color?: string; permissions?: number } = {};
 
 		if (isEveryoneSelected.value) {
-			if (editRolePermissions.value !== (role.permissions ?? 0)) {
-				fields.permissions = editRolePermissions.value;
-			}
+			if (curPerms !== snap.permissions) fields.permissions = curPerms;
 		} else {
-			if (editRoleName.value !== role.name) fields.name = editRoleName.value;
-			if (editRoleColor.value !== role.color) fields.color = editRoleColor.value;
-			if (editRolePermissions.value !== (role.permissions ?? 0)) fields.permissions = editRolePermissions.value;
+			if (role.name !== snap.name) fields.name = role.name;
+			if (role.color !== snap.color) fields.color = role.color;
+			if (curPerms !== snap.permissions) fields.permissions = curPerms;
 		}
 
 		if (Object.keys(fields).length === 0) return;
@@ -163,6 +254,8 @@
 		isSaving.value = true;
 		try {
 			await serverStore.updateRole(props.serverId, selectedRoleId.value, fields);
+			isDirty.value = false;
+			snapshotCurrent();
 		} finally {
 			isSaving.value = false;
 		}

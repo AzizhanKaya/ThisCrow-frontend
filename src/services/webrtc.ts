@@ -4,6 +4,7 @@ import { useMeStore } from '@/stores/me';
 import { useVoiceStore } from '@/stores/voice';
 import type { User, id } from '@/types';
 import { generate_uid } from '@/utils/uid';
+import { ICE_SERVERS, ICE_TRANSPORT_POLICY } from '@/constants';
 import { markRaw, reactive, ref } from 'vue';
 
 export enum MediaType {
@@ -12,10 +13,18 @@ export enum MediaType {
 	Screen = 'screen',
 }
 
+const DISCONNECT_TIMEOUT_MS = 5000;
+const TRANSCEIVER_ORDER: MediaType[] = [MediaType.Audio, MediaType.Video, MediaType.Screen];
+
 interface PeerConnection {
 	connection: RTCPeerConnection;
-	remoteStream?: MediaStream;
+	remoteStream: MediaStream;
 	userId: id;
+	transceivers: Map<MediaType, RTCRtpTransceiver>;
+	makingOffer: boolean;
+	isPolite: boolean;
+	disconnectTimer?: number;
+	audioCleanup?: () => void;
 }
 
 class WebRTCService {
@@ -28,15 +37,27 @@ class WebRTCService {
 	private hardwareTracks = new Map<MediaType, MediaStreamTrack>();
 	private audioContext?: AudioContext;
 	private audioProcessor?: number;
+	private audioGraph?: {
+		source: MediaStreamAudioSourceNode;
+		analyser: AnalyserNode;
+		gainNode: GainNode;
+		destination: MediaStreamAudioDestinationNode;
+	};
 	public speakingUsers = reactive(new Set<id>());
 	public inputLevel = ref(0);
 	public latencyMs = ref(0);
 	private latencyInterval?: number;
+	private trackLocks: Map<MediaType, Promise<unknown>> = new Map();
+	private sessionId = 0;
+	public onPeerLost?: (userId: id) => void;
+	private pendingOffers = new Map<id, string>();
+	private pendingCandidates = new Map<id, RTCIceCandidateInit[]>();
 	private get me(): User | null | undefined {
 		return useMeStore().me;
 	}
 	private readonly configuration: RTCConfiguration = {
-		iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
+		iceServers: ICE_SERVERS,
+		iceTransportPolicy: ICE_TRANSPORT_POLICY,
 	};
 
 	public setupTrackListeners(track: MediaStreamTrack) {
@@ -84,24 +105,42 @@ class WebRTCService {
 	}
 
 	private injectLocalTracks(peer: PeerConnection) {
-		if (this.localStream) {
-			const tracks = this.localStream.getTracks();
-			const audioTrack = tracks.find((t) => t.id === this.localTrackIds.get(MediaType.Audio));
-			const videoTrack = tracks.find((t) => t.id === this.localTrackIds.get(MediaType.Video));
-			const screenTrack = tracks.find((t) => t.id === this.localTrackIds.get(MediaType.Screen));
-
-			const transceivers = peer.connection.getTransceivers();
-			if (audioTrack && transceivers[0]) transceivers[0].sender.replaceTrack(audioTrack);
-			if (videoTrack && transceivers[1]) transceivers[1].sender.replaceTrack(videoTrack);
-			if (screenTrack && transceivers[2]) transceivers[2].sender.replaceTrack(screenTrack);
+		if (!this.localStream) return;
+		for (const type of TRANSCEIVER_ORDER) {
+			const trackId = this.localTrackIds.get(type);
+			if (!trackId) continue;
+			const track = this.localStream.getTracks().find((t) => t.id === trackId);
+			const tx = peer.transceivers.get(type);
+			if (track && tx) {
+				tx.sender.replaceTrack(track).catch((e) => console.error('replaceTrack failed', e));
+			}
 		}
 	}
 
 	private setupTransceivers(peer: PeerConnection) {
-		peer.connection.addTransceiver('audio', { direction: 'sendrecv' });
-		peer.connection.addTransceiver('video', { direction: 'sendrecv' });
-		peer.connection.addTransceiver('video', { direction: 'sendrecv' });
+		const audio = peer.connection.addTransceiver('audio', { direction: 'sendrecv' });
+		const video = peer.connection.addTransceiver('video', { direction: 'sendrecv' });
+		const screen = peer.connection.addTransceiver('video', { direction: 'sendrecv' });
+		peer.transceivers.set(MediaType.Audio, audio);
+		peer.transceivers.set(MediaType.Video, video);
+		peer.transceivers.set(MediaType.Screen, screen);
 		this.injectLocalTracks(peer);
+	}
+
+	private mapAnswererTransceivers(peer: PeerConnection) {
+		const list = peer.connection.getTransceivers();
+		TRANSCEIVER_ORDER.forEach((type, idx) => {
+			const tx = list[idx];
+			if (!tx) return;
+			peer.transceivers.set(type, tx);
+			if (tx.direction !== 'stopped' && tx.direction !== 'sendrecv') {
+				try {
+					tx.direction = 'sendrecv';
+				} catch (e) {
+					console.error('Failed to set transceiver direction', e);
+				}
+			}
+		});
 	}
 
 	private createPeer(userId: id): PeerConnection {
@@ -111,15 +150,15 @@ class WebRTCService {
 			connection: markRaw(connection),
 			userId,
 			remoteStream: markRaw(new MediaStream()),
+			transceivers: new Map(),
+			makingOffer: false,
+			isPolite: (this.me?.id ?? 0) < userId,
 		};
 
 		this.setupPeerConnectionHandlers(userId, connection);
 
 		return peer;
 	}
-
-	private pendingOffers = new Map<id, string>();
-	private pendingCandidates = new Map<id, RTCIceCandidateInit[]>();
 
 	private async handleOffer(userId: id, sdp: string) {
 		const voiceStore = useVoiceStore();
@@ -139,42 +178,57 @@ class WebRTCService {
 			this.pcs.set(userId, peer);
 		}
 
-		await peer.connection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
-
-		const candidates = this.pendingCandidates.get(userId) || [];
-		for (const candidate of candidates) {
-			try {
-				await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
-			} catch (e) {
-				console.error('Pending ICE Candidate Error', e);
-			}
+		const offerCollision = peer.makingOffer || peer.connection.signalingState !== 'stable';
+		const ignoreOffer = !peer.isPolite && offerCollision;
+		if (ignoreOffer) {
+			console.warn('Ignoring offer due to glare (impolite peer)', userId);
+			return;
 		}
-		this.pendingCandidates.delete(userId);
 
-		peer.connection.getTransceivers().forEach((t) => {
-			try {
-				if (t.direction !== 'stopped') t.direction = 'sendrecv';
-			} catch (e) {}
-		});
+		try {
+			await peer.connection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
 
-		this.injectLocalTracks(peer);
-		this.stateUpdate.value++;
+			if (peer.transceivers.size === 0) {
+				this.mapAnswererTransceivers(peer);
+			}
 
-		const answer = await peer.connection.createAnswer();
-		await peer.connection.setLocalDescription(answer);
+			const candidates = this.pendingCandidates.get(userId) || [];
+			for (const candidate of candidates) {
+				try {
+					await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+				} catch (e) {
+					console.error('Pending ICE Candidate Error', e);
+				}
+			}
+			this.pendingCandidates.delete(userId);
 
-		websocketService.sendMessage({
-			id: generate_uid(this.me!.id),
-			type: MessageType.Info,
-			from: this.me!.id,
-			to: userId,
-			data: { event: EventType.Answer, payload: answer.sdp! },
-		});
+			this.injectLocalTracks(peer);
+			this.stateUpdate.value++;
+
+			const answer = await peer.connection.createAnswer();
+			await peer.connection.setLocalDescription(answer);
+
+			websocketService.sendMessage({
+				id: generate_uid(this.me!.id),
+				type: MessageType.Info,
+				from: this.me!.id,
+				to: userId,
+				data: { event: EventType.Answer, payload: answer.sdp! },
+			});
+		} catch (e) {
+			console.error('handleOffer failed', e);
+			this.removePeerConnection(userId);
+		}
 	}
 
 	private async handleAnswer(userId: id, sdp: string) {
 		const peer = this.pcs.get(userId);
-		if (peer && peer.connection.signalingState !== 'stable') {
+		if (!peer) return;
+		if (peer.connection.signalingState !== 'have-local-offer') {
+			console.warn('Ignoring answer in state', peer.connection.signalingState);
+			return;
+		}
+		try {
 			await peer.connection.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
 
 			const candidates = this.pendingCandidates.get(userId) || [];
@@ -186,13 +240,20 @@ class WebRTCService {
 				}
 			}
 			this.pendingCandidates.delete(userId);
+		} catch (e) {
+			console.error('handleAnswer failed', e);
+			this.removePeerConnection(userId);
 		}
 	}
 
 	private async handleIceCandidate(userId: id, candidate: RTCIceCandidateInit) {
 		const peer = this.pcs.get(userId);
 		if (peer && peer.connection.remoteDescription) {
-			await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+			try {
+				await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+			} catch (e) {
+				console.error('addIceCandidate failed', e);
+			}
 		} else {
 			if (!this.pendingCandidates.has(userId)) {
 				this.pendingCandidates.set(userId, []);
@@ -217,16 +278,24 @@ class WebRTCService {
 				this.pcs.set(userId, peer);
 
 				if (this.me!.id > userId) {
-					this.setupTransceivers(peer);
-					const offer = await peer.connection.createOffer();
-					await peer.connection.setLocalDescription(offer);
-					websocketService.sendMessage({
-						id: generate_uid(this.me!.id),
-						type: MessageType.Info,
-						from: this.me!.id,
-						to: userId,
-						data: { event: EventType.Offer, payload: offer.sdp! },
-					});
+					try {
+						peer.makingOffer = true;
+						this.setupTransceivers(peer);
+						const offer = await peer.connection.createOffer();
+						await peer.connection.setLocalDescription(offer);
+						websocketService.sendMessage({
+							id: generate_uid(this.me!.id),
+							type: MessageType.Info,
+							from: this.me!.id,
+							to: userId,
+							data: { event: EventType.Offer, payload: offer.sdp! },
+						});
+					} catch (e) {
+						console.error('connectPeers offer failed', e);
+						this.removePeerConnection(userId);
+					} finally {
+						peer.makingOffer = false;
+					}
 				}
 			})
 		);
@@ -235,7 +304,7 @@ class WebRTCService {
 	private setupPeerConnectionHandlers(userId: id, connection: RTCPeerConnection) {
 		connection.onicecandidate = (event) => {
 			const peer = this.pcs.get(userId);
-			if (peer && peer.connection !== connection) return;
+			if (!peer || peer.connection !== connection) return;
 
 			if (event.candidate) {
 				websocketService.sendMessage({
@@ -250,40 +319,90 @@ class WebRTCService {
 
 		connection.ontrack = (event) => {
 			const peer = this.pcs.get(userId);
-			if (peer && peer.connection !== connection) return;
+			if (!peer || peer.connection !== connection) return;
+
+			const txIndex = peer.connection.getTransceivers().indexOf(event.transceiver);
 
 			this.stateUpdate.value++;
-			if (peer && peer.remoteStream) {
-				peer.remoteStream.addTrack(event.track);
-			}
+			peer.remoteStream.addTrack(event.track);
 			this.setupTrackListeners(event.track);
 
 			if (event.track.kind === 'audio') {
-				this.monitorRemoteAudio(userId, event.track, connection);
+				this.monitorRemoteAudio(peer, event.track);
+			}
+		};
+
+		connection.onnegotiationneeded = async () => {
+			const peer = this.pcs.get(userId);
+			if (!peer || peer.connection !== connection) return;
+
+			try {
+				peer.makingOffer = true;
+				const offer = await connection.createOffer();
+				if (connection.signalingState !== 'stable') return;
+				await connection.setLocalDescription(offer);
+				websocketService.sendMessage({
+					id: generate_uid(this.me!.id),
+					type: MessageType.Info,
+					from: this.me!.id,
+					to: userId,
+					data: { event: EventType.Offer, payload: offer.sdp! },
+				});
+			} catch (e) {
+				console.error('negotiationneeded offer failed', e);
+			} finally {
+				peer.makingOffer = false;
 			}
 		};
 
 		connection.onconnectionstatechange = () => {
 			const peer = this.pcs.get(userId);
-			if (peer && peer.connection !== connection) return;
+			if (!peer || peer.connection !== connection) return;
 
 			this.stateUpdate.value++;
 
-			if (connection.connectionState === 'connected') {
-				this.startLatencyPolling();
-			}
+			const state = connection.connectionState;
 
-			if (['disconnected', 'failed', 'closed'].includes(connection.connectionState)) {
-				this.removePeerConnection(userId);
+			if (state === 'connected') {
+				this.startLatencyPolling();
+				if (peer.disconnectTimer) {
+					clearTimeout(peer.disconnectTimer);
+					peer.disconnectTimer = undefined;
+				}
+			} else if (state === 'failed' || state === 'closed') {
+				this.handlePeerLost(userId);
+			} else if (state === 'disconnected') {
+				if (!peer.disconnectTimer) {
+					peer.disconnectTimer = window.setTimeout(() => {
+						const current = this.pcs.get(userId);
+						if (current && current.connection === connection && connection.connectionState === 'disconnected') {
+							this.handlePeerLost(userId);
+						}
+					}, DISCONNECT_TIMEOUT_MS);
+				}
 			}
 		};
 	}
 
-	private monitorRemoteAudio(userId: id, track: MediaStreamTrack, connection: RTCPeerConnection) {
-		if (!this.audioContext) {
+	private handlePeerLost(userId: id) {
+		this.removePeerConnection(userId);
+		try {
+			this.onPeerLost?.(userId);
+		} catch (e) {
+			console.error('onPeerLost callback failed', e);
+		}
+	}
+
+	private monitorRemoteAudio(peer: PeerConnection, track: MediaStreamTrack) {
+		peer.audioCleanup?.();
+
+		if (!this.audioContext || this.audioContext.state === 'closed') {
 			this.audioContext = new AudioContext();
 		}
 
+		// Chromium needs the remote track to be consumed by an HTMLMediaElement for
+		// createMediaStreamSource to produce real samples. GlobalVoiceOverlay.vue already
+		// binds peer.remoteStream to an <audio> element, so the track is being decoded.
 		const stream = new MediaStream([track]);
 		const source = this.audioContext.createMediaStreamSource(stream);
 		const analyser = this.audioContext.createAnalyser();
@@ -297,187 +416,297 @@ class WebRTCService {
 		let intervalId: number;
 		let holdFrames = 0;
 		const HOLD_DURATION = 5;
+		const userId = peer.userId;
+
+		const cleanup = () => {
+			clearInterval(intervalId);
+			try {
+				source.disconnect();
+			} catch {}
+			try {
+				analyser.disconnect();
+			} catch {}
+			this.speakingUsers.delete(userId);
+			if (peer.audioCleanup === cleanup) {
+				peer.audioCleanup = undefined;
+			}
+		};
 
 		const checkVolume = () => {
-			const peer = this.pcs.get(userId);
-			if (track.readyState === 'ended' || !peer || peer.connection !== connection) {
-				this.speakingUsers.delete(userId);
-				clearInterval(intervalId);
-				return;
-			}
-
-			if (this.audioContext && this.audioContext.state === 'suspended') {
-				this.audioContext.resume();
-			}
-
-			analyser.getFloatTimeDomainData(dataArray);
-			let sum = 0;
-			for (let i = 0; i < bufferLength; i++) {
-				sum += dataArray[i] * dataArray[i];
-			}
-			const rms = Math.sqrt(sum / bufferLength);
-
-			if (rms > 0.005) {
-				this.speakingUsers.add(userId);
-				holdFrames = HOLD_DURATION;
-			} else {
-				if (holdFrames > 0) {
-					holdFrames--;
-				} else {
-					this.speakingUsers.delete(userId);
+			try {
+				const currentPeer = this.pcs.get(userId);
+				if (track.readyState === 'ended' || !currentPeer || currentPeer !== peer) {
+					cleanup();
+					return;
 				}
+
+				if (!this.audioContext || this.audioContext.state === 'closed') {
+					cleanup();
+					return;
+				}
+
+				if (this.audioContext.state === 'suspended') {
+					this.audioContext.resume().catch(() => {});
+				}
+
+				analyser.getFloatTimeDomainData(dataArray);
+				let sum = 0;
+				for (let i = 0; i < bufferLength; i++) {
+					sum += dataArray[i] * dataArray[i];
+				}
+				const rms = Math.sqrt(sum / bufferLength);
+
+				if (rms > 0.005) {
+					this.speakingUsers.add(userId);
+					holdFrames = HOLD_DURATION;
+				} else {
+					if (holdFrames > 0) {
+						holdFrames--;
+					} else {
+						this.speakingUsers.delete(userId);
+					}
+				}
+			} catch (e) {
+				console.error('remote checkVolume failed', e);
+				cleanup();
 			}
 		};
 
 		intervalId = window.setInterval(checkVolume, 100);
+		peer.audioCleanup = cleanup;
 	}
 
-	public async addTrack(type: MediaType, deviceId?: string) {
-		if (!this.localStream) this.localStream = markRaw(new MediaStream());
-
-		const voiceStore = useVoiceStore();
-		const baseAudio: MediaTrackConstraints = deviceId ? { deviceId: deviceId } : {};
-		if (voiceStore.noiseSuppression) {
-			baseAudio.noiseSuppression = true;
-			baseAudio.echoCancellation = true;
-			baseAudio.autoGainControl = true;
-		} else {
-			baseAudio.noiseSuppression = false;
-			baseAudio.echoCancellation = true;
-			baseAudio.autoGainControl = false;
+	public async addTrack(type: MediaType, deviceId?: string): Promise<MediaStreamTrack> {
+		const prev = this.trackLocks.get(type);
+		if (prev) {
+			try {
+				await prev;
+			} catch {}
 		}
-		const audioConstraints: MediaTrackConstraints | boolean = Object.keys(baseAudio).length > 0 ? baseAudio : true;
 
-		const constraints = {
-			[MediaType.Audio]: { audio: audioConstraints },
-			[MediaType.Video]: { video: true },
-			[MediaType.Screen]: null,
+		const sessionAtStart = this.sessionId;
+
+		const run = async (): Promise<MediaStreamTrack> => {
+			this.disposeLocalTrack(type);
+
+			if (!this.localStream) this.localStream = markRaw(new MediaStream());
+
+			const voiceStore = useVoiceStore();
+			const baseAudio: MediaTrackConstraints = deviceId ? { deviceId: deviceId } : {};
+			if (voiceStore.noiseSuppression) {
+				baseAudio.noiseSuppression = true;
+				baseAudio.echoCancellation = true;
+				baseAudio.autoGainControl = true;
+			} else {
+				baseAudio.noiseSuppression = false;
+				baseAudio.echoCancellation = true;
+				baseAudio.autoGainControl = false;
+			}
+			const audioConstraints: MediaTrackConstraints | boolean = Object.keys(baseAudio).length > 0 ? baseAudio : true;
+
+			const constraints = {
+				[MediaType.Audio]: { audio: audioConstraints },
+				[MediaType.Video]: { video: true },
+				[MediaType.Screen]: null,
+			};
+
+			let track: MediaStreamTrack;
+			let hardwareTrack: MediaStreamTrack;
+
+			if (type === MediaType.Screen) {
+				const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
+				track = stream.getVideoTracks()[0];
+				hardwareTrack = track;
+			} else {
+				const stream = await navigator.mediaDevices.getUserMedia(constraints[type] as any);
+				hardwareTrack = type === MediaType.Audio ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+
+				if (type === MediaType.Audio) {
+					if (!this.audioContext || this.audioContext.state === 'closed') {
+						this.audioContext = new AudioContext();
+					} else if (this.audioContext.state === 'suspended') {
+						await this.audioContext.resume();
+					}
+
+					const source = this.audioContext.createMediaStreamSource(stream);
+					const analyser = this.audioContext.createAnalyser();
+					const gainNode = this.audioContext.createGain();
+					const destination = this.audioContext.createMediaStreamDestination();
+
+					source.connect(analyser);
+					source.connect(gainNode);
+					gainNode.connect(destination);
+
+					this.audioGraph = { source, analyser, gainNode, destination };
+
+					analyser.fftSize = 512;
+					const bufferLength = analyser.fftSize;
+					const dataArray = new Float32Array(bufferLength);
+
+					let holdFrames = 0;
+					const HOLD_DURATION = 10;
+
+					const checkVolume = () => {
+						try {
+							if (!this.audioContext || this.audioContext.state === 'closed') return;
+							analyser.getFloatTimeDomainData(dataArray);
+
+							let sum = 0;
+							for (let i = 0; i < bufferLength; i++) {
+								sum += dataArray[i] * dataArray[i];
+							}
+							const rms = Math.sqrt(sum / bufferLength);
+							const normalizedLevel = Math.min(1, rms / 0.15);
+							this.inputLevel.value = normalizedLevel;
+
+							const threshold = voiceStore.voiceThreshold;
+
+							if (rms > threshold) {
+								gainNode.gain.setTargetAtTime(1, this.audioContext.currentTime, 0.05);
+								holdFrames = HOLD_DURATION;
+								if (this.me) this.speakingUsers.add(this.me.id);
+							} else {
+								if (holdFrames > 0) {
+									holdFrames--;
+									if (this.me) this.speakingUsers.add(this.me.id);
+								} else {
+									gainNode.gain.setTargetAtTime(0, this.audioContext.currentTime, 0.1);
+									if (this.me) this.speakingUsers.delete(this.me.id);
+								}
+							}
+						} catch (e) {
+							console.error('local checkVolume failed', e);
+						}
+					};
+
+					this.audioProcessor = window.setInterval(checkVolume, 50);
+					checkVolume();
+					track = destination.stream.getAudioTracks()[0];
+
+					hardwareTrack.addEventListener('ended', () => {
+						try {
+							track.stop();
+						} catch {}
+					});
+				} else {
+					track = hardwareTrack;
+				}
+			}
+
+			if (sessionAtStart !== this.sessionId) {
+				try {
+					hardwareTrack.stop();
+				} catch {}
+				try {
+					track.stop();
+				} catch {}
+				throw new Error('Track acquisition cancelled by disconnect');
+			}
+
+			this.localTrackIds.set(type, track.id);
+			this.hardwareTracks.set(type, hardwareTrack);
+			this.localStream!.addTrack(track);
+
+			this.setupTrackListeners(track);
+
+			this.pcs.forEach((peer) => {
+				const tx = peer.transceivers.get(type);
+				if (tx) {
+					tx.sender.replaceTrack(track).catch((e) => console.error('replaceTrack failed', e));
+					if (tx.direction === 'recvonly') {
+						tx.direction = 'sendrecv';
+					}
+				}
+			});
+
+			return track;
 		};
 
-		let track: MediaStreamTrack;
-		let hardwareTrack: MediaStreamTrack;
-
-		if (type === MediaType.Screen) {
-			const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
-			track = stream.getVideoTracks()[0];
-			hardwareTrack = track;
-		} else {
-			const stream = await navigator.mediaDevices.getUserMedia(constraints[type] as any);
-			hardwareTrack = type === MediaType.Audio ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
-
-			if (type === MediaType.Audio) {
-				if (!this.audioContext) {
-					this.audioContext = new AudioContext();
-				} else if (this.audioContext.state === 'suspended') {
-					await this.audioContext.resume();
-				}
-
-				const source = this.audioContext.createMediaStreamSource(stream);
-				const analyser = this.audioContext.createAnalyser();
-				const gainNode = this.audioContext.createGain();
-				const destination = this.audioContext.createMediaStreamDestination();
-
-				source.connect(analyser);
-				source.connect(gainNode);
-				gainNode.connect(destination);
-
-				analyser.fftSize = 512;
-				const bufferLength = analyser.fftSize;
-				const dataArray = new Float32Array(bufferLength);
-
-				let holdFrames = 0;
-				const HOLD_DURATION = 10;
-
-				const checkVolume = () => {
-					if (!this.audioContext || this.audioContext.state === 'closed') return;
-					analyser.getFloatTimeDomainData(dataArray);
-
-					let sum = 0;
-					for (let i = 0; i < bufferLength; i++) {
-						sum += dataArray[i] * dataArray[i];
-					}
-					const rms = Math.sqrt(sum / bufferLength);
-					const normalizedLevel = Math.min(1, rms / 0.15);
-					this.inputLevel.value = normalizedLevel;
-
-					const threshold = voiceStore.voiceThreshold;
-
-					if (rms > threshold) {
-						gainNode.gain.setTargetAtTime(1, this.audioContext.currentTime, 0.05);
-						holdFrames = HOLD_DURATION;
-						if (this.me) this.speakingUsers.add(this.me.id);
-					} else {
-						if (holdFrames > 0) {
-							holdFrames--;
-							if (this.me) this.speakingUsers.add(this.me.id);
-						} else {
-							gainNode.gain.setTargetAtTime(0, this.audioContext.currentTime, 0.1);
-							if (this.me) this.speakingUsers.delete(this.me.id);
-						}
-					}
-				};
-
-				this.audioProcessor = window.setInterval(checkVolume, 50);
-				checkVolume();
-				track = destination.stream.getAudioTracks()[0];
-
-				hardwareTrack.addEventListener('ended', () => {
-					track.stop();
-					track.dispatchEvent(new Event('ended'));
-				});
-			} else {
-				track = hardwareTrack;
-			}
+		const promise = run();
+		this.trackLocks.set(type, promise);
+		try {
+			return await promise;
+		} finally {
+			if (this.trackLocks.get(type) === promise) this.trackLocks.delete(type);
 		}
-
-		this.localTrackIds.set(type, track.id);
-		this.hardwareTracks.set(type, hardwareTrack);
-		this.localStream.addTrack(track);
-
-		const index = type === MediaType.Audio ? 0 : type === MediaType.Video ? 1 : 2;
-
-		this.setupTrackListeners(track);
-
-		this.pcs.forEach((peer) => {
-			const transceivers = peer.connection.getTransceivers();
-			if (transceivers[index]) {
-				transceivers[index].sender.replaceTrack(track);
-			}
-		});
-
-		return track;
 	}
 
-	public async removeTrack(type: MediaType) {
-		const index = type === MediaType.Audio ? 0 : type === MediaType.Video ? 1 : 2;
-		const trackId = this.localTrackIds.get(type);
+	private disposeAudioGraph() {
+		if (!this.audioGraph) return;
+		try {
+			this.audioGraph.source.disconnect();
+		} catch {}
+		try {
+			this.audioGraph.analyser.disconnect();
+		} catch {}
+		try {
+			this.audioGraph.gainNode.disconnect();
+		} catch {}
+		try {
+			this.audioGraph.destination.disconnect();
+		} catch {}
+		this.audioGraph = undefined;
+	}
 
-		const track = this.localStream?.getTracks().find((t) => t.id === trackId);
+	private disposeLocalTrack(type: MediaType) {
+		const trackId = this.localTrackIds.get(type);
+		const track = trackId ? this.localStream?.getTracks().find((t) => t.id === trackId) : undefined;
 		const hardwareTrack = this.hardwareTracks.get(type);
 
 		if (track) {
-			track.stop();
-			this.localStream?.removeTrack(track);
-			this.localTrackIds.delete(type);
+			try {
+				track.stop();
+			} catch {}
+			try {
+				this.localStream?.removeTrack(track);
+			} catch {}
 		}
-
-		if (hardwareTrack) {
-			hardwareTrack.stop();
-			this.hardwareTracks.delete(type);
+		if (hardwareTrack && hardwareTrack !== track) {
+			try {
+				hardwareTrack.stop();
+			} catch {}
 		}
+		this.localTrackIds.delete(type);
+		this.hardwareTracks.delete(type);
 
-		if (type === MediaType.Audio && this.audioProcessor) {
-			clearInterval(this.audioProcessor);
-			this.audioProcessor = undefined;
+		if (type === MediaType.Audio) {
+			if (this.audioProcessor) {
+				clearInterval(this.audioProcessor);
+				this.audioProcessor = undefined;
+			}
+			this.disposeAudioGraph();
+			this.inputLevel.value = 0;
 			if (this.me) this.speakingUsers.delete(this.me.id);
 		}
+	}
 
-		this.pcs.forEach((peer) => {
-			const transceivers = peer.connection.getTransceivers();
-			if (transceivers[index]) {
-				transceivers[index].sender.replaceTrack(null);
-			}
-		});
+	public async removeTrack(type: MediaType) {
+		const prev = this.trackLocks.get(type);
+		if (prev) {
+			try {
+				await prev;
+			} catch {}
+		}
+
+		const run = async () => {
+			this.disposeLocalTrack(type);
+
+			this.pcs.forEach((peer) => {
+				const tx = peer.transceivers.get(type);
+				if (tx) {
+					tx.sender.replaceTrack(null).catch((e) => console.error('replaceTrack(null) failed', e));
+					tx.direction = 'recvonly';
+				}
+			});
+		};
+
+		const promise = run();
+		this.trackLocks.set(type, promise);
+		try {
+			await promise;
+		} finally {
+			if (this.trackLocks.get(type) === promise) this.trackLocks.delete(type);
+		}
 	}
 
 	public getTrack(userId: id, type: MediaType): MediaStreamTrack | undefined {
@@ -491,21 +720,39 @@ class WebRTCService {
 		const peer = this.pcs.get(userId);
 		if (!peer) return undefined;
 
-		const index = type === MediaType.Audio ? 0 : type === MediaType.Video ? 1 : 2;
-		return peer.connection.getTransceivers()[index]?.receiver.track;
+		return peer.transceivers.get(type)?.receiver.track;
 	}
 
 	public removePeerConnection(userId: id) {
 		const peer = this.pcs.get(userId);
 		if (peer) {
-			peer.connection.close();
+			if (peer.disconnectTimer) {
+				clearTimeout(peer.disconnectTimer);
+				peer.disconnectTimer = undefined;
+			}
+			peer.audioCleanup?.();
+			try {
+				peer.connection.close();
+			} catch {}
 			this.pcs.delete(userId);
 		}
+		this.pendingOffers.delete(userId);
+		this.pendingCandidates.delete(userId);
 	}
 
-	public disconnectAll() {
-		this.localStream?.getTracks().forEach((t) => t.stop());
-		this.hardwareTracks.forEach((t) => t.stop());
+	public async disconnectAll() {
+		this.sessionId++;
+
+		this.localStream?.getTracks().forEach((t) => {
+			try {
+				t.stop();
+			} catch {}
+		});
+		this.hardwareTracks.forEach((t) => {
+			try {
+				t.stop();
+			} catch {}
+		});
 		this.localStream = undefined;
 		this.localTrackIds.clear();
 		this.hardwareTracks.clear();
@@ -518,12 +765,24 @@ class WebRTCService {
 			this.audioProcessor = undefined;
 		}
 
+		this.disposeAudioGraph();
+
 		this.stopLatencyPolling();
 		this.latencyMs.value = 0;
+		this.inputLevel.value = 0;
 		this.speakingUsers.clear();
 		this.activeTracks.clear();
 		this.pendingOffers.clear();
 		this.pendingCandidates.clear();
+
+		if (this.audioContext && this.audioContext.state !== 'closed') {
+			try {
+				await this.audioContext.close();
+			} catch (e) {
+				console.error('audioContext.close failed', e);
+			}
+		}
+		this.audioContext = undefined;
 	}
 
 	private startLatencyPolling() {
@@ -580,6 +839,11 @@ export const webrtcService: WebRTCService = new Proxy({} as WebRTCService, {
 			return value.bind(instance);
 		}
 		return value;
+	},
+	set(_target, prop, value) {
+		const instance = WebRTCService.getInstance() as any;
+		instance[prop as keyof WebRTCService] = value;
+		return true;
 	},
 });
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, ref, watch } from 'vue';
+	import { computed, ref, watch, nextTick } from 'vue';
 	import type { id } from '@/types';
 	import User from '@/components/User.vue';
 	import type { User as UserType } from '@/types';
@@ -9,16 +9,18 @@
 	import AsideButton from '@/components/AsideButton.vue';
 	import { RouterView } from 'vue-router';
 	import { Icon } from '@iconify/vue';
-	import ContextMenu, { type ContextMenuOption } from '@/components/ContextMenu.vue';
+	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import { useFriendStore } from '@/stores/friend';
 	import { useVoiceStore } from '@/stores/voice';
+	import { useContextMenuStore } from '@/stores/contextMenu';
 
 	const dmStore = useDMStore();
 	const userStore = useUserStore();
 	const friendStore = useFriendStore();
 	const modalStore = useModalStore();
 	const voiceStore = useVoiceStore();
+	const contextMenuStore = useContextMenuStore();
 
 	const router = useRouter();
 	const route = useRoute();
@@ -30,15 +32,7 @@
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
-	const contextMenu = ref({
-		show: false,
-		x: 0,
-		y: 0,
-		options: [] as ContextMenuOption[],
-		user: null as UserType | null,
-	});
-
-	function openContextMenu(e: MouseEvent, user: UserType) {
+	async function openContextMenu(e: MouseEvent, user: UserType) {
 		const are_friends = friendStore.isFriend(user.id);
 
 		const ContextMenuoptions: ContextMenuOption[] = [
@@ -60,23 +54,19 @@
 			{ label: 'Copy Username', action: 'copy_username', icon: 'mdi:content-copy' },
 		];
 
-		contextMenu.value = {
-			show: true,
-			x: e.clientX,
-			y: e.clientY,
-			user,
+		contextMenuStore.open({
+			e,
 			options: ContextMenuoptions,
-		};
+			minWidth: 260,
+			onSelect: (action) => handleContextAction(action, user)
+		});
 	}
 
 	function handleMessage(user: UserType) {
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
-	async function handleContextAction(action: string) {
-		const user = contextMenu.value.user;
-		if (!user) return;
-
+	async function handleContextAction(action: string, user: UserType) {
 		switch (action) {
 			case 'profile':
 				modalStore.openModal(ModalView.PROFILE_CARD, { user });
@@ -149,15 +139,6 @@
 		<main>
 			<router-view />
 		</main>
-		<ContextMenu
-			:options="contextMenu.options"
-			:x="contextMenu.x"
-			:y="contextMenu.y"
-			:show="contextMenu.show"
-			@close="contextMenu.show = false"
-			@select="handleContextAction"
-			:min-width="260"
-		/>
 	</div>
 </template>
 

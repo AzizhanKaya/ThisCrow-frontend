@@ -5,6 +5,7 @@
 	import { useServerStore } from '@/stores/server';
 	import { Permissions, type OverrideTarget, type id, ChannelType } from '@/types';
 	import { getDefaultAvatar } from '@/utils/avatar';
+	import { fetchChannelOverrides } from '@/api/permissions';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
@@ -94,7 +95,7 @@
 		return kind === 'r' ? { role: idNum } : { user: idNum };
 	}
 
-	function loadServerOverrides() {
+	function seedLocalOverrides() {
 		const map = new Map<string, LocalOverride>();
 		for (const o of channel.value?.permission_overrides ?? []) {
 			map.set(targetKey(o.target), { allow: o.allow, deny: o.deny });
@@ -102,7 +103,15 @@
 		localOverrides.value = map;
 	}
 
-	watch(channel, loadServerOverrides, { immediate: true });
+	onMounted(async () => {
+		try {
+			const overrides = await fetchChannelOverrides(server_id, channel_id);
+			if (channel.value) channel.value.permission_overrides = overrides;
+			seedLocalOverrides();
+		} catch (err) {
+			console.error('Failed to load channel overrides', err);
+		}
+	});
 
 	type TargetRow =
 		| { key: string; kind: 'role'; role_id: id; label: string; color: string; hasOverride: boolean }
@@ -259,6 +268,13 @@
 			}
 			for (const t of toDelete) {
 				await serverStore.deletePermissionOverride(server_id, channel_id, t);
+			}
+			try {
+				const refreshed = await fetchChannelOverrides(server_id, channel_id);
+				if (channel.value) channel.value.permission_overrides = refreshed;
+				seedLocalOverrides();
+			} catch (err) {
+				console.error('Failed to refresh channel overrides', err);
 			}
 		} finally {
 			isSaving.value = false;

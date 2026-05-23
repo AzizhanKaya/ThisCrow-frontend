@@ -1,7 +1,8 @@
 <script setup lang="ts">
-	import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
+	import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 	import { computedAsync } from '@vueuse/core';
 	import { Icon } from '@iconify/vue';
+	import EmojiPicker from '@/components/EmojiPicker.vue';
 	import {
 		type Message as MessageType,
 		MessageType as MessageEnum,
@@ -16,7 +17,7 @@
 	import { useMeStore } from '@/stores/me';
 	import { useUserStore } from '@/stores/user';
 	import { useKeyStore } from '@/stores/key';
-	import { summarizeMessageData } from '@/utils/messagePreview';
+	import { summarizeMessageData, type MessageSummary } from '@/utils/messagePreview';
 	import { generate_snowflake } from '@/utils/snowflake';
 	import { generate_nonce, encrypt_message } from '@/../pkg/wasm_lib';
 	import { encode } from '@/utils/msgpack';
@@ -47,7 +48,7 @@
 
 			const msg = await messageStore.findMessage(chatTarget, props.replyTo);
 			if (!msg) {
-				return { user: null, snippet: '(message unavailable)' };
+				return { user: null, snippet: { text: '(message unavailable)' } as MessageSummary };
 			}
 
 			let privateKey: Uint8Array | null = null;
@@ -67,6 +68,23 @@
 	);
 
 	const input = ref('');
+	const textarea = ref<HTMLTextAreaElement | null>(null);
+
+	function autoResize() {
+		const el = textarea.value;
+		if (!el) return;
+		el.style.height = 'auto';
+		el.style.height = Math.min(el.scrollHeight, 240) + 'px';
+	}
+
+	watch(input, () => nextTick(autoResize));
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+			e.preventDefault();
+			onSend();
+		}
+	}
 
 	const {
 		fileInput,
@@ -205,6 +223,29 @@
 	function onPlus() {
 		fileInput.value?.click();
 	}
+
+	const showEmojiPicker = ref(false);
+	const emojiBtnRef = ref<HTMLElement | null>(null);
+
+	function toggleEmojiPicker() {
+		showEmojiPicker.value = !showEmojiPicker.value;
+	}
+
+	function onEmojiSelect(emoji: string) {
+		const el = textarea.value;
+		if (!el) {
+			input.value += emoji;
+			return;
+		}
+		const start = el.selectionStart ?? input.value.length;
+		const end = el.selectionEnd ?? input.value.length;
+		input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+		nextTick(() => {
+			el.focus();
+			const pos = start + emoji.length;
+			el.setSelectionRange(pos, pos);
+		});
+	}
 </script>
 
 <template>
@@ -224,20 +265,26 @@
 
 	<div class="input-area">
 		<div class="input-container">
-			<div v-if="replyTo != null" class="reply-banner">
-				<div class="reply-accent"></div>
-				<Icon icon="mdi:reply" class="reply-icon" />
-				<div class="reply-text">
-					<div class="reply-header">
-						<span class="reply-label">Replying to</span>
-						<span class="reply-username">@{{ repliedPreview?.user?.username ?? '…' }}</span>
+			<Transition name="slide-down">
+				<div v-if="replyTo != null" class="reply-banner">
+					<div class="reply-accent"></div>
+					<Icon icon="mdi:reply" class="reply-icon" />
+					<div class="reply-text">
+						<div class="reply-header">
+							<span class="reply-label">Replying to</span>
+							<span class="reply-username">@{{ repliedPreview?.user?.username ?? '…' }}</span>
+						</div>
+						<div class="reply-snippet">
+							<template v-if="repliedPreview?.snippet?.text">{{ repliedPreview.snippet.text }}</template>
+							<template v-else-if="!repliedPreview?.snippet?.icons?.length">…</template>
+							<Icon v-for="icon in repliedPreview?.snippet?.icons" :key="icon" :icon="icon" class="reply-snippet-icon" />
+						</div>
 					</div>
-					<div class="reply-snippet">{{ repliedPreview?.snippet || '…' }}</div>
+					<button class="reply-close" @click="cancelReply" aria-label="Cancel reply" title="Cancel reply">
+						<Icon icon="mdi:close" />
+					</button>
 				</div>
-				<button class="reply-close" @click="cancelReply" aria-label="Cancel reply" title="Cancel reply">
-					<Icon icon="mdi:close" />
-				</button>
-			</div>
+			</Transition>
 			<div v-if="hasSelectedFiles" class="file-previews">
 				<div v-for="(img, index) in selectedFiles.images" :key="img.id" class="preview-item">
 					<img :src="img.url" class="preview-image" :class="{ 'is-uploading': img.uploading }" />
@@ -290,7 +337,16 @@
 				<button class="icon-btn plus" @click="onPlus" aria-label="Add">
 					<Icon icon="mdi:plus" width="24" height="24" />
 				</button>
-				<input type="text" v-model="input" placeholder="Type a message..." @keydown.enter="onSend" />
+				<textarea ref="textarea" v-model="input" placeholder="Type a message..." rows="1" @keydown="onKeydown" />
+				<button class="icon-btn" ref="emojiBtnRef" @click="toggleEmojiPicker" aria-label="Emoji" title="Emoji">
+					<Icon icon="mdi:emoticon-outline" width="24" height="24" />
+				</button>
+				<EmojiPicker
+					v-if="showEmojiPicker"
+					:anchor="emojiBtnRef"
+					@select="onEmojiSelect"
+					@close="showEmojiPicker = false"
+				/>
 				<button
 					class="icon-btn send"
 					:class="{ active: (input.length > 0 || hasSelectedFiles) && !isUploading }"
@@ -309,19 +365,33 @@
 <style>
 	.input-area {
 		position: absolute;
-		bottom: 15px;
+		bottom: 8px;
 		width: 100%;
-		padding: 0 20px;
-		z-index: 10;
+		padding: 0 8px;
+		z-index: 300;
 	}
 
 	.input-container {
 		width: 100%;
 		background-color: var(--bg-dark);
-		border-radius: 16px;
+		border-radius: 8px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		max-height: 400px;
+	}
+
+	.input-container::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.input-container::-webkit-scrollbar-thumb {
+		background: #444;
+		border-radius: 4px;
+	}
+
+	.input-container::-webkit-scrollbar-track {
+		background: transparent;
 	}
 
 	.file-previews {
@@ -331,6 +401,17 @@
 		gap: 8px;
 		border-bottom: 1px solid #303030;
 		color: white;
+		max-height: 240px;
+		overflow-y: auto;
+	}
+
+	.file-previews::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.file-previews::-webkit-scrollbar-thumb {
+		background: #444;
+		border-radius: 4px;
 	}
 
 	.reply-banner {
@@ -347,11 +428,10 @@
 	.reply-accent {
 		position: absolute;
 		left: 0;
-		top: 6px;
-		bottom: 6px;
+		top: 0;
+		bottom: 0;
 		width: 3px;
 		background: var(--color-lighter);
-		border-radius: 0 2px 2px 0;
 	}
 
 	.reply-icon {
@@ -393,12 +473,20 @@
 	}
 
 	.reply-snippet {
+		display: flex;
+		align-items: center;
+		gap: 4px;
 		color: var(--text-secondary);
 		font-size: 0.8rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		min-width: 0;
+	}
+
+	.reply-snippet-icon {
+		font-size: 0.9rem;
+		flex-shrink: 0;
 	}
 
 	.reply-close {
@@ -426,10 +514,22 @@
 
 	.preview-item {
 		position: relative;
-		border-radius: 6px;
+		border-radius: 8px;
 		overflow: hidden;
 		display: flex;
 		align-items: center;
+		background: var(--bg-darker);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		transition:
+			transform 0.2s ease,
+			box-shadow 0.2s ease;
+	}
+
+	.preview-item:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+		border-color: rgba(255, 255, 255, 0.15);
 	}
 
 	.preview-image,
@@ -615,9 +715,25 @@
 		opacity: 0;
 	}
 
+	.slide-down-enter-active,
+	.slide-down-leave-active {
+		transition: all 0.2s ease;
+		max-height: 100px;
+		overflow: hidden;
+	}
+
+	.slide-down-enter-from,
+	.slide-down-leave-to {
+		max-height: 0;
+		opacity: 0;
+		padding-top: 0;
+		padding-bottom: 0;
+		border-bottom-width: 0;
+	}
+
 	.input-row {
 		display: flex;
-		align-items: center;
+		align-items: flex-end;
 		gap: 5px;
 		padding: 8px;
 	}
@@ -629,7 +745,7 @@
 		font-size: 24px;
 		cursor: pointer;
 		user-select: none;
-		transition: color 0.3s;
+		transition: all 0.2s ease;
 		padding: 0;
 		width: 36px;
 		height: 36px;
@@ -637,10 +753,16 @@
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
+		border-radius: 8px;
 	}
 
-	.icon-btn:hover {
+	.icon-btn:hover:not(:disabled) {
 		color: var(--text);
+		background-color: rgba(255, 255, 255, 0.08);
+	}
+
+	.icon-btn:active:not(:disabled) {
+		transform: scale(0.92);
 	}
 
 	.icon-btn.send.active {
@@ -652,15 +774,42 @@
 		color: #555;
 	}
 
-	.input-row > input {
+
+	.input-row > textarea {
 		flex: 1;
 		border: none;
 		background: transparent;
 		color: white;
 		font-size: 1rem;
+		font-family: inherit;
+		line-height: 1.4;
 		outline: none;
-		padding: 0;
+		padding: 7px 8px;
 		margin: 0;
 		min-width: 0;
+		min-height: 36px;
+		max-height: 240px;
+		resize: none;
+		overflow-y: auto;
+		word-break: break-word;
+		box-sizing: border-box;
+	}
+
+	.input-row > textarea::placeholder {
+		color: var(--text-subtle);
+		opacity: 0.6;
+	}
+
+	.input-row > textarea::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.input-row > textarea::-webkit-scrollbar-thumb {
+		background: #444;
+		border-radius: 4px;
+	}
+
+	.input-row > textarea::-webkit-scrollbar-track {
+		background: transparent;
 	}
 </style>

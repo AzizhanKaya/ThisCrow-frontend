@@ -1,14 +1,17 @@
 <script setup lang="ts">
 	import { computed, type PropType, ref, onBeforeUnmount, watch } from 'vue';
 	import { computedAsync } from '@vueuse/core';
-	import type { CallData, Message, MessageData, MultiData, ReplyData, User, snowflake_id } from '@/types';
+	import type { CallData, Message, MessageData, MultiData, ReplyData, User, id, snowflake_id } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import { get_timestamp_from_snowflake, is_sent_from_snowflake, snowflake_to_date } from '@/utils/snowflake';
 	import { decrypt_message } from '@/../pkg/wasm_lib';
 	import { decode } from '@/utils/msgpack';
 	import { getDefaultAvatar } from '@/utils/avatar';
-	import { summarizeMessageData } from '@/utils/messagePreview';
+	import { summarizeMessageData, type MessageSummary } from '@/utils/messagePreview';
 	import { useUserStore } from '@/stores/user';
+	import { useMessageStore, type ChatTarget } from '@/stores/message';
+	import { useMeStore } from '@/stores/me';
+	import { useProfileCardStore } from '@/stores/profileCard';
 
 	const props = defineProps({
 		message: {
@@ -23,17 +26,27 @@
 			type: Object as PropType<Uint8Array | null | undefined>,
 			required: false,
 		},
-		repliedLookup: {
-			type: Function as PropType<(id: snowflake_id) => Promise<Message | undefined>>,
-			required: false,
-		},
 		color: {
 			type: String,
 			required: false,
 		},
 	});
 
+	const emit = defineEmits<{
+		(e: 'scroll-to', id: snowflake_id): void;
+		(e: 'toggle-reaction', emoji: string): void;
+	}>();
+
 	const userStore = useUserStore();
+	const messageStore = useMessageStore();
+	const meStore = useMeStore();
+	const profileCardStore = useProfileCardStore();
+
+	const displayUser = $computed(() => {
+		if (props.user) return props.user;
+		if (replyData) return userStore.users.get(props.message.from);
+		return undefined;
+	});
 
 	const message = $computed(() => {
 		if (props.privateKey === undefined) return;
@@ -92,12 +105,17 @@
 
 	const repliedPreview = $(
 		computedAsync(async () => {
-			if (!replyData || !props.repliedLookup) {
+			if (!replyData) {
 				return null;
 			}
-			const original = await props.repliedLookup(replyData.replied);
+
+			const target: ChatTarget = props.message.group_id
+				? { kind: 'channel', channel_id: props.message.to, group_id: props.message.group_id }
+				: { kind: 'user', user_id: props.message.from === meStore.me!.id ? props.message.to : props.message.from };
+
+			const original = await messageStore.findMessage(target, replyData.replied);
 			if (!original) {
-				return { user: undefined, snippet: '(message unavailable)' };
+				return { user: undefined, snippet: { text: '(message unavailable)' } as MessageSummary };
 			}
 			return {
 				user: userStore.users.get(original.from),
@@ -147,25 +165,21 @@
 		{ immediate: true }
 	);
 
-	const emit = defineEmits<{
-		(e: 'open-profile', payload: { user: User; x: number; y: number }): void;
-		(e: 'scroll-to', id: snowflake_id): void;
-	}>();
-
 	function onReplyClick() {
 		if (replyData) emit('scroll-to', replyData.replied);
 	}
 
 	function openProfileCard(e: MouseEvent) {
-		if (!props.user) return;
+		if (!displayUser) return;
 
-		document.dispatchEvent(new Event('click'));
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
 
-		emit('open-profile', {
-			user: props.user,
+		profileCardStore.open({
+			target,
 			x: rect.right + 10,
 			y: rect.top,
+			user: displayUser,
 		});
 	}
 
@@ -198,6 +212,47 @@
 		if (lightboxSrc.value) document.body.style.overflow = '';
 		if (callTimer !== null) clearInterval(callTimer);
 	});
+
+	const reactionsList = $computed(() => messageStore.getReactions(props.message.id));
+
+	const groupedReactions = $computed(() => {
+		const list = reactionsList;
+		if (!list || list.length === 0) return [] as { emoji: string; count: number; mine: boolean; user_ids: id[] }[];
+		const meId = meStore.me?.id;
+		const map = new Map<string, { count: number; mine: boolean; user_ids: id[] }>();
+		for (const r of list) {
+			const entry = map.get(r.reaction) ?? { count: 0, mine: false, user_ids: [] };
+			entry.count++;
+			entry.user_ids.push(r.user_id);
+			if (meId !== undefined && r.user_id === meId) entry.mine = true;
+			map.set(r.reaction, entry);
+		}
+		return Array.from(map, ([emoji, v]) => ({ emoji, ...v }));
+	});
+
+	watch(
+		() => reactionsList,
+		(list) => {
+			if (!list) return;
+			const missing = list.map((r) => r.user_id).filter((uid) => !userStore.users.has(uid));
+			if (missing.length > 0) userStore.getUsers(missing);
+		},
+		{ immediate: true }
+	);
+
+	function reactionTooltip(user_ids: id[]): string {
+		return user_ids.map((uid) => userStore.users.get(uid)?.username ?? '…').join(', ');
+	}
+
+	watch(
+		() => props.message.reacted === true && props.message.id,
+		(shouldFetch) => {
+			if (shouldFetch && !messageStore.getReactions(props.message.id)) {
+				messageStore.loadReactions(props.message.id);
+			}
+		},
+		{ immediate: true }
+	);
 
 	function fileExtension(name: string): string {
 		const idx = name.lastIndexOf('.');
@@ -245,26 +300,36 @@
 </script>
 
 <template>
-	<div class="message" :class="{ 'with-user': user }">
+	<div class="message" :class="{ 'with-user': displayUser, 'has-reply': !!repliedPreview }">
+		<div v-if="repliedPreview" class="reply-spine-area">
+			<div class="reply-spine"></div>
+		</div>
+		<div v-if="repliedPreview" class="reply-preview" @click.stop="onReplyClick">
+			<img
+				v-if="repliedPreview.user"
+				class="reply-avatar"
+				:src="repliedPreview.user.avatar || getDefaultAvatar(repliedPreview.user.username)"
+			/>
+			<span v-if="repliedPreview.snippet.text" class="reply-preview-snippet">{{ repliedPreview.snippet.text }}</span>
+			<Icon v-for="icon in repliedPreview.snippet.icons" :key="icon" :icon="icon" class="reply-preview-icon" />
+		</div>
+
 		<img
-			v-if="user && props.privateKey !== undefined"
+			v-if="displayUser && props.privateKey !== undefined"
 			class="avatar"
-			:src="user.avatar || getDefaultAvatar(user.username)"
+			:src="displayUser.avatar || getDefaultAvatar(displayUser.username)"
 			@click.stop="openProfileCard($event)"
 		/>
 
 		<div class="content">
-			<div v-if="user" class="message-header">
-				<span class="name" :style="props.color ? { color: props.color } : undefined" @click.stop="openProfileCard($event)">{{ user.name }}</span>
+			<div v-if="displayUser" class="message-header">
+				<span class="name" :style="props.color ? { color: props.color } : undefined" @click.stop="openProfileCard($event)">{{
+					displayUser.name
+				}}</span>
+
 				<span class="time-header">
 					{{ snowflake_to_date(props.message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
-			</div>
-
-			<div v-if="repliedPreview" class="reply-preview" @click.stop="onReplyClick">
-				<Icon icon="mdi:reply" class="reply-preview-icon" />
-				<span class="reply-preview-user" v-if="repliedPreview.user">@{{ repliedPreview.user.username }}</span>
-				<span class="reply-preview-snippet">{{ repliedPreview.snippet }}</span>
 			</div>
 
 			<div class="data">
@@ -326,6 +391,23 @@
 				<span class="time">
 					{{ snowflake_to_date(props.message.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
 				</span>
+
+				<div v-if="groupedReactions.length > 0" class="reactions">
+					<button
+						v-for="r in groupedReactions"
+						:key="r.emoji"
+						class="reaction-pill"
+						:class="{ mine: r.mine }"
+						@click="emit('toggle-reaction', r.emoji)"
+					>
+						<span class="reaction-emoji">{{ r.emoji }}</span>
+						<span class="reaction-count">{{ r.count }}</span>
+						<span class="reaction-tooltip">
+							<span class="reaction-tooltip-emoji">{{ r.emoji }}</span>
+							<span class="reaction-tooltip-text">{{ reactionTooltip(r.user_ids) }}</span>
+						</span>
+					</button>
+				</div>
 			</div>
 		</div>
 
@@ -341,8 +423,9 @@
 
 <style scoped>
 	.message {
-		display: flex;
-		gap: 12px;
+		display: grid;
+		grid-template-columns: 40px 1fr;
+		gap: 0 12px;
 		padding: 0px 20px;
 		color: #7e7e7e;
 	}
@@ -351,16 +434,179 @@
 		background-color: var(--bg-light);
 	}
 
+	.reactions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 2px;
+	}
+
+	.reaction-pill {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 8px;
+		background: var(--bg-darker);
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		cursor: pointer;
+		transition: background 0.15s, border-color 0.15s;
+		line-height: 1;
+		height: 26px;
+	}
+
+	.reaction-tooltip {
+		position: absolute;
+		bottom: calc(100% + 6px);
+		left: 50%;
+		transform: translateX(-50%) translateY(4px);
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 10px;
+		background: var(--bg-darkest, #0f0f12);
+		border: 1px solid rgba(255, 255, 255, 0.07);
+		border-radius: 6px;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+		font-size: 0.78rem;
+		color: var(--text);
+		white-space: nowrap;
+		max-width: 280px;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.12s ease, transform 0.12s ease;
+		z-index: 50;
+	}
+
+	.reaction-pill:hover .reaction-tooltip {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+		transition-delay: 0.25s;
+	}
+
+	.reaction-tooltip-emoji {
+		font-size: 1rem;
+		line-height: 1;
+	}
+
+	.reaction-tooltip-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--text-secondary);
+	}
+
+	.reaction-pill:hover {
+		background: var(--bg-light);
+		border-color: var(--color-lighter);
+	}
+
+	.reaction-pill.mine {
+		background: rgba(167, 139, 250, 0.12);
+		border-color: rgba(167, 139, 250, 0.4);
+	}
+
+	.reaction-pill.mine .reaction-count {
+		color: var(--text);
+	}
+
+	.reaction-emoji {
+		font-size: 1rem;
+		line-height: 1;
+	}
+
+	.reaction-count {
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--text-muted);
+	}
+
 	.message.with-user {
 		margin-top: 10px;
 		padding: 5px 20px 0px 20px;
 	}
 
 	.message:not(.with-user) {
-		padding: 0px 20px 0px 72px;
+		padding: 0px 20px 0px 20px;
+	}
+
+	.message:not(.with-user) .content {
+		grid-column: 2;
+	}
+
+	.message:not(.with-user):not(.has-reply) .content {
+		grid-column: 1 / -1;
+		padding-left: 52px;
+	}
+
+	.reply-spine-area {
+		grid-column: 1;
+		grid-row: 1;
+		position: relative;
+	}
+
+	.reply-spine {
+		position: absolute;
+		top: 12px;
+		bottom: 4px;
+		left: 18px;
+		width: 28px;
+		border-left: 2px solid #4f545c;
+		border-top: 2px solid #4f545c;
+		border-top-left-radius: 6px;
+	}
+
+	.reply-preview {
+		grid-column: 2;
+		grid-row: 1;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		padding: 6px 0 4px 0;
+		margin-bottom: 6px;
+		max-width: 100%;
+		overflow: hidden;
+		cursor: pointer;
+		transition: color 0.15s ease;
+	}
+
+	.reply-preview:hover {
+		color: var(--text-secondary);
+	}
+
+	.reply-preview:hover .reply-preview-snippet {
+		color: var(--text);
+	}
+
+	.reply-avatar {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		flex-shrink: 0;
+		object-fit: cover;
+	}
+
+	.reply-preview-icon {
+		font-size: 1rem;
+		flex-shrink: 0;
+	}
+
+	.reply-preview-snippet {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+		color: var(--text-muted);
+	}
+
+	.replied-to-name:hover {
+		text-decoration: underline;
 	}
 
 	.avatar {
+		grid-column: 1;
 		width: 40px;
 		height: 40px;
 		border-radius: 50%;
@@ -369,9 +615,11 @@
 	}
 
 	.content {
+		grid-column: 2;
 		display: flex;
 		flex-direction: column;
 		flex: 1;
+		min-width: 0;
 	}
 
 	.message-header {
@@ -383,7 +631,7 @@
 
 	.name {
 		font-size: 1rem;
-		color: var(--text-secondary);
+		color: var(--text);
 		font-weight: 600;
 		cursor: pointer;
 	}
@@ -401,48 +649,6 @@
 		flex-direction: column;
 		gap: 4px;
 		padding-right: 50px;
-	}
-
-	.reply-preview {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 0.8rem;
-		color: var(--text-muted);
-		margin-bottom: 2px;
-		padding-left: 4px;
-		border-left: 2px solid var(--border);
-		max-width: 100%;
-		overflow: hidden;
-		cursor: pointer;
-		transition: color 0.15s ease;
-	}
-
-	.reply-preview:hover {
-		color: var(--text-secondary);
-	}
-
-	.reply-preview:hover .reply-preview-snippet {
-		color: var(--text);
-	}
-
-	.reply-preview-icon {
-		font-size: 0.95rem;
-		color: var(--color-lighter);
-		flex-shrink: 0;
-	}
-
-	.reply-preview-user {
-		color: var(--text-secondary);
-		font-weight: 600;
-		flex-shrink: 0;
-	}
-
-	.reply-preview-snippet {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		min-width: 0;
 	}
 
 	.data:hover .time {
@@ -481,7 +687,7 @@
 	}
 
 	.sent {
-		color: var(--text-secondary);
+		color: var(--text);
 	}
 
 	.media-container {

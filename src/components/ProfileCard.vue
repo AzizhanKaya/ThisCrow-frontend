@@ -1,6 +1,5 @@
 <script setup lang="ts">
 	import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-	import type { User, Activity, Role } from '@/types';
 	import { Status } from '@/types';
 	import { useMeStore } from '@/stores/me';
 	import { useFriendStore } from '@/stores/friend';
@@ -8,60 +7,53 @@
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { Icon } from '@iconify/vue';
 	import { useModalStore, ModalView } from '@/stores/modal';
-
-	const props = defineProps<{
-		user: User;
-		roles?: Role[];
-		show?: boolean;
-		x?: number;
-		y?: number;
-	}>();
-
-	const sortedRoles = computed(() => {
-		if (!props.roles || props.roles.length === 0) return undefined;
-		return [...props.roles].sort((a, b) => b.position - a.position);
-	});
-
-	const emit = defineEmits<{
-		(e: 'close'): void;
-	}>();
+	import { useProfileCardStore } from '@/stores/profileCard';
 
 	const meStore = useMeStore();
 	const friendStore = useFriendStore();
 	const router = useRouter();
 	const modalStore = useModalStore();
+	const profileCardStore = useProfileCardStore();
 
-	const user = computed(() => {
-		return props.user;
+	const show = computed(() => profileCardStore.show);
+	const user = computed(() => profileCardStore.user);
+	const sortedRoles = computed(() => {
+		const roles = profileCardStore.roles;
+		if (!roles || roles.length === 0) return undefined;
+		return [...roles].sort((a, b) => b.position - a.position);
 	});
+
 	const me = computed(() => meStore.me);
 
 	const handleAddFriend = () => {
-		friendStore.sendFriendRequest(user.value);
+		if (user.value) friendStore.sendFriendRequest(user.value);
 	};
 
 	const handleMessage = () => {
+		if (!user.value) return;
 		router.push({ name: 'user', params: { userId: user.value.id.toString() } });
-		emit('close');
+		profileCardStore.close();
 	};
 
 	const openModalProfile = () => {
-		emit('close');
-		modalStore.openModal(ModalView.PROFILE_CARD, { user: user.value });
+		if (!user.value) return;
+		const u = user.value;
+		profileCardStore.close();
+		modalStore.openModal(ModalView.PROFILE_CARD, { user: u });
 	};
 
 	const mutualFriendsCount = computed(() => {
-		if (!user.value.friends || !me.value?.friends) return 0;
+		if (!user.value?.friends || !me.value?.friends) return 0;
 		return user.value.friends.filter((f) => me.value!.friends.includes(f)).length;
 	});
 
 	const mutualServersCount = computed(() => {
-		if (!user.value.groups || !me.value?.groups) return 0;
+		if (!user.value?.groups || !me.value?.groups) return 0;
 		return user.value.groups.filter((g) => me.value!.groups.includes(g)).length;
 	});
 
 	const getStatusClass = computed(() => {
-		switch (user.value.status) {
+		switch (user.value?.status) {
 			case Status.Online:
 				return 'status-online';
 			case Status.Idle:
@@ -75,7 +67,7 @@
 	});
 
 	const hasActivities = computed(() => {
-		const acts = user.value.activities;
+		const acts = user.value?.activities;
 		if (!acts) return false;
 		return !!(acts.game || acts.music || acts.watching || acts.streaming);
 	});
@@ -99,80 +91,114 @@
 
 	const handleClickOutside = (event: MouseEvent) => {
 		if (cardRef.value && !cardRef.value.contains(event.target as Node)) {
-			emit('close');
+			profileCardStore.close();
 		}
 	};
 
-	const updatePosition = async () => {
-		await nextTick();
-		if (cardRef.value && props.x !== undefined && props.y !== undefined) {
-			const width = cardRef.value.offsetWidth;
-			const height = cardRef.value.offsetHeight;
-			const viewportWidth = window.innerWidth;
-			const viewportHeight = window.innerHeight;
+	let rAfLoopId: number | null = null;
+	let initialTargetOffsetX = 0;
+	let initialTargetOffsetY = 0;
+	let resizeObserver: ResizeObserver | null = null;
 
-			let finalX = props.x;
-			let finalY = props.y;
+	const updatePosition = async (isInitial = false) => {
+		if (isInitial) await nextTick();
+		if (!cardRef.value) return;
 
-			if (finalX + width > viewportWidth) {
-				finalX = viewportWidth - width - 10;
-			}
+		const width = cardRef.value.offsetWidth;
+		const height = cardRef.value.offsetHeight;
+		const viewportWidth = window.innerWidth;
+		const viewportHeight = window.innerHeight;
 
-			if (finalY + height > viewportHeight) {
-				finalY = viewportHeight - height - 10;
-			}
+		let finalX = profileCardStore.x;
+		let finalY = profileCardStore.y;
 
+		if (isInitial) {
+			if (finalX + width > viewportWidth) finalX = viewportWidth - width - 10;
+			if (finalY + height > viewportHeight) finalY = viewportHeight - height - 10;
 			if (finalX < 10) finalX = 10;
 			if (finalY < 10) finalY = 10;
 
-			cardRef.value.style.left = `${finalX}px`;
-			cardRef.value.style.top = `${finalY}px`;
+			if (profileCardStore.target) {
+				const rect = profileCardStore.target.getBoundingClientRect();
+				initialTargetOffsetX = finalX - rect.left;
+				initialTargetOffsetY = finalY - rect.top;
+			}
+		} else if (profileCardStore.target) {
+			const rect = profileCardStore.target.getBoundingClientRect();
+			finalX = rect.left + initialTargetOffsetX;
+			finalY = rect.top + initialTargetOffsetY;
+		} else {
+			if (finalX + width > viewportWidth) finalX = viewportWidth - width - 10;
+			if (finalY + height > viewportHeight) finalY = viewportHeight - height - 10;
+			if (finalX < 10) finalX = 10;
+			if (finalY < 10) finalY = 10;
+		}
+
+		cardRef.value.style.left = `${finalX}px`;
+		cardRef.value.style.top = `${finalY}px`;
+	};
+
+	const positionLoop = () => {
+		if (show.value && profileCardStore.target) {
+			updatePosition(false);
+			rAfLoopId = requestAnimationFrame(positionLoop);
 		}
 	};
 
+	const handleResize = () => updatePosition(false);
+
 	watch(
-		() => [props.show, props.x, props.y],
-		async ([newShow]) => {
-			if (newShow === undefined) return;
+		show,
+		async (newShow) => {
 			if (newShow) {
+				await nextTick();
+
 				requestAnimationFrame(() => {
 					document.addEventListener('click', handleClickOutside);
 					document.addEventListener('contextmenu', handleClickOutside);
 				});
-				await updatePosition();
+
+				await updatePosition(true);
+
+				if (profileCardStore.target) {
+					rAfLoopId = requestAnimationFrame(positionLoop);
+				}
+
+				window.addEventListener('resize', handleResize);
+				if (cardRef.value) {
+					resizeObserver = new ResizeObserver(() => updatePosition(false));
+					resizeObserver.observe(cardRef.value);
+				}
 			} else {
+				if (rAfLoopId !== null) {
+					cancelAnimationFrame(rAfLoopId);
+					rAfLoopId = null;
+				}
 				document.removeEventListener('click', handleClickOutside);
 				document.removeEventListener('contextmenu', handleClickOutside);
+				window.removeEventListener('resize', handleResize);
+				if (resizeObserver) {
+					resizeObserver.disconnect();
+					resizeObserver = null;
+				}
 			}
 		},
-		{ immediate: true, deep: true }
+		{ immediate: true }
 	);
-
-	let resizeObserver: ResizeObserver | null = null;
 
 	onMounted(() => {
 		timer = setInterval(() => {
 			now.value = Date.now();
 		}, 1000);
-
-		window.addEventListener('resize', updatePosition);
-
-		if (cardRef.value) {
-			resizeObserver = new ResizeObserver(() => {
-				updatePosition();
-			});
-			resizeObserver.observe(cardRef.value);
-		}
 	});
 
 	onUnmounted(() => {
 		clearInterval(timer);
+		if (rAfLoopId !== null) cancelAnimationFrame(rAfLoopId);
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('contextmenu', handleClickOutside);
-		window.removeEventListener('resize', updatePosition);
-		if (resizeObserver) {
-			resizeObserver.disconnect();
-		}
+		window.removeEventListener('resize', handleResize);
+		if (resizeObserver) resizeObserver.disconnect();
 	});
 
 	const formatTimeElapsed = (dateString: Date | string | number) => {
@@ -195,9 +221,9 @@
 <template>
 	<Transition name="profile-card-transition">
 		<div
-			v-show="show === undefined || show"
-			class="profile-card"
-			:class="{ 'is-popover': show !== undefined }"
+			v-if="show && user"
+			class="profile-card is-popover"
+			:style="{ zIndex: profileCardStore.zIndex }"
 			ref="cardRef"
 			@click.stop
 			@contextmenu.prevent="() => {}"
@@ -233,7 +259,7 @@
 						<h2 class="name">{{ user.name }}</h2>
 						<span class="username">@{{ user.username }}</span>
 					</div>
-					<div class="mutuals-right" v-if="me && me.id !== props.user.id">
+					<div class="mutuals-right" v-if="me && me.id !== user.id">
 						<div class="mutual-row">
 							<Icon icon="mdi:account-multiple" class="mutual-icon" />
 							<span>{{ mutualFriendsCount }} Friends</span>
@@ -378,7 +404,7 @@
 
 	.profile-card.is-popover {
 		position: fixed;
-		z-index: 100;
+		z-index: 200;
 		pointer-events: auto;
 	}
 
@@ -544,6 +570,8 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 4px;
+		max-height: 100px;
+		overflow: auto;
 	}
 
 	.role-badge {

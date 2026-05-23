@@ -6,9 +6,13 @@
 	import Modals from './components/Modals.vue';
 	import GlobalVoiceOverlay from './components/Voice/GlobalVoiceOverlay.vue';
 	import ErrorToasts from './components/ErrorToasts.vue';
+	import ContextMenu from './components/ContextMenu.vue';
+	import ProfileCard from './components/ProfileCard.vue';
 	import { platform } from '@tauri-apps/plugin-os';
+	import { useContextMenuStore } from '@/stores/contextMenu';
 
 	const appStore = useAppStore();
+	const contextMenuStore = useContextMenuStore();
 	const router = useRouter();
 	const route = useRoute();
 
@@ -44,6 +48,19 @@
 	<Modals />
 	<GlobalVoiceOverlay />
 	<ErrorToasts />
+	<ContextMenu
+		:show="contextMenuStore.show"
+		:x="contextMenuStore.x"
+		:y="contextMenuStore.y"
+		:target="contextMenuStore.target"
+		:options="contextMenuStore.options"
+		:submenu-direction="contextMenuStore.submenuDirection"
+		:min-width="contextMenuStore.minWidth"
+		:z-index="contextMenuStore.zIndex"
+		@select="(action, option) => contextMenuStore.onSelect?.(action, option)"
+		@close="contextMenuStore.close()"
+	/>
+	<ProfileCard />
 </template>
 
 <style>

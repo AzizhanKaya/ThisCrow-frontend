@@ -5,7 +5,6 @@
 	import { Icon } from '@iconify/vue';
 	import { ref, computed, type ComputedRef } from 'vue';
 	import { useDMStore } from '@/stores/dm';
-	import ContextMenu from '@/components/ContextMenu.vue';
 	import AddFriendButton from '@/components/Friends/AddFriendButton.vue';
 	import User from '@/components/Friends/User.vue';
 

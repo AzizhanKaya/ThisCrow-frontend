@@ -5,6 +5,7 @@ import { getMe } from '@/api/state';
 import { useMeStore } from './me';
 import initWasm from '@/../pkg/wasm_lib';
 import { isTauri } from '@tauri-apps/api/core';
+import { useModalStore } from './modal';
 
 export const useAppStore = defineStore('app', {
 	state: () => ({
@@ -19,6 +20,8 @@ export const useAppStore = defineStore('app', {
 		setupConnectionListener(router: any) {
 			websocketService.onConnectionStateChange(async (state) => {
 				if (state === 'CLOSED') {
+					const modalStore = useModalStore();
+					modalStore.closeModal();
 					this.loading = true;
 				} else if (state === 'CONNECTING') {
 					this.loading = true;

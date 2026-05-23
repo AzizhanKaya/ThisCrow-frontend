@@ -12,13 +12,15 @@
 	import { useRoute, useRouter } from 'vue-router';
 	import { useAppStore } from '@/stores/app';
 	import Voice from './Voice.vue';
-	import ContextMenu, { type ContextMenuOption } from '@/components/ContextMenu.vue';
+	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useVoiceStore } from '@/stores/voice';
+	import { useContextMenuStore } from '@/stores/contextMenu';
 
 	const appStore = useAppStore();
 	const serverStore = useServerStore();
 	const modalStore = useModalStore();
 	const voiceStore = useVoiceStore();
+	const contextMenuStore = useContextMenuStore();
 	const route = useRoute();
 	const router = useRouter();
 
@@ -67,8 +69,6 @@
 		{ immediate: true }
 	);
 
-	const serverMenu = ref({ show: false, x: 0, y: 0 });
-
 	const serverMenuOptions: ContextMenuOption[] = [
 		{ label: 'Server Info', action: 'server-info', icon: 'mdi:information-outline' },
 		{ label: 'Invite Others', action: 'invite', icon: 'mdi:account-plus-outline' },
@@ -77,11 +77,18 @@
 	];
 
 	const openServerMenu = (event: MouseEvent) => {
-		serverMenu.value = {
-			show: true,
-			x: event.clientX,
-			y: event.clientY,
-		};
+		if (contextMenuStore.show && contextMenuStore.options[0]?.action === 'server-info') {
+			contextMenuStore.close();
+			return;
+		}
+
+		contextMenuStore.open({
+			e: event,
+			options: serverMenuOptions,
+			minWidth: 180,
+			zIndex: 1000,
+			onSelect: handleServerMenuSelect,
+		});
 	};
 
 	const handleServerMenuSelect = (action: string) => {
@@ -129,6 +136,7 @@
 				v-if="channel?.type === ChannelType.Text"
 				:to="channel_id!"
 				:group_id="server_id"
+				:is-replying="!!replyTo"
 				@reply="(id) => (replyTo = id)"
 			/>
 			<Voice v-else-if="channel?.type === ChannelType.Voice" :channel="channel" />
@@ -146,15 +154,6 @@
 		</div>
 
 		<Members :members="server.members!" />
-		<ContextMenu
-			:show="serverMenu.show"
-			:x="serverMenu.x"
-			:y="serverMenu.y"
-			:options="serverMenuOptions"
-			:min-width="180"
-			@select="handleServerMenuSelect"
-			@close="serverMenu.show = false"
-		/>
 	</div>
 </template>
 
@@ -218,6 +217,8 @@
 	.channel-header {
 		height: 50px;
 		flex-shrink: 0;
+		position: relative;
+		z-index: 300;
 		border-bottom: 1px solid var(--border);
 		padding: 0 16px;
 		background-color: var(--bg-dark);
@@ -245,5 +246,6 @@
 		bottom: 0;
 		width: 100%;
 		height: 30px;
+		background-color: var(--bg);
 	}
 </style>

@@ -1,27 +1,11 @@
 import { defineStore } from 'pinia';
-import type {
-	Ack,
-	Channel,
-	Member,
-	Message,
-	OverrideTarget,
-	PermissionOverride,
-	Role,
-	Server,
-	User,
-	WatchParty,
-	id,
-} from '@/types';
+import type { Ack, Channel, Member, Message, OverrideTarget, Role, Server, WatchParty, id } from '@/types';
 import { fetchServers } from '@/api/info';
 import { useUserStore } from './user';
 import { useMeStore } from './me';
 import { websocketService } from '@/services/websocket';
-import { AckType, ChannelType, EventType, MessageType, type Event } from '@/types';
+import { AckType, ChannelType, EventType, MessageType, type Event, type Permissions } from '@/types';
 import { generate_uid } from '@/utils/uid';
-
-function sameTarget(a: OverrideTarget, b: OverrideTarget): boolean {
-	return ('role' in a && 'role' in b && a.role === b.role) || ('user' in a && 'user' in b && a.user === b.user);
-}
 
 export const useServerStore = defineStore('server', {
 	state: () => ({
@@ -66,35 +50,9 @@ export const useServerStore = defineStore('server', {
 					case AckType.Subscribed:
 						{
 							const {
-								id,
-								name,
-								owner,
-								icon,
-								members: members_record,
-								channels: channels_record,
-								roles: roles_record,
-								everyone,
-							}: {
-								id: id;
-								owner: id;
-								name: string;
-								icon?: string;
-								members: Record<id, { id: id; name?: string; roles: id[] }>;
-								channels: Record<
-									id,
-									{
-										id: id;
-										name: string;
-										title: string | null;
-										position: number;
-										type: ChannelType;
-										users?: id[];
-										watch_party?: WatchParty;
-										permission_overrides?: PermissionOverride[];
-									}
-								>;
-								roles: Record<id, Role>;
-								everyone: number;
+								group: { id, name, owner, icon, members: members_record, channels: channels_record, roles: roles_record },
+								permissions,
+								channel_permissions,
 							} = payload;
 
 							const roles = new Map<id, Role>(Object.values(roles_record).map((r: Role) => [r.id, r]));
@@ -117,13 +75,14 @@ export const useServerStore = defineStore('server', {
 									{
 										...c,
 										users: new Set(c.users?.map((uid) => users.get(uid)!)),
+										permissions: channel_permissions[c.id] as Permissions | undefined,
 									},
 								])
 							);
 
 							const server = this.servers.get(server_id);
 							if (server) {
-								Object.assign(server, { members, channels, roles, owner, everyone });
+								Object.assign(server, { members, channels, roles, owner, permissions });
 							} else {
 								this.servers.set(server_id, {
 									id,
@@ -134,12 +93,23 @@ export const useServerStore = defineStore('server', {
 									channels,
 									roles,
 									owner,
-									everyone,
+									permissions: permissions as Permissions | undefined,
 								});
 							}
 							this.server = this.servers.get(server_id)!;
 						}
 						break;
+
+					case AckType.PermissionsChanged: {
+						server.permissions = payload as Permissions;
+						break;
+					}
+
+					case AckType.ChannelPermissionsChanged: {
+						const channel = server.channels?.get(target_id);
+						if (channel) channel.permissions = payload as Permissions;
+						break;
+					}
 
 					case AckType.Unsubscribed:
 						break;
@@ -149,9 +119,12 @@ export const useServerStore = defineStore('server', {
 						if (this.server?.id === server_id) this.server = null;
 						break;
 
-					case AckType.UpdatedGroup:
-						Object.assign(server, payload);
+					case AckType.UpdatedGroup: {
+						for (const [k, v] of Object.entries(payload)) {
+							if (v !== null && v !== undefined) (server as any)[k] = v;
+						}
 						break;
+					}
 
 					case AckType.JoinedMember:
 						server.members?.set(target_id, {
@@ -160,11 +133,7 @@ export const useServerStore = defineStore('server', {
 						});
 						break;
 
-					case AckType.RemovedMember:
-						server.members?.delete(target_id);
-						break;
-
-					case AckType.UserLeft:
+					case AckType.LeftMember:
 						if (target_id === meStore.me?.id) {
 							this.servers.delete(server_id);
 							if (this.server?.id === server_id) this.server = null;
@@ -172,6 +141,28 @@ export const useServerStore = defineStore('server', {
 							server.members?.delete(target_id);
 						}
 						break;
+
+					case AckType.MovedGroup: {
+						server.position = payload.position;
+						break;
+					}
+
+					case AckType.DeletedChannel: {
+						server.channels?.delete(target_id);
+						break;
+					}
+
+					case AckType.MovedToVoice: {
+						const targetChannel = server.channels?.get(payload);
+						if (!targetChannel) break;
+						const user = await userStore.getUser(target_id);
+						server.channels?.forEach((ch) => {
+							ch.users?.delete(user);
+						});
+						if (!targetChannel.users) targetChannel.users = new Set();
+						targetChannel.users.add(user);
+						break;
+					}
 
 					case AckType.CreatedChannel:
 						server.channels?.set(target_id, {
@@ -187,8 +178,9 @@ export const useServerStore = defineStore('server', {
 					case AckType.UpdatedChannel: {
 						const channel = server.channels?.get(target_id);
 						if (!channel) return;
-						Object.assign(channel, payload);
-
+						for (const [k, v] of Object.entries(payload)) {
+							if (v !== null && v !== undefined) (channel as any)[k] = v;
+						}
 						break;
 					}
 
@@ -197,6 +189,8 @@ export const useServerStore = defineStore('server', {
 						if (!channel) return;
 						if (!channel.permission_overrides) channel.permission_overrides = [];
 						const { target, allow, deny } = payload;
+						const sameTarget = (a: OverrideTarget, b: OverrideTarget): boolean =>
+							('role' in a && 'role' in b && a.role === b.role) || ('user' in a && 'user' in b && a.user === b.user);
 						const idx = channel.permission_overrides.findIndex((o) => sameTarget(o.target, target));
 						if (idx >= 0) {
 							channel.permission_overrides[idx] = { target, allow, deny };
@@ -208,8 +202,7 @@ export const useServerStore = defineStore('server', {
 
 					case AckType.DeletedPermissionOverride: {
 						const channel = server.channels?.get(target_id);
-						if (!channel?.permission_overrides) return;
-						channel.permission_overrides = channel.permission_overrides.filter((o) => !sameTarget(o.target, payload.target));
+						if (channel) channel.permission_overrides = undefined;
 						break;
 					}
 
@@ -220,21 +213,22 @@ export const useServerStore = defineStore('server', {
 							name: payload.name,
 							position: server.roles.size + 1,
 							color: payload.color,
-							permissions: payload.permissions,
 						});
 						break;
 					}
 
 					case AckType.UpdatedRole: {
 						if (target_id === 0) {
-							if (typeof payload.permissions === 'number') {
+							if (payload.permissions !== null && payload.permissions !== undefined) {
 								server.everyone = payload.permissions;
 							}
 							break;
 						}
 						const role = server.roles?.get(target_id);
 						if (!role) return;
-						Object.assign(role, payload);
+						for (const [k, v] of Object.entries(payload)) {
+							if (v !== null && v !== undefined) (role as any)[k] = v;
+						}
 						break;
 					}
 
@@ -284,73 +278,55 @@ export const useServerStore = defineStore('server', {
 						if (!channel || !channel.users) return;
 						const user = await userStore.getUser(target_id);
 						channel.users.delete(user);
+						this.removeFromParty(channel, target_id);
 						break;
 					}
 
 					case AckType.JoinedParty: {
-						for (const [, s] of this.servers) {
-							const channel = s.channels?.get(target_id);
-							if (!channel) continue;
-							if (channel.watch_party) {
-								if (!channel.watch_party.users.includes(target_id)) {
-									channel.watch_party.users.push(target_id);
-								}
-							} else {
-								channel.watch_party = {
-									video: 0,
-									host: target_id,
-									users: [target_id],
-									offset: 0,
-									playing: false,
-								};
+						const channel = server.channels?.get(target_id);
+						if (!channel) return;
+						if (channel.watch_party) {
+							if (!channel.watch_party.users.includes(payload)) {
+								channel.watch_party.users.push(payload);
 							}
-							break;
+						} else {
+							channel.watch_party = {
+								video: 0,
+								host: payload,
+								users: [payload],
+								offset: 0,
+								playing: false,
+							};
 						}
 						break;
 					}
 
 					case AckType.LeftParty: {
-						for (const [, s] of this.servers) {
-							for (const [, channel] of s.channels ?? []) {
-								if (!channel.watch_party) continue;
-								const idx = channel.watch_party.users.indexOf(target_id);
-								if (idx === -1) continue;
-								channel.watch_party.users.splice(idx, 1);
-								if (channel.watch_party.users.length === 0) {
-									channel.watch_party = undefined;
-								} else if (channel.watch_party.host === target_id) {
-									channel.watch_party.host = Math.min(...channel.watch_party.users);
-								}
-								break;
-							}
-						}
+						const channel = server.channels?.get(target_id);
+						if (!channel) return;
+						this.removeFromParty(channel, payload);
+
 						break;
 					}
 
 					case AckType.Watching: {
-						for (const [, s] of this.servers) {
-							for (const [, channel] of s.channels ?? []) {
-								if (!channel.watch_party) continue;
-								if (channel.watch_party.host !== target_id) continue;
-								channel.watch_party.video = payload.video;
-								channel.watch_party.offset = 0;
-								channel.watch_party.playing = false;
-								break;
-							}
-						}
+						const channel = server.channels?.get(target_id);
+						if (!channel || !channel.watch_party) return;
+
+						channel.watch_party.video = payload.video;
+						channel.watch_party.offset = 0;
+						channel.watch_party.playing = false;
+
 						break;
 					}
 
 					case AckType.JumpedTo: {
-						for (const [, s] of this.servers) {
-							for (const [, channel] of s.channels ?? []) {
-								if (!channel.watch_party) continue;
-								if (channel.watch_party.host !== target_id) continue;
-								channel.watch_party.offset = payload.offset;
-								channel.watch_party.playing = payload.play;
-								break;
-							}
-						}
+						const channel = server.channels?.get(target_id);
+						if (!channel || !channel.watch_party) return;
+
+						channel.watch_party.offset = payload.offset;
+						channel.watch_party.playing = payload.play;
+
 						break;
 					}
 				}
@@ -564,6 +540,18 @@ export const useServerStore = defineStore('server', {
 				data: { event: EventType.DeleteGroup },
 			};
 			return websocketService.request(message);
+		},
+
+		removeFromParty(channel: Channel, user_id: id) {
+			if (!channel.watch_party) return;
+			const idx = channel.watch_party.users.indexOf(user_id);
+			if (idx === -1) return;
+			channel.watch_party.users.splice(idx, 1);
+			if (channel.watch_party.users.length === 0) {
+				channel.watch_party = undefined;
+			} else if (channel.watch_party.host === user_id) {
+				channel.watch_party.host = Math.min(...channel.watch_party.users);
+			}
 		},
 	},
 });

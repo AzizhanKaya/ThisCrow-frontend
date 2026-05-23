@@ -1,22 +1,23 @@
 <script setup lang="ts">
 	import { computed, watch, ref, nextTick } from 'vue';
 	import Message from '@/components/Message/Message.vue';
+	import ReactionPicker from '@/components/ReactionPicker.vue';
 	import type { Message as MessageType, id, snowflake_id } from '@/types';
 	import { useUserStore } from '@/stores/user';
 	import { useMeStore } from '@/stores/me';
 	import { useMessageStore, chatKey, type ChatTarget } from '@/stores/message';
 	import { Icon } from '@iconify/vue';
 	import { deleteMessage } from '@/api/message';
-	import ContextMenu from '@/components/ContextMenu.vue';
 	import { useKeyStore } from '@/stores/key';
 	import { useErrorStore } from '@/stores/error';
-	import ProfileCard from '@/components/ProfileCard.vue';
 	import { ModalView, useModalStore } from '@/stores/modal';
 	import { useServerStore } from '@/stores/server';
+	import { useContextMenuStore } from '@/stores/contextMenu';
 
 	const props = defineProps<{
 		to: id;
 		group_id?: id;
+		isReplying?: boolean;
 	}>();
 
 	const emit = defineEmits<{
@@ -30,6 +31,7 @@
 	const meStore = useMeStore();
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
+	const contextMenuStore = useContextMenuStore();
 
 	const me = $computed(() => meStore.me!);
 
@@ -56,35 +58,7 @@
 	const canLoadMore = computed(() => messageStore.hasMore.get(chatKey(chatTarget.value)) !== false);
 	const hoveredMessageId = ref<MessageType['id'] | null>(null);
 
-	const contextMenu = ref({
-		show: false,
-		x: 0,
-		y: 0,
-		options: [] as { action: string; label: string; icon: string; danger?: boolean; divider?: boolean }[],
-		message: null as MessageType | null,
-	});
-
-	const profileCard = ref({
-		show: false,
-		x: 0,
-		y: 0,
-		user: null as ReturnType<typeof userStore.users.get> | null,
-	});
-
-	const handleOpenProfile = (payload: { user: any; x: number; y: number }) => {
-		if (profileCard.value.show && profileCard.value.user?.id === payload.user.id) {
-			profileCard.value.show = false;
-			return;
-		}
-		profileCard.value = {
-			show: true,
-			x: payload.x,
-			y: payload.y,
-			user: payload.user,
-		};
-	};
-
-	const handleContextMenu = (e: MouseEvent, message: MessageType) => {
+	const handleContextMenu = async (e: MouseEvent, message: MessageType) => {
 		const options: { action: string; label: string; icon: string; danger?: boolean; divider?: boolean }[] = [
 			{ action: 'reply', label: 'Reply', icon: 'mdi:reply' },
 		];
@@ -96,19 +70,15 @@
 			);
 		}
 
-		contextMenu.value = {
-			show: true,
-			x: e.clientX,
-			y: e.clientY,
+		contextMenuStore.open({
+			e,
 			options,
-			message: message,
-		};
+			minWidth: 180,
+			onSelect: (action) => handleContextSelect(action, message),
+		});
 	};
 
-	const handleContextSelect = async (action: string) => {
-		const msg = contextMenu.value.message;
-		if (!msg) return;
-
+	const handleContextSelect = async (action: string, msg: MessageType) => {
 		switch (action) {
 			case 'reply':
 				handleReply(msg);
@@ -125,8 +95,6 @@
 	const handleReply = (message: MessageType) => {
 		emit('reply', message.id);
 	};
-
-	const repliedLookup = (id: snowflake_id) => messageStore.findMessage(chatTarget.value, id);
 
 	const highlightedId = ref<snowflake_id | null>(null);
 	let highlightTimer: ReturnType<typeof setTimeout> | null = null;
@@ -188,6 +156,26 @@
 			},
 		});
 	};
+
+	const reactionPickerAnchor = ref<HTMLElement | null>(null);
+	const reactionTargetId = ref<snowflake_id | null>(null);
+
+	function openReactionPicker(e: MouseEvent, messageId: snowflake_id) {
+		reactionPickerAnchor.value = e.currentTarget as HTMLElement;
+		reactionTargetId.value = messageId;
+	}
+
+	function onReactionSelect(emoji: string) {
+		const id = reactionTargetId.value;
+		if (!id) return;
+		messageStore.toggleReaction(chatTarget.value, id, emoji);
+		reactionTargetId.value = null;
+		reactionPickerAnchor.value = null;
+	}
+
+	function toggleReaction(emoji: string, messageId: snowflake_id) {
+		messageStore.toggleReaction(chatTarget.value, messageId, emoji);
+	}
 
 	const scrollToBottom = () => {
 		return new Promise<void>((resolve) => {
@@ -258,6 +246,34 @@
 		{ immediate: true }
 	);
 
+	const isAtBottom = () => {
+		const el = scroller.value;
+		if (!el) return false;
+		return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+	};
+
+	watch(
+		() => props.isReplying,
+		async (replying) => {
+			if (!replying) {
+				return;
+			}
+
+			if (!isAtBottom()) return;
+
+			await nextTick();
+
+			const el = scroller.value;
+			if (!el) return;
+			const start = performance.now();
+			const animate = () => {
+				el.scrollTop = el.scrollHeight;
+				if (performance.now() - start < 250) requestAnimationFrame(animate);
+			};
+			requestAnimationFrame(animate);
+		}
+	);
+
 	watch(
 		() => messages.value?.length,
 		async (newLen, oldLen) => {
@@ -271,7 +287,7 @@
 </script>
 
 <template>
-	<div ref="scroller" class="message-list" @scroll="onScroll">
+	<div ref="scroller" class="message-list" :class="{ 'is-replying': isReplying }" @scroll="onScroll">
 		<div class="message-spacer"></div>
 		<div v-if="isLoadingMore" class="load-more-spinner">
 			<Icon icon="svg-spinners:ring-resize" width="24" height="24" />
@@ -300,13 +316,12 @@
 				:message="message"
 				:user="index === 0 || messages[index - 1].from !== message.from ? userStore.users.get(message.from) : undefined"
 				:privateKey="privateKey"
-				:repliedLookup="repliedLookup"
 				:color="getTopRoleColor(message.from)"
-				@open-profile="handleOpenProfile"
 				@scroll-to="scrollToMessage"
+				@toggle-reaction="toggleReaction($event, message.id)"
 			/>
 			<div v-if="hoveredMessageId === message.id" class="message-actions">
-				<div class="action-btn" title="Add Reaction">
+				<div class="action-btn" title="Add Reaction" @click="openReactionPicker($event, message.id)">
 					<Icon icon="mdi:emoticon-outline" />
 				</div>
 				<div class="action-btn" title="Reply" @click="handleReply(message)">
@@ -322,26 +337,14 @@
 				</template>
 			</div>
 		</div>
-
-		<ContextMenu
-			:show="contextMenu.show"
-			:x="contextMenu.x"
-			:y="contextMenu.y"
-			:options="contextMenu.options"
-			@close="contextMenu.show = false"
-			@select="handleContextSelect"
-			:min-width="180"
-		/>
-
-		<ProfileCard
-			v-if="profileCard.user"
-			:user="profileCard.user"
-			:show="profileCard.show"
-			:x="profileCard.x"
-			:y="profileCard.y"
-			@close="profileCard.show = false"
-		/>
 	</div>
+
+	<ReactionPicker
+		v-if="reactionPickerAnchor"
+		:anchor="reactionPickerAnchor"
+		@select="onReactionSelect"
+		@close="reactionPickerAnchor = null; reactionTargetId = null"
+	/>
 </template>
 
 <style scoped>
@@ -353,6 +356,11 @@
 		position: relative;
 		scrollbar-width: none;
 		padding-bottom: 80px;
+		transition: padding-bottom 0.2s ease;
+	}
+
+	.message-list.is-replying {
+		padding-bottom: 124px;
 	}
 
 	.message-spacer {
@@ -376,7 +384,7 @@
 		position: relative;
 	}
 
-	.message-wrapper.highlighted {
+	.message-wrapper.highlighted :deep(.message) {
 		animation: reply-highlight 1.5s ease-out;
 	}
 
@@ -432,7 +440,7 @@
 		color: var(--text);
 	}
 
-	.message-wrapper:has(.message-actions:hover) {
+	.message-wrapper:has(.message-actions:hover) :deep(.message) {
 		background-color: var(--bg-light);
 	}
 

@@ -22,11 +22,23 @@ export default defineConfig(({ mode }) => {
 			},
 		},
 		server: {
+			host: true,
 			allowedHosts: true,
 			proxy: {
 				'/api': {
 					target: `${protocol}://${domain}:${apiPort}`,
 					changeOrigin: true,
+					onProxyRes: (proxyRes: any) => {
+						const setCookie = proxyRes.headers['set-cookie'];
+						if (setCookie) {
+							proxyRes.headers['set-cookie'] = setCookie.map((cookie: any) => {
+								return cookie
+									.replace(/SameSite=[^;]+/i, 'SameSite=Lax')
+									.replace(/;\s*Secure/i, '')
+									.replace(/;\s*Domain=[^;]+/i, '');
+							});
+						}
+					},
 				},
 				'/ws': {
 					target: `${https ? 'wss' : 'ws'}://${domain}:${wsPort}`,

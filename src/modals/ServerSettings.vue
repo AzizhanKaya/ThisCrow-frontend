@@ -4,7 +4,7 @@
 	import { useServerStore } from '@/stores/server';
 	import { useMeStore } from '@/stores/me';
 	import { Icon } from '@iconify/vue';
-	import { computeGroupPermissions } from '@/utils/permissions';
+
 	import { Permissions } from '@/types';
 
 	import GeneralTab from './ServerSettings/GeneralTab.vue';
@@ -19,12 +19,6 @@
 	const activeTab = ref('general');
 	const server_id = modalStore.data?.server_id;
 	const server = computed(() => serverStore.getServerById(server_id));
-
-	const canManageBans = computed(() => {
-		if (!server.value || !meStore.me) return false;
-		const perms = computeGroupPermissions(server.value, meStore.me.id);
-		return (perms & (Permissions.BAN_MEMBERS | Permissions.ADMINISTRATOR)) !== 0;
-	});
 
 	function close() {
 		modalStore.closeModal();
@@ -47,7 +41,7 @@
 					<button :class="{ active: activeTab === 'invites' }" @click="activeTab = 'invites'">
 						<Icon icon="mdi:link-variant" class="nav-icon" /> Invites
 					</button>
-					<button v-if="canManageBans" :class="{ active: activeTab === 'bans' }" @click="activeTab = 'bans'">
+					<button :class="{ active: activeTab === 'bans' }" @click="activeTab = 'bans'">
 						<Icon icon="mdi:account-cancel" class="nav-icon" /> Bans
 					</button>
 				</nav>

@@ -243,9 +243,6 @@
 				</div>
 
 				<div class="actions" v-if="me && me.id !== user.id">
-					<button class="action-circle-btn btn-secondary" title="Send Message" @click="handleMessage">
-						<Icon icon="mdi:message" />
-					</button>
 					<button class="action-circle-btn btn-secondary" title="Friend" disabled v-if="friendStore.isFriend(user.id)">
 						<Icon icon="mdi:account-check" />
 					</button>
@@ -254,6 +251,9 @@
 					</button>
 					<button class="action-circle-btn btn-secondary" title="Add Friend" @click="handleAddFriend" v-else>
 						<Icon icon="mdi:account-plus" />
+					</button>
+					<button class="action-circle-btn btn-secondary" title="Send Message" @click="handleMessage">
+						<Icon icon="mdi:message" />
 					</button>
 				</div>
 			</div>

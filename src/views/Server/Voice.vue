@@ -29,7 +29,11 @@
 	const isTrackActive = (userId: id, type: MediaType) => {
 		const track = getTrack(userId, type);
 		if (!track) return false;
-		return track.readyState === 'live' && track.enabled && webrtcService.activeTracks.has(track.id);
+		const result = track.readyState === 'live' && track.enabled && !track.muted && webrtcService.activeTracks.has(track.id);
+		if (type === MediaType.Screen) {
+			console.log('[Voice:isTrackActive]', userId, type, 'result:', result, 'readyState:', track.readyState, 'enabled:', track.enabled, 'muted:', track.muted, 'inActiveTracks:', webrtcService.activeTracks.has(track.id));
+		}
+		return result;
 	};
 
 	const loadedVideos = reactive(new Set<string>());
@@ -44,7 +48,11 @@
 	const isVideoVisible = (userId: id, type: MediaType) => {
 		if (!isTrackActive(userId, type)) return false;
 		const track = getTrack(userId, type);
-		return track ? loadedVideos.has(track.id) : false;
+		const result = track ? loadedVideos.has(track.id) : false;
+		if (type === MediaType.Screen) {
+			console.log('[Voice:isVideoVisible]', userId, type, 'result:', result);
+		}
+		return result;
 	};
 
 	const streamCache = new Map<string, MediaStream>();
@@ -373,7 +381,6 @@
 		width: 90px;
 		height: 90px;
 		border-radius: 50%;
-		background-color: var(--color);
 		color: var(--text);
 		display: flex;
 		align-items: center;

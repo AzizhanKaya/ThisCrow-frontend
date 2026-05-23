@@ -1,6 +1,6 @@
 <script setup lang="ts">
 	import { Icon } from '@iconify/vue';
-	import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
+	import { ref, watch, nextTick, onUnmounted } from 'vue';
 
 	export type ContextMenuOption = {
 		label?: string;
@@ -12,10 +12,11 @@
 		rightIcon?: string;
 		rightText?: string;
 		children?: ContextMenuOption[];
-		checked?: boolean;
+		checked?: boolean | (() => boolean);
 		stayOpen?: boolean;
 		data?: any;
 		color?: string;
+		disabled?: boolean;
 	};
 
 	const props = defineProps<{
@@ -25,6 +26,8 @@
 		options: ContextMenuOption[];
 		minWidth?: number;
 		submenuDirection?: 'left' | 'right';
+		target?: HTMLElement;
+		zIndex?: number;
 	}>();
 
 	const emit = defineEmits<{
@@ -45,8 +48,13 @@
 		}
 	};
 
-	const updatePosition = async () => {
-		await nextTick();
+	let resizeObserver: ResizeObserver | null = null;
+	let rAfLoopId: number | null = null;
+	let initialTargetOffsetX = 0;
+	let initialTargetOffsetY = 0;
+
+	const updatePosition = async (isInitial = false) => {
+		if (isInitial) await nextTick();
 		if (!menuRef.value) return;
 
 		const width = menuRef.value.offsetWidth;
@@ -57,25 +65,54 @@
 		let finalX = props.x;
 		let finalY = props.y;
 
-		if (finalX + width > viewportWidth) {
-			finalX = viewportWidth - width - 5;
-		}
-		if (finalY + height > viewportHeight) {
-			finalY = viewportHeight - height - 5;
-		}
+		if (isInitial) {
+			if (finalX + width > viewportWidth) {
+				finalX = viewportWidth - width - 5;
+			}
+			if (finalY + height > viewportHeight) {
+				finalY = viewportHeight - height - 5;
+			}
 
-		if (finalX < 5) finalX = 5;
-		if (finalY < 5) finalY = 5;
+			if (finalX < 5) finalX = 5;
+			if (finalY < 5) finalY = 5;
+
+			if (props.target) {
+				const rect = props.target.getBoundingClientRect();
+				initialTargetOffsetX = finalX - rect.left;
+				initialTargetOffsetY = finalY - rect.top;
+			}
+		} else if (props.target) {
+			const rect = props.target.getBoundingClientRect();
+			finalX = rect.left + initialTargetOffsetX;
+			finalY = rect.top + initialTargetOffsetY;
+		} else {
+			if (finalX + width > viewportWidth) {
+				finalX = viewportWidth - width - 5;
+			}
+			if (finalY + height > viewportHeight) {
+				finalY = viewportHeight - height - 5;
+			}
+
+			if (finalX < 5) finalX = 5;
+			if (finalY < 5) finalY = 5;
+		}
 
 		menuRef.value.style.left = `${finalX}px`;
 		menuRef.value.style.top = `${finalY}px`;
 	};
 
-	let resizeObserver: ResizeObserver | null = null;
+	const positionLoop = () => {
+		if (props.show && props.target) {
+			updatePosition(false);
+			rAfLoopId = requestAnimationFrame(positionLoop);
+		}
+	};
+
+	const handleResize = () => updatePosition(false);
 
 	watch(
-		() => [props.show, props.x, props.y],
-		async ([newShow]) => {
+		() => props.show,
+		async (newShow) => {
 			if (newShow) {
 				await nextTick();
 
@@ -84,30 +121,47 @@
 					document.addEventListener('contextmenu', handleContextOutside);
 				});
 
-				await updatePosition();
+				await updatePosition(true);
 
-				window.addEventListener('resize', updatePosition);
+				if (props.target) {
+					rAfLoopId = requestAnimationFrame(positionLoop);
+				}
+
+				window.addEventListener('resize', handleResize);
 				if (menuRef.value) {
-					resizeObserver = new ResizeObserver(() => updatePosition());
+					resizeObserver = new ResizeObserver(() => updatePosition(false));
 					resizeObserver.observe(menuRef.value);
 				}
 			} else {
+				if (rAfLoopId !== null) {
+					cancelAnimationFrame(rAfLoopId);
+					rAfLoopId = null;
+				}
 				document.removeEventListener('click', handleClickOutside);
 				document.removeEventListener('contextmenu', handleContextOutside);
-				window.removeEventListener('resize', updatePosition);
+				window.removeEventListener('resize', handleResize);
 				if (resizeObserver) {
 					resizeObserver.disconnect();
 					resizeObserver = null;
 				}
 			}
 		},
-		{ immediate: true, deep: true }
+		{ immediate: true }
+	);
+
+	watch(
+		() => [props.x, props.y],
+		async () => {
+			if (props.show) {
+				await updatePosition(true);
+			}
+		}
 	);
 
 	onUnmounted(() => {
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('contextmenu', handleContextOutside);
-		window.removeEventListener('resize', updatePosition);
+		window.removeEventListener('resize', handleResize);
 		if (resizeObserver) {
 			resizeObserver.disconnect();
 		}
@@ -116,15 +170,15 @@
 
 <template>
 	<Transition name="context-menu">
-		<div v-if="show" ref="menuRef" class="context-menu" @click.stop @contextmenu.prevent.stop>
+		<div v-if="show" ref="menuRef" class="context-menu" :style="{ zIndex }" @click.stop @contextmenu.prevent>
 			<template v-for="(option, index) in options" :key="option.action || index">
 				<div v-if="option.divider" class="menu-divider"></div>
 				<div v-else class="menu-item-wrapper" @mouseenter="activeSubmenu = index" @mouseleave="activeSubmenu = null">
 					<button
 						class="menu-item"
-						:class="option.variant"
+						:class="[option.variant, { disabled: option.disabled }]"
 						@click="
-							if (option.action) {
+							if (!option.disabled && option.action) {
 								emit('select', option.action, option);
 								if (!option.stayOpen) emit('close');
 							}
@@ -132,7 +186,7 @@
 					>
 						<div class="item-left">
 							<div v-if="option.checked !== undefined" class="check-box">
-								<Icon v-if="option.checked" icon="mdi:check" class="check-icon" />
+								<Icon v-if="typeof option.checked === 'function' ? option.checked() : option.checked" icon="mdi:check" class="check-icon" />
 							</div>
 							<div v-if="option.color" class="role-color" :style="{ backgroundColor: option.color }"></div>
 							<Icon v-if="option.icon" :icon="option.icon" class="item-icon" />
@@ -160,9 +214,9 @@
 								<button
 									v-else
 									class="menu-item"
-									:class="child.variant"
+									:class="[child.variant, { disabled: child.disabled }]"
 									@click="
-										if (child.action) {
+										if (!child.disabled && child.action) {
 											emit('select', child.action, child);
 											if (!child.stayOpen) emit('close');
 										}
@@ -170,7 +224,7 @@
 								>
 									<div class="item-left">
 										<div v-if="child.checked !== undefined" class="check-box">
-											<Icon v-if="child.checked" icon="mdi:check" class="check-icon" />
+											<Icon v-if="typeof child.checked === 'function' ? child.checked() : child.checked" icon="mdi:check" class="check-icon" />
 										</div>
 										<div v-if="child.color" class="role-color" :style="{ backgroundColor: child.color }"></div>
 										<Icon v-if="child.icon" :icon="child.icon" class="item-icon" />
@@ -388,5 +442,11 @@
 		height: 12px;
 		border-radius: 50%;
 		flex-shrink: 0;
+	}
+
+	.menu-item.disabled {
+		opacity: 0.5;
+		cursor: default;
+		pointer-events: none;
 	}
 </style>

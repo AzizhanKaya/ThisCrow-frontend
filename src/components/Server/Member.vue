@@ -2,19 +2,18 @@
 	import { useDMStore } from '@/stores/dm';
 	import { useFriendStore } from '@/stores/friend';
 	import { type Member, type User, Status, Permissions } from '@/types';
-	import { ref, computed } from 'vue';
-	import ContextMenu from '@/components/ContextMenu.vue';
-	import ProfileCard from '@/components/ProfileCard.vue';
+	import { ref, computed, nextTick } from 'vue';
 	import { Icon } from '@iconify/vue';
 	import { useRouter } from 'vue-router';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
+	import { useContextMenuStore } from '@/stores/contextMenu';
+	import { useProfileCardStore } from '@/stores/profileCard';
 	import { useServerStore } from '@/stores/server';
 	import { useUserStore } from '@/stores/user';
 	import { useMeStore } from '@/stores/me';
 	import { useErrorStore } from '@/stores/error';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useModalStore, ModalView } from '@/stores/modal';
-	import { computeGroupPermissions } from '@/utils/permissions';
 	import { useVoiceStore } from '@/stores/voice';
 
 	const friendStore = useFriendStore();
@@ -24,6 +23,8 @@
 	const errorStore = useErrorStore();
 	const voiceStore = useVoiceStore();
 	const modalStore = useModalStore();
+	const contextMenuStore = useContextMenuStore();
+	const profileCardStore = useProfileCardStore();
 	const router = useRouter();
 
 	const props = defineProps<{
@@ -64,28 +65,22 @@
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
-	const contextMenu = ref({
-		show: false,
-		x: 0,
-		y: 0,
-	});
-
-	const profileCard = ref({
-		show: false,
-		x: 0,
-		y: 0,
-	});
-
 	const roleOptions = computed<ContextMenuOption[]>(() => {
-		if (!serverStore.server?.roles) return [];
+		if (!serverStore.server?.roles || serverStore.server.roles.size === 0) {
+			return [
+				{
+					label: 'No roles',
+					disabled: true,
+				} as ContextMenuOption,
+			];
+		}
 		return Array.from(serverStore.server.roles.values())
 			.sort((a, b) => a.position - b.position)
 			.map((role) => {
-				const hasRole = props.member.roles.some((r) => r.id === role.id);
 				return {
 					label: role.name,
 					action: 'toggle_role',
-					checked: hasRole,
+					checked: () => props.member.roles.some((r) => r.id === role.id),
 					stayOpen: true,
 					data: role.id,
 					color: role.color,
@@ -120,28 +115,30 @@
 		return opts;
 	});
 
-	function openContextMenu(e: MouseEvent) {
+	async function openContextMenu(e: MouseEvent) {
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 
-		contextMenu.value = {
-			show: true,
+		contextMenuStore.open({
+			e,
 			x: e.clientX - 250,
 			y: rect.bottom + 4,
-		};
+			options: contextMenuOptions.value,
+			submenuDirection: 'left',
+			minWidth: 260,
+			onSelect: handleContextAction,
+		});
 	}
 
 	function openProfileCard(e: MouseEvent) {
-		if (profileCard.value.show) {
-			profileCard.value.show = false;
-			return;
-		}
-		document.dispatchEvent(new Event('click'));
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		profileCard.value = {
-			show: true,
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		profileCardStore.open({
+			target,
 			x: rect.left - 350,
 			y: rect.top,
-		};
+			user: props.member.user,
+			roles: props.member.roles,
+		});
 	}
 
 	async function handleContextAction(action: string, option?: ContextMenuOption) {
@@ -206,10 +203,6 @@
 				break;
 		}
 	}
-
-	function closeContextMenu() {
-		contextMenu.value.show = false;
-	}
 </script>
 
 <template>
@@ -228,26 +221,6 @@
 			</div>
 			<Icon class="crown" icon="mdi:crown" v-if="user.id === serverStore.server?.owner" />
 		</div>
-
-		<ContextMenu
-			:show="contextMenu.show"
-			:x="contextMenu.x"
-			:y="contextMenu.y"
-			:options="contextMenuOptions"
-			submenuDirection="left"
-			@select="handleContextAction"
-			@close="closeContextMenu"
-			:min-width="260"
-		/>
-
-		<ProfileCard
-			:user="member.user"
-			:roles="member.roles"
-			:show="profileCard.show"
-			:x="profileCard.x"
-			:y="profileCard.y"
-			@close="profileCard.show = false"
-		/>
 	</div>
 </template>
 

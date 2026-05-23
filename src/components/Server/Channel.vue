@@ -1,13 +1,17 @@
 <script setup lang="ts">
-	import { type Channel, ChannelType, type id } from '@/types';
+	import { type Channel, ChannelType, type id, type User } from '@/types';
 	import { Icon } from '@iconify/vue';
 	import { webrtcService } from '@/services/webrtc';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useWatchStore } from '@/stores/watch';
 	import { useModalStore, ModalView } from '@/stores/modal';
+	import { useProfileCardStore } from '@/stores/profileCard';
+	import { useServerStore } from '@/stores/server';
 
 	const watchStore = useWatchStore();
 	const modalStore = useModalStore();
+	const profileCardStore = useProfileCardStore();
+	const serverStore = useServerStore();
 	const props = defineProps<{
 		channel: Channel;
 		active: boolean;
@@ -21,6 +25,22 @@
 		modalStore.openModal(ModalView.CHANNEL_SETTINGS, {
 			server_id: props.server_id,
 			channel_id: props.channel.id,
+		});
+	}
+
+	function openProfileCard(e: MouseEvent, user: User) {
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		
+		const server = serverStore.servers.get(props.server_id);
+		const member = server?.members?.get(user.id);
+		
+		profileCardStore.open({
+			target,
+			x: rect.right + 10,
+			y: rect.top,
+			user: user,
+			roles: member?.roles,
 		});
 	}
 </script>
@@ -37,7 +57,7 @@
 		</div>
 
 		<div v-if="channel.users && channel.users.size > 0" class="channel-users">
-			<div v-for="user in channel.users" :key="String(user.id)" class="channel-user">
+			<div v-for="user in channel.users" :key="String(user.id)" class="channel-user" @click.stop="openProfileCard($event, user)">
 				<img
 					:src="user.avatar || getDefaultAvatar(user.username)"
 					alt="avatar"

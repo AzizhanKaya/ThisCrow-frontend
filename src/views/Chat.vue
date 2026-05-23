@@ -124,7 +124,7 @@
 			</div>
 		</header>
 		<main>
-			<MessageList :to="to" @reply="(id) => (replyTo = id)" />
+			<MessageList :to="to" :is-replying="!!replyTo" @reply="(id) => (replyTo = id)" />
 			<ChatSkeleton v-if="showSkeleton" class="skeleton-overlay" />
 		</main>
 		<MessageInput :to="to" :type="MessageEnum.Direct" :reply-to="replyTo" @clear-reply="replyTo = null" />
@@ -147,6 +147,8 @@
 		background-color: var(--bg-dark);
 		height: var(--header-height);
 		width: 100%;
+		position: relative;
+		z-index: 300;
 		border-bottom: 1px solid var(--border);
 		display: flex;
 		align-items: center;
@@ -333,6 +335,7 @@
 		align-items: center;
 		gap: 5px;
 		padding: 8px;
+		height: 100%;
 	}
 
 	.icon-btn {

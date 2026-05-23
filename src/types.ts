@@ -12,6 +12,7 @@ export type Server = {
 	channels?: Map<id, Channel>;
 	roles?: Map<id, Role>;
 	everyone?: number;
+	permissions?: Permissions;
 };
 
 export type Channel = {
@@ -23,6 +24,7 @@ export type Channel = {
 	messages?: Message[];
 	users?: Set<User>;
 	watch_party?: WatchParty;
+	permissions?: Permissions;
 	permission_overrides?: PermissionOverride[];
 };
 
@@ -60,7 +62,28 @@ export type Role = {
 	name: string;
 	position: number;
 	color: string;
-	permissions: number;
+	permissions?: number;
+};
+
+export type Subscribed = {
+	id: id;
+	owner?: id;
+	name: string;
+	icon?: string;
+	members: Record<id, { id: id; name?: string; roles: id[] }>;
+	channels: Record<
+		id,
+		{
+			id: id;
+			name: string;
+			title: string | null;
+			position: number;
+			type: ChannelType;
+			users?: id[];
+			watch_party?: WatchParty;
+		}
+	>;
+	roles: Record<id, Role>;
 };
 
 export enum Permissions {
@@ -79,7 +102,6 @@ export enum Permissions {
 	VIEW_CHANNEL = 1 << 9,
 	VIEW_MESSAGES = 1 << 10,
 	SEND_MESSAGE = 1 << 11,
-	SEND_TTS_MESSAGES = 1 << 12,
 	MANAGE_MESSAGES = 1 << 13,
 	EMBED_LINKS = 1 << 14,
 	ATTACH_FILES = 1 << 15,
@@ -196,7 +218,13 @@ export interface Message<T = MessageData> {
 	type: MessageType;
 	group_id?: id;
 	overwrited?: boolean;
+	reacted?: boolean;
 }
+
+export type Reaction = {
+	user_id: id;
+	reaction: string;
+};
 
 export type MessageBlock = {
 	messages: Message[];
@@ -316,11 +344,14 @@ export type Event =
 			payload: MusicEvent;
 	  }
 	| { event: EventType.Game; payload: GameEvent }
-	| { event: EventType.Watching; payload: { video: id; offset: number } }
 	| {
 			event: EventType.Streaming;
 			payload: { group_id: id; channel_id: id; time: number };
-	  };
+	  }
+
+	/* ===== MESSAGE ===== */
+	| { event: EventType.Reaction; payload: { message: snowflake_id; reaction: string } }
+	| { event: EventType.RemoveReaction; payload: { message: snowflake_id; reaction: string } };
 
 export enum EventType {
 	/* ===== USER ===== */
@@ -378,8 +409,11 @@ export enum EventType {
 	// ==== ACTIVITY ==== */
 	Music = 'music',
 	Game = 'game',
-	Watching = 'watching',
 	Streaming = 'streaming',
+
+	/* ===== MESSAGE ===== */
+	Reaction = 'reaction',
+	RemoveReaction = 'remove_reaction',
 }
 
 export type Ack =
@@ -390,11 +424,12 @@ export type Ack =
 	| { ack: AckType.Received; payload: snowflake_id }
 	| { ack: AckType.Deleted; payload: snowflake_id }
 	| { ack: AckType.Overwritten; payload: Message }
+	| { ack: AckType.Reacted; payload: { message: snowflake_id; reaction: string } }
+	| { ack: AckType.RemovedReaction; payload: { message: snowflake_id; reaction: string } }
 
 	/* ===== USER ===== */
 	| { ack: AckType.Initialized; payload: Me }
 	| { ack: AckType.ChangedStatus; payload: Status }
-	| { ack: AckType.CreatedRole; payload: { name: string; permissions: number; color: string } }
 	| { ack: AckType.AssignedRole; payload: { role_id: id } }
 	| { ack: AckType.RemovedRole; payload: { role_id: id } }
 	| { ack: AckType.AddedFriend; payload: undefined }
@@ -411,12 +446,21 @@ export type Ack =
 	  }
 
 	/* ===== SERVER ===== */
-	| { ack: AckType.Subscribed; payload: any }
+	| {
+			ack: AckType.Subscribed;
+			payload: {
+				group: Subscribed;
+				permissions: number;
+				channel_permissions: Record<id, number>;
+			};
+	  }
 	| { ack: AckType.Unsubscribed; payload: undefined }
-	| { ack: AckType.AddedMember; payload: undefined }
+	| { ack: AckType.PermissionsChanged; payload: number }
+	| { ack: AckType.ChannelPermissionsChanged; payload: number }
 	| { ack: AckType.JoinedMember; payload: undefined }
-	| { ack: AckType.RemovedMember; payload: undefined }
-	| { ack: AckType.UserLeft; payload: undefined }
+	| { ack: AckType.LeftMember; payload: undefined }
+	| { ack: AckType.MovedGroup; payload: { position: number } }
+	| { ack: AckType.MessageError; payload: string }
 	| {
 			ack: AckType.CreatedGroup;
 			payload: {
@@ -438,7 +482,6 @@ export type Ack =
 			ack: AckType.CreatedRole;
 			payload: {
 				name: string;
-				permissions: number;
 				color: string;
 			};
 	  }
@@ -462,9 +505,9 @@ export type Ack =
 			ack: AckType.UpdatedRole;
 			payload: {
 				name?: string;
-				permissions?: number;
 				color?: string;
 				position?: number;
+				permissions?: number;
 			};
 	  }
 	| { ack: AckType.DeletedGroup; payload: undefined }
@@ -485,8 +528,8 @@ export type Ack =
 	| { ack: AckType.MovedToVoice; payload: id }
 
 	/* ===== WATCH PARTY ===== */
-	| { ack: AckType.JoinedParty; payload: undefined }
-	| { ack: AckType.LeftParty; payload: undefined }
+	| { ack: AckType.JoinedParty; payload: id }
+	| { ack: AckType.LeftParty; payload: id }
 	| { ack: AckType.Watching; payload: { video: id } }
 	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } }
 	// ===== ACTIVITY ===== */
@@ -496,10 +539,13 @@ export type Ack =
 export enum AckType {
 	None = 'none',
 	Error = 'error',
+	MessageError = 'message_error',
 	// MESSAGE
 	Received = 'received',
 	Deleted = 'deleted',
 	Overwritten = 'overwritten',
+	Reacted = 'reacted',
+	RemovedReaction = 'removed_reaction',
 	// USER
 	Initialized = 'initialized',
 	ChangedStatus = 'changed_status',
@@ -513,10 +559,11 @@ export enum AckType {
 	// GROUP
 	Subscribed = 'subscribed',
 	Unsubscribed = 'unsubscribed',
-	AddedMember = 'added_member',
+	PermissionsChanged = 'permissions_changed',
+	ChannelPermissionsChanged = 'channel_permissions_changed',
 	JoinedMember = 'joined_member',
-	RemovedMember = 'removed_member',
-	UserLeft = 'user_left',
+	LeftMember = 'left_member',
+	MovedGroup = 'moved_group',
 	CreatedGroup = 'created_group',
 	CreatedChannel = 'created_channel',
 	CreatedRole = 'created_role',

@@ -1,21 +1,23 @@
 <script setup lang="ts">
 	import { useFriendStore } from '@/stores/friend';
 	import { type User, Status } from '@/types';
-	import { ref, computed } from 'vue';
+	import { ref, computed, nextTick } from 'vue';
 	import { useUserStore } from '@/stores/user';
-	import ContextMenu from '@/components/ContextMenu.vue';
-	import ProfileCard from '@/components/ProfileCard.vue';
 	import { Icon } from '@iconify/vue';
 	import { useRouter } from 'vue-router';
 	import { useModalStore, ModalView } from '@/stores/modal';
-	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
+	import { useContextMenuStore } from '@/stores/contextMenu';
+	import { useProfileCardStore } from '@/stores/profileCard';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useVoiceStore } from '@/stores/voice';
+	import type { ContextMenuOption } from '../ContextMenu.vue';
 
 	const friendStore = useFriendStore();
 	const userStore = useUserStore();
 	const voiceStore = useVoiceStore();
 	const modalStore = useModalStore();
+	const contextMenuStore = useContextMenuStore();
+	const profileCardStore = useProfileCardStore();
 	const router = useRouter();
 
 	const props = defineProps<{
@@ -45,19 +47,7 @@
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
-	const contextMenu = ref({
-		show: false,
-		x: 0,
-		y: 0,
-	});
-
-	const profileCard = ref({
-		show: false,
-		x: 0,
-		y: 0,
-	});
-
-	const contextMenuOptions: ContextMenuOption[] = [
+const contextMenuOptions: ContextMenuOption[] = [
 		{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
 		{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
 		{ label: 'Call', action: 'call', icon: 'mdi:phone' },
@@ -72,28 +62,25 @@
 		{ label: 'Copy Username', action: 'copy_username', icon: 'mdi:content-copy' },
 	];
 
-	function openContextMenu(e: MouseEvent) {
+	async function openContextMenu(e: MouseEvent) {
 		if (props.request || props.request_sent) return;
-		contextMenu.value = {
-			show: true,
-			x: e.clientX,
-			y: e.clientY,
-		};
+		contextMenuStore.open({
+			e,
+			options: contextMenuOptions,
+			minWidth: 260,
+			onSelect: handleContextAction,
+		});
 	}
 
 	function openProfileCard(e: MouseEvent) {
-		if (profileCard.value.show) {
-			profileCard.value.show = false;
-			return;
-		}
-		document.dispatchEvent(new Event('click'));
 		const target = ((e.currentTarget as HTMLElement).querySelector('.name') || e.currentTarget) as HTMLElement;
 		const rect = target.getBoundingClientRect();
-		profileCard.value = {
-			show: true,
+		profileCardStore.open({
+			target,
 			x: rect.right + 14,
 			y: rect.top - 10,
-		};
+			user: user.value,
+		});
 	}
 
 	async function handleContextAction(action: string) {
@@ -117,10 +104,6 @@
 				navigator.clipboard.writeText(user.username);
 				break;
 		}
-	}
-
-	function closeContextMenu() {
-		contextMenu.value.show = false;
 	}
 </script>
 
@@ -158,18 +141,6 @@
 				<Icon icon="mdi:close" />
 			</button>
 		</div>
-
-		<ContextMenu
-			:show="contextMenu.show"
-			:x="contextMenu.x"
-			:y="contextMenu.y"
-			:options="contextMenuOptions"
-			@select="handleContextAction"
-			@close="closeContextMenu"
-			:min-width="260"
-		/>
-
-		<ProfileCard :user="user" :show="profileCard.show" :x="profileCard.x" :y="profileCard.y" @close="profileCard.show = false" />
 	</div>
 </template>
 

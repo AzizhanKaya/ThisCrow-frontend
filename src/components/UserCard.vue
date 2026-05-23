@@ -133,7 +133,7 @@
 <style scoped>
 	.user-container {
 		position: absolute;
-		bottom: 20px;
+		bottom: 8px;
 		left: 80px;
 		width: calc(clamp(200px, (100% - 70px) * 0.2, 300px) - 20px);
 		z-index: 30;
@@ -146,7 +146,7 @@
 		background-color: var(--bg);
 		padding: 10px;
 		border-radius: 10px;
-		height: 70px;
+		height: 64px;
 		display: flex;
 		align-items: center;
 		gap: 10px;

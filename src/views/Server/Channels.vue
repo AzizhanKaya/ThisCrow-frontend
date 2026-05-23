@@ -1,9 +1,9 @@
 <script setup lang="ts">
-	import { computed, ref, watch, onUnmounted } from 'vue';
+	import { computed, ref, watch, onUnmounted, nextTick } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import ContextMenu from '@/components/ContextMenu.vue';
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useModalStore, ModalView } from '@/stores/modal';
+	import { useContextMenuStore } from '@/stores/contextMenu';
 	import { ChannelType, EventType, MessageType, type Channel, type id, type Message, type Event, AckType } from '@/types';
 	import draggable from 'vuedraggable';
 	import { websocketService } from '@/services/websocket';
@@ -18,8 +18,8 @@
 	const props = defineProps<{ server_id: id }>();
 	const channels = defineModel<Map<id, Channel>>('channels', { required: true });
 
-	// Stores
 	const modalStore = useModalStore();
+	const contextMenuStore = useContextMenuStore();
 	const router = useRouter();
 	const route = useRoute();
 
@@ -30,7 +30,6 @@
 	});
 
 	const dragOverCategory = ref<string | null>(null);
-	const channelContextMenu = ref({ show: false, x: 0, y: 0 });
 	const collapsedCategories = ref(new Set<string | null>());
 	const categories = ref<{ title: string | null; channels: Channel[] }[]>([]);
 
@@ -115,10 +114,15 @@
 		{ label: 'Create Category', action: 'create-category', icon: 'lucide:folder-plus' },
 	];
 
-	function onContextMenu(event: MouseEvent) {
+	async function onContextMenu(event: MouseEvent) {
 		if ((event.target as HTMLElement).closest('.channel-item, .category-title')) return;
-		event.preventDefault();
-		channelContextMenu.value = { show: true, x: event.clientX, y: event.clientY };
+		contextMenuStore.open({
+			e: event,
+			options: channelSidebarOptions,
+			minWidth: 180,
+			zIndex: 1000,
+			onSelect: onMenuSelect,
+		});
 	}
 
 	function onMenuSelect(action: string) {
@@ -146,7 +150,7 @@
 </script>
 
 <template>
-	<div class="channel-list" :class="{ 'is-dragging': isDragging }" @contextmenu="onContextMenu">
+	<div class="channel-list" :class="{ 'is-dragging': isDragging }" @contextmenu.prevent="onContextMenu">
 		<draggable
 			v-model="categories"
 			group="categories"
@@ -212,16 +216,6 @@
 			</template>
 		</draggable>
 	</div>
-
-	<ContextMenu
-		:show="channelContextMenu.show"
-		:x="channelContextMenu.x"
-		:y="channelContextMenu.y"
-		:options="channelSidebarOptions"
-		@select="onMenuSelect"
-		@close="channelContextMenu.show = false"
-		:min-width="180"
-	/>
 </template>
 
 <style scoped>

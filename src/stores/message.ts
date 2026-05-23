@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia';
-import { AckType, MessageType, type Message } from '@/types';
+import { AckType, EventType, MessageType, type Event, type Message, type Reaction } from '@/types';
 import { websocketService } from '@/services/websocket';
 import { useMeStore } from './me';
 import { useErrorStore } from './error';
-import { fetchMessages, fetchMessage } from '@/api/message';
+import { fetchMessages, fetchMessage, fetchReactions } from '@/api/message';
+import { generate_uid } from '@/utils/uid';
 import type { Ack, id, snowflake_id } from '@/types';
 
 export type ChatTarget = { kind: 'user'; user_id: id } | { kind: 'channel'; channel_id: id; group_id: id };
@@ -45,6 +46,7 @@ export const useMessageStore = defineStore('message', {
 		loadingChats: new Map<string, boolean>(),
 		hasMore: new Map<string, boolean>(),
 		isolatedMessages: new Map<snowflake_id, Message>(),
+		reactions: new Map<snowflake_id, Reaction[]>(),
 	}),
 
 	getters: {
@@ -59,6 +61,7 @@ export const useMessageStore = defineStore('message', {
 			this.loadingChats = new Map();
 			this.hasMore = new Map();
 			this.isolatedMessages = new Map();
+			this.reactions = new Map();
 			websocketService.onMessage(MessageType.Direct, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Group, this.handleIncomingMessage);
 			websocketService.onMessage(MessageType.Server, this.handleAck);
@@ -77,6 +80,10 @@ export const useMessageStore = defineStore('message', {
 		async handleAck(message: Message<Ack>) {
 			const { ack, payload } = message.data;
 			switch (ack) {
+				case AckType.MessageError: {
+					useErrorStore().push(payload as string);
+					break;
+				}
 				case AckType.Received: {
 					const key = message.from
 						? chatKey({ kind: 'channel', channel_id: message.to, group_id: message.from })
@@ -121,6 +128,78 @@ export const useMessageStore = defineStore('message', {
 					}
 					break;
 				}
+				case AckType.Reacted: {
+					const { message: targetId, reaction } = payload as { message: snowflake_id; reaction: string };
+					this.markReacted(targetId);
+					const list = this.reactions.get(targetId);
+					if (list) {
+						if (!list.some((r) => r.user_id === message.from && r.reaction === reaction)) {
+							list.push({ user_id: message.from, reaction });
+							this.reactions.set(targetId, [...list]);
+						}
+					}
+					break;
+				}
+				case AckType.RemovedReaction: {
+					const { message: targetId, reaction } = payload as { message: snowflake_id; reaction: string };
+					const list = this.reactions.get(targetId);
+					if (list) {
+						const next = list.filter((r) => !(r.user_id === message.from && r.reaction === reaction));
+						this.reactions.set(targetId, next);
+					}
+					break;
+				}
+			}
+		},
+
+		markReacted(messageId: snowflake_id) {
+			for (const messages of this.messages.values()) {
+				const msg = messages.find((m) => m.id === messageId);
+				if (msg) {
+					msg.reacted = true;
+					return;
+				}
+			}
+			const isolated = this.isolatedMessages.get(messageId);
+			if (isolated) isolated.reacted = true;
+		},
+
+		async loadReactions(messageId: snowflake_id): Promise<Reaction[]> {
+			const cached = this.reactions.get(messageId);
+			if (cached) return cached;
+			try {
+				const list = await fetchReactions(messageId);
+				this.reactions.set(messageId, list);
+				return list;
+			} catch (e) {
+				console.error('Failed to fetch reactions', e);
+				return [];
+			}
+		},
+
+		getReactions(messageId: snowflake_id): Reaction[] | undefined {
+			return this.reactions.get(messageId);
+		},
+
+		toggleReaction(target: ChatTarget, messageId: snowflake_id, reaction: string) {
+			const me = useMeStore().me;
+			if (!me) return;
+			const list = this.reactions.get(messageId) ?? [];
+			const has = list.some((r) => r.user_id === me.id && r.reaction === reaction);
+			const eventType = has ? EventType.RemoveReaction : EventType.Reaction;
+			const data: Event = { event: eventType, payload: { message: messageId, reaction } };
+			const envelope: Message<Event> = {
+				id: generate_uid(me.id),
+				from: me.id,
+				to: target.kind === 'channel' ? target.channel_id : target.user_id,
+				data,
+				type: target.kind === 'channel' ? MessageType.InfoGroup : MessageType.Info,
+				...(target.kind === 'channel' ? { group_id: target.group_id } : {}),
+			};
+			try {
+				websocketService.sendMessage(envelope);
+			} catch (e) {
+				console.error('Failed to send reaction event', e);
 			}
 		},
 
