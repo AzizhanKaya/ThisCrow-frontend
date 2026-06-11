@@ -35,12 +35,6 @@
 			return;
 		}
 
-		if (password.length < 8) {
-			errorStore.push('Passwords lenght should be 8 at least');
-			isLoading.value = false;
-			return;
-		}
-
 		try {
 			const keypair = generate_keypair(username + ':' + password);
 			await register(username, name, email, password, keypair.public_key);
@@ -62,27 +56,51 @@
 			<div class="field">
 				<label>Username</label>
 				<Icon icon="mdi:user" class="icon" />
-				<input type="text" v-model="username_ref" required placeholder="Username" />
+				<input
+					id="username"
+					name="username"
+					type="text"
+					v-model="username_ref"
+					autocomplete="username"
+					required
+					placeholder="Username"
+				/>
 			</div>
 			<div class="field">
 				<label>Name</label>
 				<Icon icon="mdi:user" class="icon" />
-				<input type="text" v-model="name_ref" required placeholder="Name" />
+				<input id="name" name="name" type="text" v-model="name_ref" autocomplete="name" required placeholder="Name" />
 			</div>
 			<div class="field">
 				<label>Email</label>
 				<Icon icon="ic:baseline-email" class="icon" />
-				<input type="email" v-model="email_ref" required placeholder="Email" />
+				<input id="email" name="email" type="email" v-model="email_ref" autocomplete="email" required placeholder="Email" />
 			</div>
 			<div class="field">
 				<label>Password</label>
 				<Icon icon="fa6-solid:lock" class="icon" />
-				<input type="password" v-model="password_ref" required placeholder="Password" />
+				<input
+					id="password"
+					name="password"
+					type="password"
+					v-model="password_ref"
+					autocomplete="new-password"
+					required
+					placeholder="Password"
+				/>
 			</div>
 			<div class="field">
 				<label>Confirm Password</label>
 				<Icon icon="octicon:lock-24" class="icon" />
-				<input type="password" v-model="confirmPassword_ref" required placeholder="Confirm Password" />
+				<input
+					id="confirm_password"
+					name="confirm_password"
+					type="password"
+					v-model="confirmPassword_ref"
+					autocomplete="new-password"
+					required
+					placeholder="Confirm Password"
+				/>
 			</div>
 			<button type="submit">Register</button>
 		</form>

@@ -3,20 +3,28 @@
 	import { Icon } from '@iconify/vue';
 	import { webrtcService } from '@/services/webrtc';
 	import { getDefaultAvatar } from '@/utils/avatar';
-	import { useWatchStore } from '@/stores/watch';
 	import { useModalStore, ModalView } from '@/stores/modal';
 	import { useProfileCardStore } from '@/stores/profileCard';
 	import { useServerStore } from '@/stores/server';
+	import { useVoiceStore } from '@/stores/voice';
+	import { useWatchPartyCardStore } from '@/stores/watchPartyCard';
+	import { can } from '@/utils/perms';
+	import { computed, onBeforeUnmount } from 'vue';
 
-	const watchStore = useWatchStore();
 	const modalStore = useModalStore();
 	const profileCardStore = useProfileCardStore();
 	const serverStore = useServerStore();
+	const voiceStore = useVoiceStore();
+	const watchPartyCardStore = useWatchPartyCardStore();
+
 	const props = defineProps<{
 		channel: Channel;
 		active: boolean;
 		server_id: id;
 	}>();
+
+	const server = computed(() => serverStore.getServerById(props.server_id));
+	const p = can(server, () => props.channel);
 
 	const emit = defineEmits(['click']);
 
@@ -31,10 +39,10 @@
 	function openProfileCard(e: MouseEvent, user: User) {
 		const target = e.currentTarget as HTMLElement;
 		const rect = target.getBoundingClientRect();
-		
+
 		const server = serverStore.servers.get(props.server_id);
 		const member = server?.members?.get(user.id);
-		
+
 		profileCardStore.open({
 			target,
 			x: rect.right + 10,
@@ -43,15 +51,52 @@
 			roles: member?.roles,
 		});
 	}
+
+	let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function onChannelHover(e: MouseEvent) {
+		if (!props.channel.watch_party) return;
+		clearTimeout(hoverTimer);
+		const target = e.currentTarget as HTMLElement;
+		hoverTimer = setTimeout(() => {
+			const rect = target.getBoundingClientRect();
+			watchPartyCardStore.open({
+				target,
+				x: rect.right + 12,
+				y: rect.top,
+				server_id: props.server_id,
+				channel_id: props.channel.id,
+			});
+		}, 400);
+	}
+
+	function onChannelLeave() {
+		clearTimeout(hoverTimer);
+		hoverTimer = undefined;
+		if (watchPartyCardStore.channel_id === props.channel.id) {
+			watchPartyCardStore.close();
+		}
+	}
+
+	onBeforeUnmount(() => {
+		clearTimeout(hoverTimer);
+	});
 </script>
 
 <template>
 	<div class="channel-wrapper">
-		<div class="channel-item" :class="{ active: active }" @click="emit('click', channel)">
+		<div
+			class="channel-item"
+			:class="{ active: active, 'no-connect': channel.type === ChannelType.Voice && !p.connect }"
+			:title="channel.type === ChannelType.Voice && !p.connect ? 'You cannot connect to this channel' : ''"
+			@click="emit('click', channel)"
+			@mouseenter="onChannelHover($event)"
+			@mouseleave="onChannelLeave()"
+		>
 			<Icon v-if="channel.type === ChannelType.Text" icon="octicon:hash-16" class="channel-icon hash" />
 			<Icon v-else icon="mdi:volume-high" class="channel-icon voice-icon" />
 			<span class="channel-name">{{ channel.name }}</span>
-			<button class="settings-btn" @click="openSettings" title="Channel settings">
+			<button v-if="p.manageChannels" class="settings-btn" @click="openSettings" title="Channel settings">
 				<Icon icon="mdi:cog" />
 			</button>
 		</div>
@@ -65,8 +110,12 @@
 					:class="{ 'is-speaking': webrtcService.speakingUsers.has(user.id) }"
 				/>
 				<span class="user-name">{{ user.name }}</span>
-				<Icon v-if="channel.watch_party?.host === user.id" icon="tdesign:film-filled" class="watch-party-icon" />
-				<Icon v-else-if="channel.watch_party?.users.includes(user.id)" icon="clarity:film-strip-solid" class="watch-party-icon" />
+				<div class="user-status-icons">
+					<Icon v-if="channel.watch_party?.host === user.id" icon="tdesign:film-filled" class="watch-party-icon" />
+					<Icon v-else-if="channel.watch_party?.users.includes(user.id)" icon="clarity:film-strip-solid" class="watch-party-icon" />
+					<Icon v-if="voiceStore.userStates.get(user.id)?.muted" icon="mdi:microphone-off" class="voice-status-icon" />
+					<Icon v-if="voiceStore.userStates.get(user.id)?.deafened" icon="mdi:headphones-off" class="voice-status-icon" />
+				</div>
 			</div>
 		</div>
 	</div>
@@ -80,6 +129,7 @@
 	}
 
 	.channel-item {
+		position: relative;
 		display: flex;
 		align-items: center;
 		margin-bottom: 2px;
@@ -103,7 +153,10 @@
 	}
 
 	.settings-btn {
-		margin-left: auto;
+		position: absolute;
+		right: 8px;
+		top: 50%;
+		transform: translateY(-50%);
 		background: none;
 		border: none;
 		color: var(--text-muted);
@@ -142,6 +195,11 @@
 
 	.channel-item.active .channel-icon {
 		color: var(--text);
+	}
+
+	.channel-item.no-connect {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.channel-users {
@@ -204,8 +262,20 @@
 		text-overflow: ellipsis;
 	}
 
-	.watch-party-icon {
+	.user-status-icons {
 		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.watch-party-icon {
+		font-size: 0.95rem;
+	}
+
+	.voice-status-icon {
+		font-size: 0.95rem;
+		color: var(--text-muted);
 	}
 
 	.watch-party-btn {

@@ -107,18 +107,12 @@
 
 	function onRoleDragEnd() {
 		isDragging.value = false;
-		if (!props.serverId) return;
+	}
 
-		const total = roleList.value.length;
-		roleList.value.forEach((role, idx) => {
-			const newPos = total - idx;
-			const target = server.value?.roles?.get(role.id);
-			if (!target) return;
-			if (target.position !== newPos) {
-				target.position = newPos;
-				serverStore.updateRole(props.serverId, role.id, { position: newPos });
-			}
-		});
+	function onRoleChange(evt: any) {
+		if (!evt.moved || !props.serverId) return;
+		const { element, newIndex } = evt.moved;
+		serverStore.updateRole(props.serverId, element.id, { position: roleList.value.length - newIndex });
 	}
 
 	const selectedRoleId = ref<number | null>(null);
@@ -128,10 +122,6 @@
 
 	const isEveryoneSelected = computed(() => selectedRoleId.value === 0);
 
-	// Snapshot of the last saved server state for the selected role. Used only as a
-	// diff anchor for the save bar. Tracks the store live when the user hasn't touched
-	// anything (so incoming WS acks don't falsely trigger the save bar); freezes once
-	// the user dirties the form, until save or selection change.
 	const savedSnapshot = ref<{ name: string; color: string; permissions: number } | null>(null);
 	const isDirty = ref(false);
 
@@ -156,8 +146,6 @@
 		{ immediate: true }
 	);
 
-	// Mirror external (WS ack) mutations into the snapshot while the form is clean,
-	// so the save bar only reflects the user's own pending edits.
 	watch(
 		() => selectedRole.value && [selectedRole.value.name, selectedRole.value.color, rolePermFor(selectedRole.value.id)],
 		() => {
@@ -197,9 +185,7 @@
 			return currentPermissions() !== snap.permissions;
 		}
 		return (
-			selectedRole.value.name !== snap.name ||
-			selectedRole.value.color !== snap.color ||
-			currentPermissions() !== snap.permissions
+			selectedRole.value.name !== snap.name || selectedRole.value.color !== snap.color || currentPermissions() !== snap.permissions
 		);
 	});
 
@@ -281,9 +267,16 @@
 					tag="div"
 					class="draggable-zone"
 					ghost-class="ghost-role"
+					drag-class="drag-role"
 					:animation="200"
+					:force-fallback="true"
+					:fallback-class="'drag-role'"
+					:fallback-tolerance="5"
+					:delay="200"
+					:delay-on-touch-only="true"
 					@start="isDragging = true"
 					@end="onRoleDragEnd"
+					@change="onRoleChange"
 				>
 					<template #item="{ element: role }">
 						<div class="role-row" :class="{ selected: role.id === selectedRoleId }" @click="selectedRoleId = role.id">
@@ -454,7 +447,6 @@
 			background-color 0.15s,
 			color 0.15s;
 		color: var(--text-muted);
-		-webkit-user-drag: element;
 	}
 
 	.role-row .icon-btn {
@@ -469,7 +461,6 @@
 
 	.role-row.everyone-row {
 		cursor: pointer;
-		-webkit-user-drag: none;
 	}
 
 	.role-list.is-dragging,

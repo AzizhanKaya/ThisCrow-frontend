@@ -45,6 +45,9 @@ export interface Watch {
 export interface WatchParty extends Watch {
 	host: id;
 	users: id[];
+	title?: string;
+	duration?: number;
+	thumbnail?: string;
 }
 
 export enum ChannelType {
@@ -268,6 +271,7 @@ export type Event =
 	| { event: EventType.DeleteGroup }
 	| { event: EventType.Subscribe }
 	| { event: EventType.Unsubscribe }
+	| { event: EventType.MoveGroup; payload: { position: number } }
 
 	/* ===== ROLE ===== */
 	| {
@@ -321,13 +325,16 @@ export type Event =
 	  }
 
 	/* ===== VOICE ===== */
-	| { event: EventType.JoinVoice }
+	| { event: EventType.JoinVoice; payload: { mute: boolean; deafen: boolean } }
 	| { event: EventType.ExitVoice }
 	| { event: EventType.MoveToVoice; payload: id }
+	| { event: EventType.Mute; payload: boolean }
+	| { event: EventType.Deafen; payload: boolean }
 
 	/* ===== MODERATION ===== */
 	| { event: EventType.KickUser }
 	| { event: EventType.BanUser }
+	| { event: EventType.LeaveGroup }
 
 	/* ==== webRTC ==== */
 	| { event: EventType.Offer; payload: string }
@@ -337,7 +344,10 @@ export type Event =
 	/* ==== WATCH PARTY ==== */
 	| { event: EventType.JoinParty }
 	| { event: EventType.LeaveParty }
-	| { event: EventType.Watch; payload: id }
+	| {
+			event: EventType.Watch;
+			payload: { video: id; title: string; duration: number; thumbnail: string };
+	  }
 	| { event: EventType.JumpTo; payload: { offset: number; play: boolean } }
 	| {
 			event: EventType.Music;
@@ -371,6 +381,7 @@ export enum EventType {
 	DeleteGroup = 'delete_group',
 	Subscribe = 'subscribe',
 	Unsubscribe = 'unsubscribe',
+	MoveGroup = 'move_group',
 
 	/* ===== ROLE ===== */
 	CreateRole = 'create_role',
@@ -390,10 +401,13 @@ export enum EventType {
 	JoinVoice = 'join_voice',
 	ExitVoice = 'exit_voice',
 	MoveToVoice = 'move_to_voice',
+	Mute = 'mute',
+	Deafen = 'deafen',
 
 	/* ===== MODERATION ===== */
 	KickUser = 'kick_user',
 	BanUser = 'ban_user',
+	LeaveGroup = 'leave_group',
 
 	/* ==== webRTC ==== */
 	Offer = 'offer',
@@ -452,6 +466,7 @@ export type Ack =
 				group: Subscribed;
 				permissions: number;
 				channel_permissions: Record<id, number>;
+				voice_states: Record<id, { mute: boolean; deafen: boolean }>;
 			};
 	  }
 	| { ack: AckType.Unsubscribed; payload: undefined }
@@ -523,14 +538,19 @@ export type Ack =
 	  }
 
 	/* ===== VOICE ===== */
-	| { ack: AckType.JoinedVoice; payload: id }
+	| { ack: AckType.JoinedVoice; payload: { channel_id: id; mute: boolean; deafen: boolean } }
 	| { ack: AckType.ExitedVoice; payload: id }
 	| { ack: AckType.MovedToVoice; payload: id }
+	| { ack: AckType.Muted; payload: boolean }
+	| { ack: AckType.Deafened; payload: boolean }
 
 	/* ===== WATCH PARTY ===== */
 	| { ack: AckType.JoinedParty; payload: id }
 	| { ack: AckType.LeftParty; payload: id }
-	| { ack: AckType.Watching; payload: { video: id } }
+	| {
+			ack: AckType.Watching;
+			payload: { video: id; title: string; duration: number; thumbnail: string };
+	  }
 	| { ack: AckType.JumpedTo; payload: { offset: number; play: boolean } }
 	// ===== ACTIVITY ===== */
 	| { ack: AckType.MusicActivity; payload: MusicEvent }
@@ -579,6 +599,8 @@ export enum AckType {
 	JoinedVoice = 'joined_voice',
 	ExitedVoice = 'exited_voice',
 	MovedToVoice = 'moved_to_voice',
+	Muted = 'muted',
+	Deafened = 'deafened',
 	// WATCH PARTY
 	JoinedParty = 'joined_party',
 	LeftParty = 'left_party',

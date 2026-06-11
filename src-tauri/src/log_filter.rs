@@ -38,7 +38,7 @@ pub fn install_stderr_filter() {
             if is_noise(&line) {
                 continue;
             }
-            let _ = writeln!(writer, "{}", line);
+            let _ = writeln!(writer, "{}", strip_screen_clears(&line));
             let _ = writer.flush();
         }
     });
@@ -50,4 +50,44 @@ pub fn install_stderr_filter() {}
 #[cfg(target_os = "linux")]
 fn is_noise(line: &str) -> bool {
     line.contains("GStreamer-CRITICAL")
+}
+
+#[cfg(target_os = "linux")]
+fn strip_screen_clears(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == 0x1b && i + 1 < bytes.len() {
+            match bytes[i + 1] {
+                b'c' => {
+                    i += 2;
+                    continue;
+                }
+                b'[' => {
+                    let mut j = i + 2;
+                    while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
+                        j += 1;
+                    }
+                    if j < bytes.len() {
+                        let terminator = bytes[j];
+                        let params = &bytes[i + 2..j];
+                        let drop = terminator == b'J'
+                            || ((terminator == b'h' || terminator == b'l') && params == b"?1049");
+                        if drop {
+                            i = j + 1;
+                            continue;
+                        }
+                        out.extend_from_slice(&bytes[i..=j]);
+                        i = j + 1;
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }

@@ -1,15 +1,20 @@
 <script setup lang="ts">
-	import { ref, onMounted } from 'vue';
+	import { ref, onMounted, computed } from 'vue';
 	import { getGroupInvitations, deleteInvitation, type Invitation } from '@/api/invite';
 	import { useErrorStore } from '@/stores/error';
+	import { useServerStore } from '@/stores/server';
 	import { Icon } from '@iconify/vue';
 	import type { id } from '@/types';
+	import { can } from '@/utils/perms';
 
 	const props = defineProps<{
 		serverId: id;
 	}>();
 
 	const errorStore = useErrorStore();
+	const serverStore = useServerStore();
+	const server = computed(() => serverStore.getServerById(props.serverId));
+	const p = can(server);
 
 	const invites = ref<Invitation[]>([]);
 	const isLoadingInvites = ref(false);
@@ -74,7 +79,7 @@
 						<span><Icon icon="mdi:clock-outline" class="meta-icon" />{{ timeRemaining(inv.expires_at) }}</span>
 					</div>
 				</div>
-				<button class="icon-btn danger" @click="removeInvite(inv.id)" title="Revoke">
+				<button v-if="p.deleteInvite" class="icon-btn danger" @click="removeInvite(inv.id)" title="Revoke">
 					<Icon icon="mdi:close-circle-outline" />
 				</button>
 			</div>

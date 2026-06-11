@@ -150,7 +150,7 @@
 								<div
 									class="toggle-switch"
 									:class="{ on: voiceStore.noiseSuppression }"
-									@click="voiceStore.noiseSuppression = !voiceStore.noiseSuppression"
+									@click="voiceStore.toggleNoiseSuppression()"
 								>
 									<div class="toggle-knob"></div>
 								</div>

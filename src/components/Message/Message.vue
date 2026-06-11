@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, type PropType, ref, onBeforeUnmount, watch } from 'vue';
+	import { computed, type PropType, ref, onBeforeUnmount, watch, nextTick } from 'vue';
 	import { computedAsync } from '@vueuse/core';
 	import type { CallData, Message, MessageData, MultiData, ReplyData, User, id, snowflake_id } from '@/types';
 	import { Icon } from '@iconify/vue';
@@ -30,11 +30,26 @@
 			type: String,
 			required: false,
 		},
+		editing: {
+			type: Boolean,
+			default: false,
+		},
+		editText: {
+			type: String,
+			default: '',
+		},
+		isSavingEdit: {
+			type: Boolean,
+			default: false,
+		},
 	});
 
 	const emit = defineEmits<{
 		(e: 'scroll-to', id: snowflake_id): void;
 		(e: 'toggle-reaction', emoji: string): void;
+		(e: 'update:editText', value: string): void;
+		(e: 'save-edit'): void;
+		(e: 'cancel-edit'): void;
 	}>();
 
 	const userStore = useUserStore();
@@ -213,6 +228,28 @@
 		if (callTimer !== null) clearInterval(callTimer);
 	});
 
+	const editTextareaRef = ref<HTMLTextAreaElement | null>(null);
+
+	watch(
+		() => props.editing,
+		async (editing) => {
+			if (editing) {
+				await nextTick();
+				editTextareaRef.value?.focus();
+			}
+		}
+	);
+
+	function onEditKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			emit('save-edit');
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			emit('cancel-edit');
+		}
+	}
+
 	const reactionsList = $computed(() => messageStore.getReactions(props.message.id));
 
 	const groupedReactions = $computed(() => {
@@ -383,7 +420,21 @@
 					</div>
 				</div>
 
-				<div v-if="messageText || message?.overwrited" class="text-content">
+				<div v-if="props.editing" class="inline-edit-container">
+					<textarea
+						ref="editTextareaRef"
+						class="inline-edit-input"
+						:value="props.editText"
+						@input="emit('update:editText', ($event.target as HTMLTextAreaElement).value)"
+						@keydown="onEditKeydown"
+						rows="1"
+					/>
+					<div class="inline-edit-hint">
+						Escape to <span class="hint-link" @click="emit('cancel-edit')">cancel</span> · Enter to
+						<span class="hint-link" @click="emit('save-edit')">save</span>
+					</div>
+				</div>
+				<div v-else-if="messageText || message?.overwrited" class="text-content">
 					<span v-if="messageText" class="text" :class="{ sent: is_sent_from_snowflake(props.message.id) }">{{ messageText }}</span>
 					<span v-if="message?.overwrited" class="edited-indicator">(edited)</span>
 				</div>
@@ -438,7 +489,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 4px;
-		margin-top: 2px;
+		padding-bottom: 2px;
 	}
 
 	.reaction-pill {
@@ -447,11 +498,13 @@
 		align-items: center;
 		gap: 4px;
 		padding: 2px 8px;
-		background: var(--bg-darker);
+		background: var(--bg-dark);
 		border: 1px solid var(--border);
 		border-radius: 12px;
 		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
 		line-height: 1;
 		height: 26px;
 	}
@@ -475,7 +528,9 @@
 		max-width: 280px;
 		opacity: 0;
 		pointer-events: none;
-		transition: opacity 0.12s ease, transform 0.12s ease;
+		transition:
+			opacity 0.12s ease,
+			transform 0.12s ease;
 		z-index: 50;
 	}
 
@@ -497,13 +552,12 @@
 	}
 
 	.reaction-pill:hover {
-		background: var(--bg-light);
-		border-color: var(--color-lighter);
+		background: var(--bg);
+		border-color: var(--color-lightest);
 	}
 
 	.reaction-pill.mine {
-		background: rgba(167, 139, 250, 0.12);
-		border-color: rgba(167, 139, 250, 0.4);
+		border-color: var(--color-lighter);
 	}
 
 	.reaction-pill.mine .reaction-count {
@@ -522,8 +576,7 @@
 	}
 
 	.message.with-user {
-		margin-top: 10px;
-		padding: 5px 20px 0px 20px;
+		padding: 16px 20px 0px 20px;
 	}
 
 	.message:not(.with-user) {
@@ -647,7 +700,6 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
 		padding-right: 50px;
 	}
 
@@ -946,5 +998,50 @@
 	.lightbox-fade-enter-from,
 	.lightbox-fade-leave-to {
 		opacity: 0;
+	}
+
+	.inline-edit-container {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.inline-edit-input {
+		width: 100%;
+		padding: 8px 10px;
+		background-color: var(--bg-darker, #1e1f22);
+		border: 1px solid var(--color, #7c3aed);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 1rem;
+		font-family: inherit;
+		line-height: 1.4;
+		resize: none;
+		outline: none;
+		field-sizing: content;
+		min-height: 36px;
+		max-height: 200px;
+		overflow-y: auto;
+		transition: border-color 0.2s ease;
+	}
+
+	.inline-edit-input:focus {
+		border-color: var(--color-light, #8b5cf6);
+		box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+	}
+
+	.inline-edit-hint {
+		font-size: 0.72rem;
+		color: var(--text-muted, #949ba4);
+		user-select: none;
+	}
+
+	.hint-link {
+		color: var(--color-lighter, #a78bfa);
+		cursor: pointer;
+	}
+
+	.hint-link:hover {
+		text-decoration: underline;
 	}
 </style>

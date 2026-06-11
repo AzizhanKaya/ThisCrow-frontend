@@ -1,18 +1,22 @@
 <script setup lang="ts">
 	import { computed, watch, ref, nextTick } from 'vue';
 	import Message from '@/components/Message/Message.vue';
-	import ReactionPicker from '@/components/ReactionPicker.vue';
+	import EmojiPicker from '@/components/EmojiPicker.vue';
 	import type { Message as MessageType, id, snowflake_id } from '@/types';
 	import { useUserStore } from '@/stores/user';
 	import { useMeStore } from '@/stores/me';
 	import { useMessageStore, chatKey, type ChatTarget } from '@/stores/message';
 	import { Icon } from '@iconify/vue';
-	import { deleteMessage } from '@/api/message';
+	import { deleteMessage, overwriteMessage } from '@/api/message';
 	import { useKeyStore } from '@/stores/key';
 	import { useErrorStore } from '@/stores/error';
 	import { ModalView, useModalStore } from '@/stores/modal';
 	import { useServerStore } from '@/stores/server';
 	import { useContextMenuStore } from '@/stores/contextMenu';
+	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
+	import { can } from '@/utils/perms';
+	import { generate_nonce, encrypt_message, decrypt_message } from '../../../pkg/wasm_lib';
+	import { encode, decode } from '@/utils/msgpack';
 
 	const props = defineProps<{
 		to: id;
@@ -39,6 +43,13 @@
 		props.group_id ? { kind: 'channel', channel_id: props.to, group_id: props.group_id } : { kind: 'user', user_id: props.to }
 	);
 
+	const server = computed(() => (props.group_id ? serverStore.getServerById(props.group_id) : undefined));
+	const channel = computed(() => (props.group_id ? server.value?.channels?.get(props.to) : undefined));
+	const p = can(server, channel);
+	const canRead = computed(() => !props.group_id || p.viewMessages);
+	const canReadHistory = computed(() => !props.group_id || p.readMessageHistory);
+	const canManage = computed(() => !!props.group_id && p.manageMessages);
+
 	const privateKey = ref<Uint8Array | null | undefined>(undefined);
 
 	const messages = computed(() => messageStore.getMessages(chatTarget.value));
@@ -57,17 +68,30 @@
 	const isNavigatingToMessage = ref(false);
 	const canLoadMore = computed(() => messageStore.hasMore.get(chatKey(chatTarget.value)) !== false);
 	const hoveredMessageId = ref<MessageType['id'] | null>(null);
+	const editingMessageId = ref<snowflake_id | null>(null);
+	const editText = ref('');
+	const editOriginalData = ref<any>(null);
+	const isSavingEdit = ref(false);
+
+	function isCallData(data: any): boolean {
+		return data && typeof data === 'object' && 'end_time' in data;
+	}
 
 	const handleContextMenu = async (e: MouseEvent, message: MessageType) => {
-		const options: { action: string; label: string; icon: string; danger?: boolean; divider?: boolean }[] = [
-			{ action: 'reply', label: 'Reply', icon: 'mdi:reply' },
-		];
+		reactionPickerAnchor.value = null;
+		reactionTargetId.value = null;
 
-		if (me.id === message.from) {
+		const options: ContextMenuOption[] = [{ action: 'reply', label: 'Reply', icon: 'mdi:reply' }];
+
+		options.push({ action: 'react', label: 'Add Reaction', icon: 'mdi:emoticon-outline' });
+
+		if (me.id === message.from && !isCallData(message.data)) {
 			options.push(
-				{ action: 'edit', label: 'Edit', icon: 'mdi:pencil' },
-				{ action: 'delete', label: 'Delete', icon: 'mdi:delete', danger: true }
+				{ action: 'edit', label: 'Edit', icon: 'mdi:pencil-outline' },
+				{ action: 'delete', label: 'Delete', icon: 'mdi:trash-can-outline', variant: 'danger' }
 			);
+		} else if (canManage.value) {
+			options.push({ action: 'delete', label: 'Delete', icon: 'mdi:trash-can-outline', variant: 'danger' });
 		}
 
 		contextMenuStore.open({
@@ -80,6 +104,9 @@
 
 	const handleContextSelect = async (action: string, msg: MessageType) => {
 		switch (action) {
+			case 'react':
+				openReactionPicker(msg.id);
+				break;
 			case 'reply':
 				handleReply(msg);
 				break;
@@ -139,11 +166,75 @@
 	}
 
 	const handleOverwrite = async (message: MessageType) => {
-		modalStore.openModal(ModalView.EDIT_MESSAGE, {
-			message,
-			group_id: props.group_id,
-			to: props.to,
-		});
+		let data = message.data;
+
+		if (isCallData(data)) return;
+
+		if (data && typeof data === 'object' && 'cipher' in data && !props.group_id) {
+			try {
+				const pk = await keyStore.get_private_key(props.to);
+				const decrypted = decrypt_message(pk, (data as any).cipher, (data as any).nonce);
+				data = decode(decrypted) as any;
+			} catch (e) {
+				console.error('Failed to decrypt message for editing:', e);
+				return;
+			}
+		}
+
+		editOriginalData.value = data;
+
+		if (typeof data === 'string') {
+			editText.value = data;
+		} else if (data && typeof data === 'object') {
+			if ('replied' in data && 'data' in data) {
+				editText.value = (data as any).data.text || '';
+			} else if ('text' in data) {
+				editText.value = (data as any).text || '';
+			}
+		}
+		editingMessageId.value = message.id;
+	};
+
+	const cancelEdit = () => {
+		editingMessageId.value = null;
+		editText.value = '';
+		editOriginalData.value = null;
+		isSavingEdit.value = false;
+	};
+
+	const saveEdit = async () => {
+		const msgId = editingMessageId.value;
+		if (!msgId || !editText.value.trim()) return;
+		isSavingEdit.value = true;
+		try {
+			const orig = editOriginalData.value;
+			let newData: any;
+
+			if (typeof orig === 'string') {
+				newData = editText.value;
+			} else if (orig && typeof orig === 'object' && 'replied' in orig && 'data' in orig) {
+				newData = { ...orig, data: { ...orig.data, text: editText.value } };
+			} else if (orig && typeof orig === 'object') {
+				newData = { ...orig, text: editText.value };
+			} else {
+				newData = editText.value;
+			}
+
+			if (!props.group_id) {
+				const pk = await keyStore.get_private_key(props.to);
+				const nonce = generate_nonce();
+				const cipher = encrypt_message(pk, encode(newData), nonce);
+				await overwriteMessage(msgId, { nonce, cipher } as any);
+			} else {
+				await overwriteMessage(msgId, newData as any);
+			}
+			cancelEdit();
+		} catch (e) {
+			console.error(e);
+			errorStore.pushFrom(e, 'Failed to edit message.');
+		} finally {
+			isSavingEdit.value = false;
+		}
 	};
 
 	const handleDelete = async (message: MessageType) => {
@@ -160,8 +251,13 @@
 	const reactionPickerAnchor = ref<HTMLElement | null>(null);
 	const reactionTargetId = ref<snowflake_id | null>(null);
 
-	function openReactionPicker(e: MouseEvent, messageId: snowflake_id) {
-		reactionPickerAnchor.value = e.currentTarget as HTMLElement;
+	function openReactionPicker(messageId: snowflake_id, e?: MouseEvent) {
+		if (e) {
+			reactionPickerAnchor.value = e.currentTarget as HTMLElement;
+		} else {
+			const el = scroller.value?.querySelector(`[data-message-id="${messageId.toString()}"]`) as HTMLElement | null;
+			reactionPickerAnchor.value = el;
+		}
 		reactionTargetId.value = messageId;
 	}
 
@@ -212,6 +308,7 @@
 	const onScroll = async () => {
 		const el = scroller.value;
 		if (!el || isLoadingMore.value || !canLoadMore.value || isNavigatingToMessage.value) return;
+		if (!canReadHistory.value) return;
 
 		if (el.scrollTop < 50) {
 			isLoadingMore.value = true;
@@ -239,6 +336,8 @@
 			} else {
 				privateKey.value = null;
 			}
+
+			if (!canRead.value) return;
 
 			await messageStore.initChat(newTarget);
 			await scrollToBottom();
@@ -293,7 +392,14 @@
 			<Icon icon="svg-spinners:ring-resize" width="24" height="24" />
 		</div>
 
-		<div v-if="messages?.length === 0" class="no-messages">
+		<div v-if="!canRead" class="no-messages">
+			<div class="no-messages-icon">
+				<Icon icon="mdi:eye-off-outline" width="56" height="56" />
+			</div>
+			<h3>No access</h3>
+			<p>You don't have permission to view messages in this channel.</p>
+		</div>
+		<div v-else-if="messages?.length === 0" class="no-messages">
 			<div class="no-messages-icon">
 				<Icon icon="ri:message-2-fill" width="56" height="56" />
 			</div>
@@ -302,7 +408,7 @@
 		</div>
 
 		<div
-			v-if="messages && privateKey !== undefined"
+			v-if="canRead && messages && privateKey !== undefined"
 			v-for="(message, index) in messages"
 			:key="message.id.toString()"
 			:data-message-id="message.id.toString()"
@@ -317,18 +423,24 @@
 				:user="index === 0 || messages[index - 1].from !== message.from ? userStore.users.get(message.from) : undefined"
 				:privateKey="privateKey"
 				:color="getTopRoleColor(message.from)"
+				:editing="editingMessageId === message.id"
+				:editText="editingMessageId === message.id ? editText : ''"
+				:isSavingEdit="isSavingEdit"
 				@scroll-to="scrollToMessage"
 				@toggle-reaction="toggleReaction($event, message.id)"
+				@update:editText="editText = $event"
+				@save-edit="saveEdit"
+				@cancel-edit="cancelEdit"
 			/>
-			<div v-if="hoveredMessageId === message.id" class="message-actions">
-				<div class="action-btn" title="Add Reaction" @click="openReactionPicker($event, message.id)">
+			<div v-if="hoveredMessageId === message.id && editingMessageId !== message.id" class="message-actions">
+				<div class="action-btn" title="Add Reaction" @click="openReactionPicker(message.id, $event)">
 					<Icon icon="mdi:emoticon-outline" />
 				</div>
 				<div class="action-btn" title="Reply" @click="handleReply(message)">
 					<Icon icon="mdi:reply" />
 				</div>
 				<template v-if="me.id === message.from">
-					<div class="action-btn" title="Edit" @click="handleOverwrite(message)">
+					<div v-if="!isCallData(message.data)" class="action-btn" title="Edit" @click="handleOverwrite(message)">
 						<Icon icon="mdi:pencil-outline" />
 					</div>
 					<div class="action-btn action-delete" title="Delete" @click="handleDelete(message)">
@@ -339,11 +451,14 @@
 		</div>
 	</div>
 
-	<ReactionPicker
+	<EmojiPicker
 		v-if="reactionPickerAnchor"
 		:anchor="reactionPickerAnchor"
 		@select="onReactionSelect"
-		@close="reactionPickerAnchor = null; reactionTargetId = null"
+		@close="
+			reactionPickerAnchor = null;
+			reactionTargetId = null;
+		"
 	/>
 </template>
 
@@ -375,6 +490,20 @@
 		color: var(--text-muted);
 	}
 
+	.history-banner {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 12px 16px;
+		margin: 8px 16px;
+		border-radius: 6px;
+		background-color: var(--bg-dark);
+		color: var(--text-muted);
+		font-size: 0.85rem;
+	}
+
 	.message-list::-webkit-scrollbar {
 		display: none;
 	}
@@ -403,7 +532,8 @@
 	.message-actions {
 		position: absolute;
 		right: 16px;
-		top: -16px;
+		bottom: 100%;
+		transform: translateY(4px);
 		display: flex;
 		align-items: center;
 		gap: 2px;

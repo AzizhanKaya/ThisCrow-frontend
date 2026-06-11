@@ -35,6 +35,10 @@ export interface InvitationInfo {
 	group_icon?: string;
 	group_description?: string;
 	member_count: number;
+	online_count: number;
+	text_channel_count: number;
+	voice_channel_count: number;
+	owner?: id;
 }
 
 export async function getInvitationInfo(code: string): Promise<InvitationInfo> {

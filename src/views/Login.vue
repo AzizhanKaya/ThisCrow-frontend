@@ -41,12 +41,12 @@
 			<div class="field">
 				<label>Username</label>
 				<Icon icon="mdi:user" class="icon" />
-				<input id="username" type="text" v-model="username" required placeholder="Username" />
+				<input id="username" name="username" type="text" v-model="username" autocomplete="username" required placeholder="Username" />
 			</div>
 			<div class="field">
 				<label>Password</label>
 				<Icon icon="fa6-solid:lock" class="icon" />
-				<input id="password" type="password" v-model="password" required placeholder="Password" />
+				<input id="password" name="password" type="password" v-model="password" autocomplete="current-password" required placeholder="Password" />
 			</div>
 			<button type="submit">Login</button>
 		</form>

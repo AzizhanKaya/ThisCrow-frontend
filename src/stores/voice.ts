@@ -39,6 +39,7 @@ export const useVoiceStore = defineStore('voice', {
 		isDeafened: false,
 		isVideoOn: false,
 		isScreenSharing: false,
+		userStates: new Map<id, { muted: boolean; deafened: boolean }>(),
 		cleanupUnload: null as (() => void) | null,
 		audioDevices: [] as AudioDevice[],
 		selectedDeviceId: '' as string,
@@ -76,18 +77,22 @@ export const useVoiceStore = defineStore('voice', {
 			websocketService.onMessage(MessageType.Server, async (message: Message<Ack>) => {
 				await ready;
 				const { ack, payload } = message.data;
-				if (message.from !== 0) return;
+
 				const me = useMeStore().me!;
-				const usersStore = useUserStore();
+				const userStore = useUserStore();
 
 				switch (ack) {
 					case AckType.JoinedVoice: {
+						this.userStates.set(message.to, { muted: payload.mute, deafened: payload.deafen });
+
+						if (message.from !== 0) return;
+
 						if (message.to === me.id) {
-							this.voice_direct = await usersStore.getUser(payload);
+							this.voice_direct = await userStore.getUser(payload.channel_id);
 						} else if (!this.on_voice_direct.includes(message.to)) {
 							this.on_voice_direct.push(message.to);
 							if (this.voice_direct?.id !== message.to) {
-								const user = await usersStore.getUser(message.to);
+								const user = await userStore.getUser(message.to);
 								if (user) {
 									const modalStore = useModalStore();
 									modalStore.openModal(ModalView.CALLING, { user });
@@ -97,10 +102,24 @@ export const useVoiceStore = defineStore('voice', {
 						break;
 					}
 					case AckType.ExitedVoice: {
+						this.userStates.delete(message.to);
+
+						if (message.from !== 0) return;
+
 						if (message.to !== me.id) {
 							this.on_voice_direct = this.on_voice_direct.filter((id) => id !== message.to);
 						}
 						break;
+					}
+					case AckType.Muted: {
+						const prev = this.userStates.get(message.to) ?? { muted: false, deafened: false };
+						this.userStates.set(message.to, { ...prev, muted: payload });
+						return;
+					}
+					case AckType.Deafened: {
+						const prev = this.userStates.get(message.to) ?? { muted: false, deafened: false };
+						this.userStates.set(message.to, { ...prev, deafened: payload });
+						return;
 					}
 				}
 			});
@@ -197,8 +216,21 @@ export const useVoiceStore = defineStore('voice', {
 			}
 		},
 
-		toggleDeafen() {
+		async toggleDeafen() {
 			this.isDeafened = !this.isDeafened;
+			this.sendVoiceStateEvent(EventType.Deafen, this.isDeafened);
+		},
+
+		sendVoiceStateEvent(event: EventType.Mute | EventType.Deafen, value: boolean) {
+			if (!this.voice_channel && !this.voice_direct) return;
+			const me = useMeStore().me!;
+			websocketService.sendMessage({
+				id: generate_uid(me.id),
+				type: MessageType.Info,
+				from: me.id,
+				to: me.id,
+				data: { event, payload: value } as Event,
+			} as Message<Event>);
 		},
 
 		async joinVoice(channel?: Channel, group_id?: id, user?: User): Promise<void> {
@@ -224,10 +256,12 @@ export const useVoiceStore = defineStore('voice', {
 				}
 			};
 
-			const audioReady = webrtcService.addTrack(MediaType.Audio).catch((e) => {
-				console.error('Mic error during join:', e);
-				return null;
-			});
+			const audioReady = this.isMuted
+				? Promise.resolve(null)
+				: webrtcService.addTrack(MediaType.Audio).catch((e) => {
+						console.error('Mic error during join:', e);
+						return null;
+					});
 
 			try {
 				await websocketService.request({
@@ -238,6 +272,7 @@ export const useVoiceStore = defineStore('voice', {
 					group_id,
 					data: {
 						event: EventType.JoinVoice,
+						payload: { mute: this.isMuted, deafen: this.isDeafened },
 					},
 				});
 			} catch (e) {
@@ -351,10 +386,9 @@ export const useVoiceStore = defineStore('voice', {
 				this.voice_channel = undefined;
 				this.group_id = undefined;
 				this.voice_direct = undefined;
-				this.isMuted = false;
 				this.isVideoOn = false;
 				this.isScreenSharing = false;
-				this.isDeafened = false;
+				this.userStates.clear();
 			}
 		},
 
@@ -366,11 +400,13 @@ export const useVoiceStore = defineStore('voice', {
 					track.onended = () => {
 						this.isMuted = true;
 						webrtcService.removeTrack(MediaType.Audio);
+						this.sendVoiceStateEvent(EventType.Mute, true);
 					};
 				} else {
 					await webrtcService.removeTrack(MediaType.Audio);
 					this.isMuted = true;
 				}
+				this.sendVoiceStateEvent(EventType.Mute, this.isMuted);
 			} catch (error) {
 				console.error('Microphone error:', error);
 				useErrorStore().pushFrom(error, 'Microphone error.');
@@ -412,6 +448,25 @@ export const useVoiceStore = defineStore('voice', {
 			} catch (error) {
 				console.error('Screen share error:', error);
 				useErrorStore().pushFrom(error, 'Screen share error.');
+			}
+		},
+
+		async toggleNoiseSuppression() {
+			this.noiseSuppression = !this.noiseSuppression;
+
+			if ((this.voice_channel || this.voice_direct) && !this.isMuted) {
+				try {
+					await webrtcService.removeTrack(MediaType.Audio);
+					const track = await webrtcService.addTrack(MediaType.Audio, this.selectedDeviceId || undefined);
+					track.onended = () => {
+						this.isMuted = true;
+						webrtcService.removeTrack(MediaType.Audio);
+						this.sendVoiceStateEvent(EventType.Mute, true);
+					};
+				} catch (e) {
+					console.error('Failed to reapply noise suppression:', e);
+					useErrorStore().pushFrom(e, 'Failed to reapply noise suppression.');
+				}
 			}
 		},
 	},

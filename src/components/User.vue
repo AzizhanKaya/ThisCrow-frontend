@@ -68,7 +68,7 @@
 			<div v-if="isOnVoice" class="voice-indicator" title="In voice call">
 				<Icon icon="mdi:phone-in-talk" />
 			</div>
-			<div class="remove-dm" @click="handleRemoveDM()">
+			<div class="remove-dm" @click.stop="handleRemoveDM()">
 				<Icon icon="mdi:remove"></Icon>
 			</div>
 		</div>

@@ -9,6 +9,9 @@
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useWatchStore } from '@/stores/watch';
 	import { useAppStore } from '@/stores/app';
+	import { useServerStore } from '@/stores/server';
+	import { useRoute } from 'vue-router';
+	import { can } from '@/utils/perms';
 
 	const props = defineProps<{
 		channel: Channel;
@@ -19,8 +22,13 @@
 	const appStore = useAppStore();
 	const voiceStore = useVoiceStore();
 	const router = useRouter();
+	const route = useRoute();
+	const serverStore = useServerStore();
 
 	const me = $computed(() => meStore.me!);
+
+	const server = computed(() => serverStore.getServerById(Number(route.params.serverId)));
+	const p = can(server, () => props.channel);
 
 	const getTrack = (userId: id, type: MediaType) => {
 		return webrtcService.getTrack(userId, type);
@@ -29,11 +37,7 @@
 	const isTrackActive = (userId: id, type: MediaType) => {
 		const track = getTrack(userId, type);
 		if (!track) return false;
-		const result = track.readyState === 'live' && track.enabled && !track.muted && webrtcService.activeTracks.has(track.id);
-		if (type === MediaType.Screen) {
-			console.log('[Voice:isTrackActive]', userId, type, 'result:', result, 'readyState:', track.readyState, 'enabled:', track.enabled, 'muted:', track.muted, 'inActiveTracks:', webrtcService.activeTracks.has(track.id));
-		}
-		return result;
+		return track.readyState === 'live' && track.enabled && !track.muted;
 	};
 
 	const loadedVideos = reactive(new Set<string>());
@@ -48,11 +52,7 @@
 	const isVideoVisible = (userId: id, type: MediaType) => {
 		if (!isTrackActive(userId, type)) return false;
 		const track = getTrack(userId, type);
-		const result = track ? loadedVideos.has(track.id) : false;
-		if (type === MediaType.Screen) {
-			console.log('[Voice:isVideoVisible]', userId, type, 'result:', result);
-		}
-		return result;
+		return track ? loadedVideos.has(track.id) : false;
 	};
 
 	const streamCache = new Map<string, MediaStream>();
@@ -168,8 +168,9 @@
 
 					<div class="card-overlay">
 						<span>{{ me.name }} (You)</span>
-						<div v-if="voiceStore.isMuted" class="status-icons">
-							<Icon icon="mdi:microphone-off" class="status-icon text-red" />
+						<div class="status-icons">
+							<Icon v-if="voiceStore.isMuted" icon="mdi:microphone-off" class="status-icon text-red" />
+							<Icon v-if="voiceStore.isDeafened" icon="mdi:headphones-off" class="status-icon text-red" />
 						</div>
 					</div>
 					<button v-if="voiceStore.isVideoOn" class="fullscreen-btn" @click="toggleFullScreen" title="Full screen">
@@ -198,8 +199,9 @@
 
 						<div class="card-overlay">
 							<span>{{ user.name }}</span>
-							<div v-if="!isTrackActive(user.id, MediaType.Audio)" class="status-icons">
-								<Icon icon="mdi:microphone-off" class="status-icon text-red" />
+							<div class="status-icons" v-if="voiceStore.userStates.get(user.id)?.muted || voiceStore.userStates.get(user.id)?.deafened">
+								<Icon v-if="voiceStore.userStates.get(user.id)?.muted" icon="mdi:microphone-off" class="status-icon text-red" />
+								<Icon v-if="voiceStore.userStates.get(user.id)?.deafened" icon="mdi:headphones-off" class="status-icon text-red" />
 							</div>
 						</div>
 						<button
@@ -215,28 +217,10 @@
 			</div>
 		</div>
 
-		<!-- Watch-party participant strip -->
-		<div v-if="watchStore.inParty && partyMembers.length > 0" class="watch-party-strip">
-			<Icon icon="streamline:film-slate-solid" class="strip-icon" />
-			<span class="strip-label">Watch Party</span>
-			<div class="strip-avatars">
-				<div
-					v-for="member in partyMembers"
-					:key="member.id"
-					class="strip-avatar"
-					:class="{ 'is-host': member.isHost }"
-					:title="member.isHost ? member.name + ' (Host)' : member.name"
-				>
-					<img :src="member.avatar || getDefaultAvatar(member.username)" alt="" />
-					<Icon v-if="member.isHost" icon="mdi:crown" class="strip-crown" />
-				</div>
-			</div>
-		</div>
-
 		<!-- Control Bar -->
 		<div v-if="voiceStore.voice_channel" class="voice-controls">
 			<button
-				v-if="appStore.isTauri && !watchStore.inParty"
+				v-if="appStore.isTauri && !watchStore.party"
 				class="control-btn"
 				:class="{ 'is-active': props.channel.watch_party }"
 				:title="props.channel.watch_party ? 'Join Watch Party' : 'Start Watch Party'"
@@ -245,24 +229,43 @@
 				<Icon icon="streamline:film-slate-solid" />
 			</button>
 			<button
-				v-else-if="appStore.isTauri && watchStore.inParty"
+				v-else-if="appStore.isTauri && watchStore.party"
 				class="control-btn is-active"
 				title="Leave Watch Party"
-				@click="watchStore.leaveParty()"
+				@click="watchStore.closeParty()"
 			>
 				<Icon icon="streamline:film-slate-solid" />
 			</button>
-			<button class="control-btn" :class="{ 'is-active': voiceStore.isVideoOn }" @click="voiceStore.toggleVideo()">
+			<button
+				class="control-btn"
+				:class="{ 'is-active': voiceStore.isVideoOn, disabled: !p.speak }"
+				:disabled="!p.speak"
+				:title="p.speak ? '' : 'You do not have permission to speak'"
+				@click="p.speak && voiceStore.toggleVideo()"
+			>
 				<Icon :icon="voiceStore.isVideoOn ? 'mdi:video' : 'mdi:video-off'" />
 			</button>
-			<button class="control-btn" :class="{ 'is-active': voiceStore.isScreenSharing }" @click="voiceStore.toggleScreen()">
+			<button
+				class="control-btn"
+				:class="{ 'is-active': voiceStore.isScreenSharing, disabled: !p.speak }"
+				:disabled="!p.speak"
+				:title="p.speak ? '' : 'You do not have permission to speak'"
+				@click="p.speak && voiceStore.toggleScreen()"
+			>
 				<Icon :icon="voiceStore.isScreenSharing ? 'mdi:monitor-share' : 'ic:round-stop-screen-share'" />
+			</button>
+
+			<button
+				class="control-btn"
+				:class="{ 'is-danger-active': voiceStore.isMuted || !p.speak }"
+				:disabled="!p.speak"
+				:title="p.speak ? '' : 'You do not have permission to speak'"
+				@click="p.speak && voiceStore.toggleMute()"
+			>
+				<Icon :icon="voiceStore.isMuted || !p.speak ? 'mdi:microphone-off' : 'mdi:microphone'" />
 			</button>
 			<button class="control-btn" :class="{ 'is-danger-active': voiceStore.isDeafened }" @click="voiceStore.toggleDeafen()">
 				<Icon :icon="voiceStore.isDeafened ? 'mdi:headphones-off' : 'mdi:headphones'" />
-			</button>
-			<button class="control-btn" :class="{ 'is-danger-active': voiceStore.isMuted }" @click="voiceStore.toggleMute()">
-				<Icon :icon="voiceStore.isMuted ? 'mdi:microphone-off' : 'mdi:microphone'" />
 			</button>
 			<button class="control-btn danger-btn disconnect-btn" @click="leaveVoice">
 				<Icon icon="mdi:phone-hangup" />
@@ -414,62 +417,6 @@
 
 	.text-red {
 		color: var(--error);
-	}
-
-	.watch-party-strip {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 8px 24px;
-		background-color: var(--bg-dark);
-		border-top: 1px solid var(--border-muted);
-	}
-
-	.strip-icon {
-		font-size: 1.1rem;
-		color: var(--color, #e50914);
-	}
-
-	.strip-label {
-		font-weight: 700;
-		font-size: 0.78rem;
-		text-transform: uppercase;
-		letter-spacing: 0.6px;
-		color: var(--text-muted);
-		margin-right: 8px;
-	}
-
-	.strip-avatars {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-wrap: wrap;
-	}
-
-	.strip-avatar {
-		position: relative;
-		width: 28px;
-		height: 28px;
-	}
-
-	.strip-avatar img {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		object-fit: cover;
-		border: 2px solid transparent;
-	}
-
-	.strip-avatar.is-host img {
-		border-color: var(--color, #e50914);
-	}
-
-	.strip-crown {
-		position: absolute;
-		top: -6px;
-		right: -4px;
-		font-size: 0.85rem;
-		color: gold;
 	}
 
 	.voice-controls {

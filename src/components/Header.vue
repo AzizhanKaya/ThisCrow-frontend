@@ -19,7 +19,6 @@
 		width: 100%;
 		color: white;
 		padding: 0px 10px;
-		font-family: 'Times New Roman' !important;
 		display: flex;
 		align-items: center;
 		justify-content: center;

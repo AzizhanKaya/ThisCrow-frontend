@@ -2,6 +2,7 @@
 	import { useDMStore } from '@/stores/dm';
 	import { useFriendStore } from '@/stores/friend';
 	import { type Member, type User, Status, Permissions } from '@/types';
+	import { can } from '@/utils/perms';
 	import { ref, computed, nextTick } from 'vue';
 	import { Icon } from '@iconify/vue';
 	import { useRouter } from 'vue-router';
@@ -53,12 +54,12 @@
 		}
 	}
 
-	function getUserStatusText(user: User): string {
-		if (user.activities?.game) return `Playing ${user.activities.game.payload.name}`;
-		if (user.activities?.music) return `Listening to ${user.activities.music.payload.title}`;
-		if (user.activities?.watching) return `Watching`;
-		if (user.activities?.streaming) return `Streaming`;
-		return user.status;
+	function getUserStatus(user: User): { emoji?: string; text: string } {
+		if (user.activities?.game) return { emoji: '👾', text: user.activities.game.payload.name };
+		if (user.activities?.music) return { emoji: '🎶', text: user.activities.music.payload.title };
+		if (user.activities?.watching) return { emoji: '📺', text: '' };
+		if (user.activities?.streaming) return { emoji: '🔴', text: '' };
+		return { text: user.status };
 	}
 
 	function handleMessage(user: User) {
@@ -88,29 +89,49 @@
 			});
 	});
 
+	const p = can(() => serverStore.server);
+	const isSelf = computed(() => props.member.user.id === meStore.me?.id);
+	const isTargetOwner = computed(() => serverStore.server?.owner === props.member.user.id);
+
 	const contextMenuOptions = computed<ContextMenuOption[]>(() => {
 		const opts: ContextMenuOption[] = [
 			{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
 			{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
 			{ label: 'Call', action: 'call', icon: 'mdi:phone' },
-			{ divider: true },
-			{ label: 'Roles', icon: 'mdi:shield-account', children: roleOptions.value },
-			{
-				label: 'Kick @' + props.member.user.username,
-				action: 'kick',
-				icon: 'mdi:account-remove',
-				variant: 'danger',
-			},
-			{
-				label: 'Ban @' + props.member.user.username,
-				action: 'ban',
-				icon: 'mdi:account-cancel',
-				variant: 'danger',
-			},
-			{ divider: true },
-			{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' },
-			{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
 		];
+
+		if (p.manageRoles) {
+			opts.push({ divider: true });
+			opts.push({ label: 'Roles', icon: 'mdi:shield-account', children: roleOptions.value });
+		}
+
+		const canKick = p.kickMembers && !isSelf.value && !isTargetOwner.value;
+		const canBan = p.banMembers && !isSelf.value && !isTargetOwner.value;
+		if (canKick || canBan) {
+			if (!p.manageRoles) opts.push({ divider: true });
+			if (canKick) {
+				opts.push({
+					label: 'Kick @' + props.member.user.username,
+					action: 'kick',
+					icon: 'mdi:account-remove',
+					variant: 'danger',
+				});
+			}
+			if (canBan) {
+				opts.push({
+					label: 'Ban @' + props.member.user.username,
+					action: 'ban',
+					icon: 'mdi:account-cancel',
+					variant: 'danger',
+				});
+			}
+		}
+
+		if (!isSelf.value) {
+			opts.push({ divider: true });
+			opts.push({ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' });
+			opts.push({ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' });
+		}
 
 		return opts;
 	});
@@ -217,7 +238,10 @@
 					<span class="name" :style="topRoleColor ? { color: topRoleColor } : undefined">{{ user.name }}</span>
 					<span class="username">@{{ user.username }}</span>
 				</div>
-				<span class="status">{{ getUserStatusText(user) }}</span>
+				<span class="status">
+					<span v-if="getUserStatus(user).emoji" class="status-emoji">{{ getUserStatus(user).emoji }}</span>
+					<span v-if="getUserStatus(user).text" class="status-text">{{ getUserStatus(user).text }}</span>
+				</span>
 			</div>
 			<Icon class="crown" icon="mdi:crown" v-if="user.id === serverStore.server?.owner" />
 		</div>
@@ -331,8 +355,22 @@
 	.status {
 		color: #b9bbbe;
 		font-size: 13px;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.status-emoji {
+		flex-shrink: 0;
+		font-size: 12px;
+		line-height: 1;
+	}
+
+	.status-text {
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		min-width: 0;
 	}
 </style>

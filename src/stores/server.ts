@@ -3,9 +3,20 @@ import type { Ack, Channel, Member, Message, OverrideTarget, Role, Server, Watch
 import { fetchServers } from '@/api/info';
 import { useUserStore } from './user';
 import { useMeStore } from './me';
+import { useVoiceStore } from './voice';
 import { websocketService } from '@/services/websocket';
 import { AckType, ChannelType, EventType, MessageType, type Event, type Permissions } from '@/types';
 import { generate_uid } from '@/utils/uid';
+import { useWatchStore } from './watch';
+
+function cascadePosition(collection: Iterable<{ id: id; position: number }>, movedId: id, oldPos: number, newPos: number) {
+	if (oldPos === newPos) return;
+	for (const item of collection) {
+		if (item.id === movedId) continue;
+		if (item.position > oldPos && item.position <= newPos) item.position -= 1;
+		else if (item.position >= newPos && item.position < oldPos) item.position += 1;
+	}
+}
 
 export const useServerStore = defineStore('server', {
 	state: () => ({
@@ -53,7 +64,15 @@ export const useServerStore = defineStore('server', {
 								group: { id, name, owner, icon, members: members_record, channels: channels_record, roles: roles_record },
 								permissions,
 								channel_permissions,
+								voice_states,
 							} = payload;
+
+							if (voice_states) {
+								const voiceStore = useVoiceStore();
+								for (const [uid, vs] of Object.entries(voice_states)) {
+									voiceStore.userStates.set(Number(uid), { muted: vs.mute, deafened: vs.deafen });
+								}
+							}
 
 							const roles = new Map<id, Role>(Object.values(roles_record).map((r: Role) => [r.id, r]));
 
@@ -117,6 +136,12 @@ export const useServerStore = defineStore('server', {
 					case AckType.DeletedGroup:
 						this.servers.delete(server_id);
 						if (this.server?.id === server_id) this.server = null;
+						import('@/router').then((m) => {
+							const router = m.default;
+							if (router.currentRoute.value.params.serverId && Number(router.currentRoute.value.params.serverId) === server_id) {
+								router.push('/');
+							}
+						});
 						break;
 
 					case AckType.UpdatedGroup: {
@@ -143,6 +168,8 @@ export const useServerStore = defineStore('server', {
 						break;
 
 					case AckType.MovedGroup: {
+						const oldPos = server.position;
+						cascadePosition(this.servers.values(), server.id, oldPos, payload.position);
 						server.position = payload.position;
 						break;
 					}
@@ -178,6 +205,9 @@ export const useServerStore = defineStore('server', {
 					case AckType.UpdatedChannel: {
 						const channel = server.channels?.get(target_id);
 						if (!channel) return;
+						if (payload.position != null && payload.position !== channel.position) {
+							cascadePosition(server.channels!.values(), target_id, channel.position, payload.position);
+						}
 						for (const [k, v] of Object.entries(payload)) {
 							if (v !== null && v !== undefined) (channel as any)[k] = v;
 						}
@@ -226,6 +256,9 @@ export const useServerStore = defineStore('server', {
 						}
 						const role = server.roles?.get(target_id);
 						if (!role) return;
+						if (payload.position != null && payload.position !== role.position) {
+							cascadePosition(server.roles!.values(), target_id, role.position, payload.position);
+						}
 						for (const [k, v] of Object.entries(payload)) {
 							if (v !== null && v !== undefined) (role as any)[k] = v;
 						}
@@ -264,7 +297,7 @@ export const useServerStore = defineStore('server', {
 					}
 
 					case AckType.JoinedVoice: {
-						const channel = server.channels?.get(payload);
+						const channel = server.channels?.get(payload.channel_id);
 						if (!channel) return;
 						if (!channel.users) channel.users = new Set();
 						const user = await userStore.getUser(target_id);
@@ -297,6 +330,8 @@ export const useServerStore = defineStore('server', {
 								offset: 0,
 								playing: false,
 							};
+							const watchStore = useWatchStore();
+							watchStore.setParty(channel.watch_party, channel.id, server_id);
 						}
 						break;
 					}
@@ -316,6 +351,9 @@ export const useServerStore = defineStore('server', {
 						channel.watch_party.video = payload.video;
 						channel.watch_party.offset = 0;
 						channel.watch_party.playing = false;
+						channel.watch_party.title = payload.title || undefined;
+						channel.watch_party.duration = payload.duration > 0 ? payload.duration : undefined;
+						channel.watch_party.thumbnail = payload.thumbnail || undefined;
 
 						break;
 					}
@@ -385,6 +423,19 @@ export const useServerStore = defineStore('server', {
 				group_id: server_id,
 				type: MessageType.InfoGroup,
 				data: { event: EventType.UpdateGroup, payload: { name, description, icon } },
+			};
+			return websocketService.request(message);
+		},
+
+		async moveServer(server_id: id, position: number): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: 0,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.MoveGroup, payload: { position } },
 			};
 			return websocketService.request(message);
 		},
@@ -525,6 +576,19 @@ export const useServerStore = defineStore('server', {
 				group_id: server_id,
 				type: MessageType.InfoGroup,
 				data: { event: EventType.BanUser },
+			};
+			return websocketService.request(message);
+		},
+
+		async leaveServer(server_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: meStore.me!.id,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.LeaveGroup },
 			};
 			return websocketService.request(message);
 		},

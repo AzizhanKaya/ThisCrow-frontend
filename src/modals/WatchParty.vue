@@ -82,7 +82,7 @@
 		if (!selectedBrowser.value) return;
 
 		try {
-			await invoke('open_party', {
+			invoke('open_party', {
 				browser: selectedBrowser.value,
 			});
 

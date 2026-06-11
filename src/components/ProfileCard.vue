@@ -595,10 +595,6 @@
 		flex-shrink: 0;
 	}
 
-	.activities-section {
-		padding: 0 12px;
-	}
-
 	.section-title {
 		font-size: 0.75rem;
 		font-weight: 700;

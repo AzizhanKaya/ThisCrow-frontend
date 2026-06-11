@@ -28,22 +28,27 @@ export default defineConfig(({ mode }) => {
 				'/api': {
 					target: `${protocol}://${domain}:${apiPort}`,
 					changeOrigin: true,
-					onProxyRes: (proxyRes: any) => {
-						const setCookie = proxyRes.headers['set-cookie'];
-						if (setCookie) {
-							proxyRes.headers['set-cookie'] = setCookie.map((cookie: any) => {
-								return cookie
-									.replace(/SameSite=[^;]+/i, 'SameSite=Lax')
-									.replace(/;\s*Secure/i, '')
-									.replace(/;\s*Domain=[^;]+/i, '');
-							});
-						}
+					configure: (proxy) => {
+						proxy.on('proxyRes', (proxyRes) => {
+							const setCookie = proxyRes.headers['set-cookie'];
+							if (setCookie) {
+								proxyRes.headers['set-cookie'] = setCookie.map((cookie) => {
+									return cookie
+										.replace(/SameSite=[^;]+/i, 'SameSite=Lax')
+										.replace(/;\s*Secure/i, '')
+										.replace(/;\s*Domain=[^;]+/i, '');
+								});
+							}
+						});
 					},
 				},
 				'/ws': {
 					target: `${https ? 'wss' : 'ws'}://${domain}:${wsPort}`,
 					ws: true,
 				},
+			},
+			watch: {
+				ignored: ['**/src-tauri/**'],
 			},
 		},
 		build: {

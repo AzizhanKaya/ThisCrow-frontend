@@ -58,10 +58,10 @@
 			const videoTrack = webrtcService.getTrack(peer.userId as id, MediaType.Video);
 			const screenTrack = webrtcService.getTrack(peer.userId as id, MediaType.Screen);
 
-			if (videoTrack && webrtcService.activeTracks.has(videoTrack.id)) {
+			if (videoTrack && videoTrack.readyState === 'live' && videoTrack.enabled) {
 				tracks.push({ userId: peer.userId as id, track: videoTrack, type: MediaType.Video, isLocal: false });
 			}
-			if (screenTrack && webrtcService.activeTracks.has(screenTrack.id)) {
+			if (screenTrack && screenTrack.readyState === 'live' && screenTrack.enabled) {
 				tracks.push({ userId: peer.userId as id, track: screenTrack, type: MediaType.Screen, isLocal: false });
 			}
 		}

@@ -13,10 +13,15 @@
 	import { generate_uid } from '@/utils/uid';
 	import { useVoiceStore } from '@/stores/voice';
 	import { useRoute, useRouter } from 'vue-router';
+	import { useServerStore } from '@/stores/server';
+	import { can } from '@/utils/perms';
 
 	// Props & Models
 	const props = defineProps<{ server_id: id }>();
 	const channels = defineModel<Map<id, Channel>>('channels', { required: true });
+	const serverStore = useServerStore();
+	const server = computed(() => serverStore.getServerById(props.server_id));
+	const p = can(server);
 
 	const modalStore = useModalStore();
 	const contextMenuStore = useContextMenuStore();
@@ -34,12 +39,18 @@
 	const categories = ref<{ title: string | null; channels: Channel[] }[]>([]);
 
 	watch(
-		channels,
+		() => server.value?.permissions,
+		() => console.log(server.value?.permissions)
+	);
+
+	watch(
+		[channels, () => server.value?.permissions],
 		() => {
 			if (isDragging.value) return;
 
 			const grouped = new Map<string | null, Channel[]>();
 			Array.from(channels.value.values())
+				.filter((c) => can(server, c).viewChannel)
 				.sort((a, b) => b.position - a.position)
 				.forEach((c) => {
 					const title = c.title ?? null;
@@ -53,34 +64,39 @@
 	);
 
 	function onDragEnd() {
-		let currentMaxPosition = channels.value.size;
-
-		categories.value.forEach((category) => {
-			category.channels.forEach((channel) => {
-				const target = channels.value.get(channel.id);
-				if (!target) return;
-
-				const newPos = currentMaxPosition--;
-				let needsUpdate = false;
-
-				if (target.title !== category.title) {
-					target.title = category.title;
-					needsUpdate = true;
-				}
-
-				if (target.position !== newPos) {
-					target.position = newPos;
-					needsUpdate = true;
-				}
-
-				if (needsUpdate) {
-					sendChannelUpdate(target.id, target.title, target.position);
-				}
-			});
-		});
-
 		isDragging.value = false;
 		dragOverCategory.value = null;
+	}
+
+	function findChannelPosition(channelId: id): number | null {
+		let pos = channels.value.size;
+		for (const cat of categories.value) {
+			for (const ch of cat.channels) {
+				if (ch.id === channelId) return pos;
+				pos--;
+			}
+		}
+		return null;
+	}
+
+	function onChannelChange(evt: any, category: { title: string | null }) {
+		const moved = evt.moved?.element ?? evt.added?.element;
+		if (!moved) return;
+		const pos = findChannelPosition(moved.id);
+		if (pos !== null) sendChannelUpdate(moved.id, category.title, pos);
+	}
+
+	function onCategoryChange(evt: any) {
+		if (!evt.moved) return;
+		const movedCategory = evt.moved.element;
+		let pos = channels.value.size;
+		for (const cat of categories.value) {
+			const isMoved = cat === movedCategory;
+			for (const ch of cat.channels) {
+				if (isMoved) sendChannelUpdate(ch.id, cat.title, pos);
+				pos--;
+			}
+		}
 	}
 
 	function sendChannelUpdate(channelId: id, newTitle: string | null, newPosition: number) {
@@ -109,16 +125,16 @@
 		}
 	}
 
-	const channelSidebarOptions: ContextMenuOption[] = [
-		{ label: 'Create Channel', action: 'create-channel', icon: 'octicon:hash-16' },
-		{ label: 'Create Category', action: 'create-category', icon: 'lucide:folder-plus' },
-	];
-
 	async function onContextMenu(event: MouseEvent) {
 		if ((event.target as HTMLElement).closest('.channel-item, .category-title')) return;
+		if (!p.manageChannels) return;
+		const options: ContextMenuOption[] = [
+			{ label: 'Create Channel', action: 'create-channel', icon: 'octicon:hash-16' },
+			{ label: 'Create Category', action: 'create-category', icon: 'lucide:folder-plus' },
+		];
 		contextMenuStore.open({
 			e: event,
-			options: channelSidebarOptions,
+			options,
 			minWidth: 180,
 			zIndex: 1000,
 			onSelect: onMenuSelect,
@@ -141,6 +157,7 @@
 		});
 
 		if (channel.type === ChannelType.Voice) {
+			if (!can(server, channel).connect) return;
 			const voiceStore = useVoiceStore();
 			await voiceStore.joinVoice(channel, props.server_id);
 		}
@@ -163,8 +180,10 @@
 			:fallback-class="'drag-category'"
 			:delay="200"
 			:delay-on-touch-only="true"
+			:disabled="!p.manageChannels"
 			@start="isDragging = true"
 			@end="onDragEnd"
+			@change="onCategoryChange"
 		>
 			<template #item="{ element: category }">
 				<div
@@ -179,6 +198,7 @@
 						<Icon :icon="collapsedCategories.has(category.title) ? 'mdi:chevron-right' : 'mdi:chevron-down'" class="chevron" />
 						<span>{{ category.title.toUpperCase() }}</span>
 						<Icon
+							v-if="p.manageChannels"
 							icon="mdi:plus"
 							class="add-icon"
 							@click.stop="modalStore.openModal(ModalView.CREATE_CHANNEL, { server_id: props.server_id })"
@@ -200,8 +220,10 @@
 						:fallback-tolerance="5"
 						:delay="200"
 						:delay-on-touch-only="true"
+						:disabled="!p.manageChannels"
 						@start="isDragging = true"
 						@end="onDragEnd"
+						@change="(evt: any) => onChannelChange(evt, category)"
 					>
 						<template #item="{ element: channel }">
 							<ChannelComponent

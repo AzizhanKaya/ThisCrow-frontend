@@ -2,6 +2,11 @@
 	import type { PropType } from 'vue';
 	import type { Server } from '@/types';
 	import { useRoute, useRouter } from 'vue-router';
+	import { useContextMenuStore } from '@/stores/contextMenu';
+	import { useModalStore, ModalView } from '@/stores/modal';
+	import { useServerStore } from '@/stores/server';
+	import { useErrorStore } from '@/stores/error';
+	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 
 	const props = defineProps({
 		server: {
@@ -12,14 +17,57 @@
 
 	const router = useRouter();
 	const route = useRoute();
+	const contextMenuStore = useContextMenuStore();
+	const modalStore = useModalStore();
+	const serverStore = useServerStore();
+	const errorStore = useErrorStore();
 
 	const onClick = () => {
 		router.push({ name: 'server', params: { serverId: props.server.id.toString() } });
 	};
+
+	const openContextMenu = (event: MouseEvent) => {
+		const options: ContextMenuOption[] = [
+			{ label: 'Server Info', action: 'server-info', icon: 'mdi:information-outline' },
+			{ divider: true },
+			{ label: 'Leave Server', action: 'leave', icon: 'mdi:logout', variant: 'danger' },
+		];
+
+		contextMenuStore.open({
+			e: event,
+			options,
+			minWidth: 180,
+			zIndex: 1000,
+			onSelect: (action) => {
+				switch (action) {
+					case 'server-info':
+						modalStore.openModal(ModalView.SERVER_INFO, { server_id: props.server.id });
+						break;
+					case 'leave':
+						modalStore.openModal(ModalView.CONFIRM, {
+							icon: 'mdi:logout',
+							title: `Leave ${props.server.name}`,
+							text: `Are you sure you want to leave ${props.server.name}? You will need a new invite to rejoin.`,
+							command: async () => {
+								await serverStore
+									.leaveServer(props.server.id)
+									.catch((e) => errorStore.pushFrom(e, 'Failed to leave server'));
+							},
+						});
+						break;
+				}
+			},
+		});
+	};
 </script>
 
 <template>
-	<div class="server" @click="onClick" :class="{ 'is-active': route.params.serverId === server.id.toString() }">
+	<div
+		class="server"
+		@click="onClick"
+		@contextmenu.prevent="openContextMenu"
+		:class="{ 'is-active': route.params.serverId === server.id.toString() }"
+	>
 		<div class="server-indicator"></div>
 		<div class="server-image">
 			<img :src="server.icon || '/default-server-icon.png'" />
@@ -31,7 +79,6 @@
 	.server {
 		aspect-ratio: 1;
 		width: 100%;
-		height: 100%;
 		padding: 2px;
 		cursor: pointer;
 		position: relative;

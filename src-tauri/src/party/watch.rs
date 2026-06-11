@@ -25,7 +25,7 @@ pub struct WatchState {
 
 pub struct Session {
     pub browser: Child,
-    pub shutdown: Option<oneshot::Sender<()>>,
+    pub shutdown: oneshot::Sender<()>,
 }
 
 pub struct Request {
@@ -145,7 +145,7 @@ pub async fn open_party(
         let mut session = state.session.lock().await;
         *session = Some(Session {
             browser: browser_process,
-            shutdown: Some(shutdown_tx),
+            shutdown: shutdown_tx,
         });
     }
 
@@ -215,15 +215,17 @@ pub async fn open_party(
                     #[derive(Serialize, Deserialize, Clone, Debug)]
                     #[serde(tag = "type")]
                     enum Message {
-                        Player {
-                            kind: String,
-                            seq_local: u64,
-                            #[serde(default)]
+                        Watch {
+                            video_id: usize,
                             offset: f64,
-                            #[serde(default)]
-                            paused: bool,
-                            #[serde(default)]
-                            video_id: Option<usize>,
+                            playing: bool,
+                            title: String,
+                            duration: f64,
+                            thumbnail: String,
+                        },
+                        HeartBeat {
+                            offset: f64,
+                            playing: bool,
                         },
                         Error(String),
                         Log { text: String },
@@ -238,13 +240,13 @@ pub async fn open_party(
                         Message::Log { text } => {
                             println!("[Watch Party] {}", text);
                         }
-                        Message::Player { .. } => {
+                        Message::Watch { .. } | Message::HeartBeat { .. } => {
                             if let Err(e) = app.emit("watch_party", msg) {
                                 println!("[Watch Party] emit fail: {}", e);
                             }
                         }
                         Message::Error(error) => {
-                            println!("[Watch Party] js error: {}", error);
+                            println!("[Watch Party] error: {}", error);
                         }
                     }
                 }
@@ -275,9 +277,7 @@ pub async fn close_party(state: State<'_, WatchState>) -> Result<()> {
     println!("[Watch Party] close_party");
 
     if let Some(mut session) = state.session.lock().await.take() {
-        if let Some(tx) = session.shutdown.take() {
-            let _ = tx.send(());
-        }
+        let _ = session.shutdown.send(());
         session.browser.kill().context("close browser process")?;
         session.browser.wait().context("wait for browser process")?;
     }
@@ -325,11 +325,13 @@ pub async fn apply_state(
         .context("Background worker dropped the response channel")?;
 
     if let Some(err) = cdp_response.get("error") {
+        println!("[Watch Party] apply_state CDP error: {}", err);
         return Err(anyhow::anyhow!("CDP Error while applying state: {}", err).into());
     }
 
     if let Some(result) = cdp_response.get("result") {
         if let Some(exception) = result.get("exceptionDetails") {
+            println!("[Watch Party] apply_state JS exception: {}", exception);
             return Err(anyhow::anyhow!("JS Execution Error: {}", exception).into());
         }
         let value = result
@@ -338,6 +340,7 @@ pub async fn apply_state(
             .and_then(|v| v.as_str())
             .unwrap_or("ok")
             .to_string();
+        println!("[Watch Party] apply_state: {}", value);
         return Ok(value);
     }
 

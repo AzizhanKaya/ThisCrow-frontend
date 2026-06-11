@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { MessageType, type id, type Message, type Ack, AckType, EventType } from '@/types';
+import { MessageType, type id, type Message, type Ack, AckType, EventType, type WatchParty } from '@/types';
 import { websocketService } from '@/services/websocket.ts';
 import { ModalView, useModalStore } from './modal.ts';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,33 +9,28 @@ import { useMeStore } from './me.ts';
 import { useServerStore } from './server.ts';
 
 type PlayerEvent = {
-	type: 'Player';
-	kind: 'play' | 'pause' | 'seek' | 'ratechange' | 'buffering' | 'ended' | 'watch' | 'heartbeat';
-	offset?: number;
-	paused?: boolean;
-	video_id?: number;
+	type: 'Watch' | 'HeartBeat';
+	offset: number;
+	playing: boolean;
+	video_id: number;
+	title: string;
+	duration: number;
+	thumbnail: string;
 };
 
 export const useWatchStore = defineStore('watch', {
 	state: () => ({
+		browser_open: false,
+		sync_interval: undefined as ReturnType<typeof setInterval> | undefined,
+		party: undefined as WatchParty | undefined,
 		group_id: undefined as id | undefined,
 		channel_id: undefined as id | undefined,
-		browser_open: false,
 	}),
 
 	getters: {
-		party(state) {
-			if (!state.group_id || !state.channel_id) return undefined;
-			const serverStore = useServerStore();
-			const server = serverStore.servers.get(state.group_id);
-			return server?.channels?.get(state.channel_id)?.watch_party;
-		},
 		isHost(): boolean {
 			const me = useMeStore().me;
 			return me !== undefined && this.party?.host === me!.id;
-		},
-		inParty(state): boolean {
-			return state.group_id !== undefined && state.channel_id !== undefined;
 		},
 	},
 
@@ -48,35 +43,34 @@ export const useWatchStore = defineStore('watch', {
 
 			await listen<PlayerEvent>('watch_party', (event) => {
 				const payload = event.payload;
-				if (!this.inParty || payload.type !== 'Player') return;
 				this.handlePlayerEvent(payload);
 			});
 
 			websocketService.onMessage(MessageType.Server, (message: Message<Ack>) => {
 				const { ack, payload } = message.data;
-				const me_id = useMeStore().me?.id;
 
 				switch (ack) {
 					case AckType.Watching: {
-						if (!this.inParty) return;
-						if (message.to === me_id) return;
+						if (!this.party) return;
+						if (this.isHost) return;
 						const { video } = payload;
+						if (video === this.party.video) return;
 						this.applyState(video, 0, false);
 						return;
 					}
 
 					case AckType.JumpedTo: {
-						if (!this.inParty) return;
-						if (message.to === me_id) return;
-						const p = payload as { offset: number; play: boolean };
-						this.applyState(this.party?.video ?? 0, p.offset, p.play);
+						if (!this.party) return;
+						if (this.isHost) return;
+						const { offset, play } = payload;
+						this.applyState(this.party.video, offset, play);
 						return;
 					}
 				}
 			});
 		},
 
-		handlePlayerEvent(ev: PlayerEvent) {
+		handlePlayerEvent(e: PlayerEvent) {
 			const meStore = useMeStore();
 			const base = {
 				id: generate_uid(meStore.me!.id),
@@ -86,42 +80,41 @@ export const useWatchStore = defineStore('watch', {
 				type: MessageType.InfoGroup,
 			} as const;
 
-			const party = this.party;
+			switch (e.type) {
+				case 'Watch': {
+					if (!this.isHost) return;
+					if (e.video_id === this.party?.video) return;
 
-			switch (ev.kind) {
-				case 'watch': {
-					if (!this.isHost) return;
-					if (ev.video_id === party?.video) return;
 					websocketService.sendMessage({
 						...base,
-						data: { event: EventType.Watch, payload: (ev.video_id ?? 0) as id },
+						data: {
+							event: EventType.Watch,
+							payload: {
+								video: (e.video_id ?? 0) as id,
+								title: e.title ?? '',
+								duration: e.duration ?? 0,
+								thumbnail: e.thumbnail ?? '',
+							},
+						},
+					});
+
+					if (e.offset === 0 && !e.playing) return;
+
+					websocketService.sendMessage({
+						...base,
+						data: { event: EventType.JumpTo, payload: { offset: e.offset, play: e.playing } },
 					});
 					return;
 				}
-				case 'play':
-				case 'pause':
-				case 'seek':
-				case 'heartbeat': {
+				case 'HeartBeat': {
 					if (!this.isHost) return;
-					if (ev.video_id && ev.video_id !== party?.video) {
-						websocketService.sendMessage({
-							...base,
-							data: { event: EventType.Watch, payload: ev.video_id as id },
-						});
-						return;
-					}
-					if (!party?.video) return;
-					const offset = ev.offset ?? 0;
-					const play = !(ev.paused ?? true);
+
 					websocketService.sendMessage({
 						...base,
-						data: { event: EventType.JumpTo, payload: { offset: offset, play } },
+						data: { event: EventType.JumpTo, payload: { offset: e.offset, play: e.playing } },
 					});
 					return;
 				}
-				case 'ratechange':
-				case 'buffering':
-				case 'ended':
 				default:
 					return;
 			}
@@ -131,12 +124,38 @@ export const useWatchStore = defineStore('watch', {
 			this.setupListeners();
 		},
 
+		setParty(party: WatchParty, channel_id: id, group_id: id) {
+			this.party = party;
+			this.channel_id = channel_id;
+			this.group_id = group_id;
+		},
+
 		async applyState(video: id, offset: number, playing: boolean) {
-			if (!this.browser_open) return;
+			if (!this.browser_open) {
+				return;
+			}
 			try {
 				await invoke('apply_state', { video, offset, playing });
 			} catch (e) {
-				console.error('[WatchParty] apply_state failed', e);
+				console.error('[Watch Party] apply_state FAILED', e);
+			}
+		},
+
+		startSyncLoop() {
+			this.stopSyncLoop();
+			this.sync_interval = setInterval(() => {
+				if (!this.browser_open || !this.party) return;
+				if (this.isHost) return;
+				const p = this.party;
+				if (!p || !p.video) return;
+				this.applyState(p.video, p.offset, p.playing).catch(() => {});
+			}, 1000);
+		},
+
+		stopSyncLoop() {
+			if (this.sync_interval) {
+				clearInterval(this.sync_interval);
+				this.sync_interval = undefined;
 			}
 		},
 
@@ -149,6 +168,7 @@ export const useWatchStore = defineStore('watch', {
 			this.group_id = group_id;
 			this.channel_id = channel_id;
 			this.browser_open = true;
+			this.startSyncLoop();
 			const meStore = useMeStore();
 			return websocketService.sendMessage({
 				id: generate_uid(meStore.me!.id),
@@ -161,7 +181,6 @@ export const useWatchStore = defineStore('watch', {
 		},
 
 		async leaveParty() {
-			if (!this.inParty) return;
 			const meStore = useMeStore();
 			websocketService.sendMessage({
 				id: generate_uid(meStore.me!.id),
@@ -175,8 +194,10 @@ export const useWatchStore = defineStore('watch', {
 		},
 
 		async cleanup() {
+			this.stopSyncLoop();
 			this.group_id = undefined;
 			this.channel_id = undefined;
+			this.party = undefined;
 		},
 
 		async closeParty() {
@@ -188,6 +209,7 @@ export const useWatchStore = defineStore('watch', {
 					console.error('[WatchParty] close_party failed', e);
 				}
 			}
+			await this.leaveParty();
 		},
 	},
 });

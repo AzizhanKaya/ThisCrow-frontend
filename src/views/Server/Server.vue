@@ -15,6 +15,7 @@
 	import type { ContextMenuOption } from '@/components/ContextMenu.vue';
 	import { useVoiceStore } from '@/stores/voice';
 	import { useContextMenuStore } from '@/stores/contextMenu';
+	import { can } from '@/utils/perms';
 
 	const appStore = useAppStore();
 	const serverStore = useServerStore();
@@ -69,22 +70,25 @@
 		{ immediate: true }
 	);
 
-	const serverMenuOptions: ContextMenuOption[] = [
-		{ label: 'Server Info', action: 'server-info', icon: 'mdi:information-outline' },
-		{ label: 'Invite Others', action: 'invite', icon: 'mdi:account-plus-outline' },
-		{ divider: true },
-		{ label: 'Settings', action: 'settings', icon: 'mdi:cog-outline' },
-	];
-
 	const openServerMenu = (event: MouseEvent) => {
 		if (contextMenuStore.show && contextMenuStore.options[0]?.action === 'server-info') {
 			contextMenuStore.close();
 			return;
 		}
 
+		const p = can(server);
+		const options: ContextMenuOption[] = [{ label: 'Server Info', action: 'server-info', icon: 'mdi:information-outline' }];
+		if (p.createInvite) {
+			options.push({ label: 'Invite Others', action: 'invite', icon: 'mdi:account-plus-outline' });
+		}
+		if (p.manageGroup || p.manageRoles || p.banMembers || p.deleteInvite) {
+			options.push({ divider: true });
+			options.push({ label: 'Settings', action: 'settings', icon: 'mdi:cog-outline' });
+		}
+
 		contextMenuStore.open({
 			e: event,
-			options: serverMenuOptions,
+			options,
 			minWidth: 180,
 			zIndex: 1000,
 			onSelect: handleServerMenuSelect,

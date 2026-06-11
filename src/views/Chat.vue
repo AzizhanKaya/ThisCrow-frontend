@@ -239,7 +239,7 @@
 		justify-content: center;
 		width: 40px;
 		height: 40px;
-		border-radius: 50%;
+		border-radius: 10px;
 		transform: rotateY(180deg);
 		transition: background-color 0.2s;
 	}
@@ -258,12 +258,12 @@
 		justify-content: center;
 		width: 40px;
 		height: 40px;
-		border-radius: 50%;
+		border-radius: 10px;
 	}
 
 	header .call-btn:hover,
 	header .video-btn:hover {
-		background-color: #303030;
+		background-color: var(--bg-light);
 	}
 
 	.messages-list {

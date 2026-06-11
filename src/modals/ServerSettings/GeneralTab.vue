@@ -8,6 +8,7 @@
 	import { Icon } from '@iconify/vue';
 	import type { id } from '@/types';
 	import { useRouter } from 'vue-router';
+	import { can } from '@/utils/perms';
 
 	const props = defineProps<{
 		serverId: id;
@@ -22,6 +23,7 @@
 
 	const server = computed(() => serverStore.getServerById(props.serverId));
 	const isOwner = computed(() => server.value?.owner === meStore.me?.id);
+	const p = can(server);
 
 	const serverName = ref(server.value?.name || '');
 	const serverDescription = ref(server.value?.description || '');
@@ -98,7 +100,7 @@
 		<div class="input-group">
 			<label>ICON</label>
 			<div class="icon-upload-row">
-				<div class="icon-upload-preview" @click="triggerIconUpload">
+				<div class="icon-upload-preview" :class="{ disabled: !p.manageGroup }" @click="p.manageGroup && triggerIconUpload()">
 					<img v-if="serverIconPreview" :src="serverIconPreview" class="preview-img" />
 					<div v-else class="preview-placeholder">
 						<Icon icon="mdi:camera-plus" class="camera-icon" />
@@ -117,32 +119,22 @@
 		<div class="input-group">
 			<label>SERVER NAME <span class="req">*</span></label>
 			<div class="input-wrapper">
-				<input type="text" v-model="serverName" />
+				<input type="text" v-model="serverName" :disabled="!p.manageGroup" />
 			</div>
 		</div>
 
 		<div class="input-group">
 			<label>DESCRIPTION</label>
 			<div class="input-wrapper textarea-wrapper">
-				<textarea v-model="serverDescription" rows="4"></textarea>
+				<textarea v-model="serverDescription" rows="4" :disabled="!p.manageGroup"></textarea>
 			</div>
 		</div>
 
-		<div v-if="isOwner" class="danger-zone">
-			<div class="danger-zone-header">
-				<Icon icon="mdi:alert-circle" class="danger-icon" />
-				<span>DANGER ZONE</span>
-			</div>
-			<div class="danger-zone-content">
-				<div class="danger-info">
-					<span class="danger-title">Delete Server</span>
-					<span class="danger-desc">Once deleted, there is no going back. All data will be permanently removed.</span>
-				</div>
-				<button class="btn-danger" @click="confirmDeleteServer">
-					<Icon icon="mdi:delete" />
-					Delete Server
-				</button>
-			</div>
+		<div v-if="isOwner" class="delete-server-wrapper">
+			<button class="btn-danger" @click="confirmDeleteServer">
+				<Icon icon="mdi:delete" />
+				Delete Server
+			</button>
 		</div>
 	</div>
 
@@ -159,6 +151,8 @@
 <style scoped>
 	.content-scroll {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
 		overflow-y: auto;
 		padding: 32px 40px 40px;
 		position: relative;
@@ -227,6 +221,21 @@
 		opacity: 1;
 	}
 
+	.icon-upload-preview.disabled {
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
+	.icon-upload-preview.disabled .icon-hover-overlay {
+		display: none;
+	}
+
+	.input-wrapper input:disabled,
+	.textarea-wrapper textarea:disabled {
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
 	.input-group {
 		display: flex;
 		flex-direction: column;
@@ -287,54 +296,10 @@
 		resize: none;
 	}
 
-	/* ===== Danger Zone ===== */
-	.danger-zone {
-		margin-top: 32px;
-		border: 1px solid rgba(242, 63, 66, 0.35);
-		border-radius: 10px;
-		overflow: hidden;
-	}
-
-	.danger-zone-header {
+	.delete-server-wrapper {
 		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 10px 16px;
-		background-color: rgba(242, 63, 66, 0.08);
-		font-size: 0.72rem;
-		font-weight: 700;
-		color: var(--error, #f23f42);
-		letter-spacing: 0.4px;
-	}
-
-	.danger-icon {
-		font-size: 1rem;
-	}
-
-	.danger-zone-content {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 16px;
-		gap: 16px;
-	}
-
-	.danger-info {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.danger-title {
-		font-size: 0.95rem;
-		font-weight: 600;
-		color: var(--text);
-	}
-
-	.danger-desc {
-		font-size: 0.82rem;
-		color: var(--text-muted);
-		line-height: 1.4;
+		justify-content: flex-start;
+		margin-top: auto;
 	}
 
 	.btn-danger {

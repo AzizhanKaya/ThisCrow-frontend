@@ -1,11 +1,9 @@
 <script setup lang="ts">
-	import { ref, computed } from 'vue';
+	import { ref, computed, watchEffect } from 'vue';
 	import { useModalStore } from '@/stores/modal';
 	import { useServerStore } from '@/stores/server';
-	import { useMeStore } from '@/stores/me';
 	import { Icon } from '@iconify/vue';
-
-	import { Permissions } from '@/types';
+	import { can } from '@/utils/perms';
 
 	import GeneralTab from './ServerSettings/GeneralTab.vue';
 	import RolesTab from './ServerSettings/RolesTab.vue';
@@ -14,11 +12,23 @@
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
-	const meStore = useMeStore();
 
 	const activeTab = ref('general');
 	const server_id = modalStore.data?.server_id;
 	const server = computed(() => serverStore.getServerById(server_id));
+	const p = can(server);
+
+	const tabs = computed(() => [
+		{ id: 'general', label: 'General', icon: 'mdi:cog', show: true },
+		{ id: 'roles', label: 'Roles', icon: 'mdi:shield-account', show: p.manageRoles },
+		{ id: 'invites', label: 'Invites', icon: 'mdi:link-variant', show: p.createInvite || p.deleteInvite },
+		{ id: 'bans', label: 'Bans', icon: 'mdi:account-cancel', show: p.banMembers },
+	]);
+
+	watchEffect(() => {
+		const current = tabs.value.find((t) => t.id === activeTab.value);
+		if (!current || !current.show) activeTab.value = 'general';
+	});
 
 	function close() {
 		modalStore.closeModal();
@@ -32,18 +42,11 @@
 			<aside class="settings-sidebar">
 				<div class="sidebar-label">{{ server?.name }}</div>
 				<nav class="sidebar-nav">
-					<button :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
-						<Icon icon="mdi:cog" class="nav-icon" /> General
-					</button>
-					<button :class="{ active: activeTab === 'roles' }" @click="activeTab = 'roles'">
-						<Icon icon="mdi:shield-account" class="nav-icon" /> Roles
-					</button>
-					<button :class="{ active: activeTab === 'invites' }" @click="activeTab = 'invites'">
-						<Icon icon="mdi:link-variant" class="nav-icon" /> Invites
-					</button>
-					<button :class="{ active: activeTab === 'bans' }" @click="activeTab = 'bans'">
-						<Icon icon="mdi:account-cancel" class="nav-icon" /> Bans
-					</button>
+					<template v-for="t in tabs" :key="t.id">
+						<button v-if="t.show" :class="{ active: activeTab === t.id }" @click="activeTab = t.id">
+							<Icon :icon="t.icon" class="nav-icon" /> {{ t.label }}
+						</button>
+					</template>
 				</nav>
 			</aside>
 

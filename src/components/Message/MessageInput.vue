@@ -17,6 +17,8 @@
 	import { useMeStore } from '@/stores/me';
 	import { useUserStore } from '@/stores/user';
 	import { useKeyStore } from '@/stores/key';
+	import { useServerStore } from '@/stores/server';
+	import { can } from '@/utils/perms';
 	import { summarizeMessageData, type MessageSummary } from '@/utils/messagePreview';
 	import { generate_snowflake } from '@/utils/snowflake';
 	import { generate_nonce, encrypt_message } from '@/../pkg/wasm_lib';
@@ -41,6 +43,14 @@
 	const chatTarget = $computed<ChatTarget>(() =>
 		props.group_id ? { kind: 'channel', channel_id: props.to, group_id: props.group_id } : { kind: 'user', user_id: props.to }
 	);
+
+	const serverStore = useServerStore();
+	const server = computed(() => (props.group_id ? serverStore.getServerById(props.group_id) : undefined));
+	const channel = computed(() => (props.group_id ? server.value?.channels?.get(props.to) : undefined));
+	const p = can(server, channel);
+	const canSend = computed(() => !props.group_id || p.sendMessage);
+	const canAttach = computed(() => !props.group_id || p.attachFiles);
+	const inputPlaceholder = computed(() => (canSend.value ? 'Type a message...' : 'You do not have permission to send messages'));
 
 	const repliedPreview = $(
 		computedAsync(async () => {
@@ -130,6 +140,8 @@
 		dragCounter = 0;
 		isDragging.value = false;
 
+		if (!canAttach.value) return;
+
 		const files = e.dataTransfer?.files;
 		if (files && files.length > 0) {
 			await addFiles(Array.from(files));
@@ -208,6 +220,7 @@
 
 			messageStore.sendMessage(message);
 			input.value = '';
+			showEmojiPicker.value = false;
 
 			clearFiles();
 			if (props.replyTo != null) emit('clear-reply');
@@ -334,24 +347,22 @@
 					accept="image/*,video/*,application/*"
 					style="display: none"
 				/>
-				<button class="icon-btn plus" @click="onPlus" aria-label="Add">
+				<button v-if="canSend && canAttach" class="icon-btn plus" @click="onPlus" aria-label="Add">
 					<Icon icon="mdi:plus" width="24" height="24" />
 				</button>
-				<textarea ref="textarea" v-model="input" placeholder="Type a message..." rows="1" @keydown="onKeydown" />
+				<div v-else-if="!canSend" class="icon-btn lock" aria-label="Locked">
+					<Icon icon="mdi:lock" width="20" height="20" />
+				</div>
+				<textarea ref="textarea" v-model="input" :placeholder="inputPlaceholder" :disabled="!canSend" rows="1" @keydown="onKeydown" />
 				<button class="icon-btn" ref="emojiBtnRef" @click="toggleEmojiPicker" aria-label="Emoji" title="Emoji">
 					<Icon icon="mdi:emoticon-outline" width="24" height="24" />
 				</button>
-				<EmojiPicker
-					v-if="showEmojiPicker"
-					:anchor="emojiBtnRef"
-					@select="onEmojiSelect"
-					@close="showEmojiPicker = false"
-				/>
+				<EmojiPicker v-if="showEmojiPicker" :anchor="emojiBtnRef" @select="onEmojiSelect" @close="showEmojiPicker = false" />
 				<button
 					class="icon-btn send"
 					:class="{ active: (input.length > 0 || hasSelectedFiles) && !isUploading }"
 					@click="onSend"
-					:disabled="(!input.length && !hasSelectedFiles) || isUploading"
+					:disabled="(!input.length && !hasSelectedFiles) || isUploading || !canSend"
 					:title="isUploading ? 'Uploading…' : ''"
 				>
 					<Icon v-if="isUploading" icon="mdi:loading" class="spinner" width="24" height="24" />
@@ -734,7 +745,6 @@
 	.input-row {
 		display: flex;
 		align-items: flex-end;
-		gap: 5px;
 		padding: 8px;
 	}
 
@@ -774,7 +784,6 @@
 		color: #555;
 	}
 
-
 	.input-row > textarea {
 		flex: 1;
 		border: none;
@@ -811,5 +820,15 @@
 
 	.input-row > textarea::-webkit-scrollbar-track {
 		background: transparent;
+	}
+
+	textarea:disabled {
+		cursor: not-allowed;
+	}
+
+	.icon-btn.lock {
+		color: var(--text-subtle);
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 </style>

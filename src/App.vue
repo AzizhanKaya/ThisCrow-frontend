@@ -8,6 +8,7 @@
 	import ErrorToasts from './components/ErrorToasts.vue';
 	import ContextMenu from './components/ContextMenu.vue';
 	import ProfileCard from './components/ProfileCard.vue';
+	import WatchPartyCard from './components/WatchPartyCard.vue';
 	import { platform } from '@tauri-apps/plugin-os';
 	import { useContextMenuStore } from '@/stores/contextMenu';
 
@@ -61,6 +62,7 @@
 		@close="contextMenuStore.close()"
 	/>
 	<ProfileCard />
+	<WatchPartyCard />
 </template>
 
 <style>

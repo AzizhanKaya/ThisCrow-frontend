@@ -31,7 +31,7 @@ class WebRTCService {
 	private static instance: WebRTCService;
 	public pcs: Map<id, PeerConnection> = reactive(new Map());
 	public stateUpdate = ref(0);
-	public activeTracks = reactive(new Set<string>());
+
 	localStream?: MediaStream;
 	private localTrackIds = new Map<MediaType, string>();
 	private hardwareTracks = new Map<MediaType, MediaStreamTrack>();
@@ -59,27 +59,6 @@ class WebRTCService {
 		iceServers: ICE_SERVERS,
 		iceTransportPolicy: ICE_TRANSPORT_POLICY,
 	};
-
-	public setupTrackListeners(track: MediaStreamTrack) {
-		if ((track as any)._hasMuteListener) return;
-		(track as any)._hasMuteListener = true;
-
-		if (!track.muted) {
-			this.activeTracks.add(track.id);
-		}
-
-		track.addEventListener('mute', () => {
-			this.activeTracks.delete(track.id);
-		});
-
-		track.addEventListener('unmute', () => {
-			this.activeTracks.add(track.id);
-		});
-
-		track.addEventListener('ended', () => {
-			this.activeTracks.delete(track.id);
-		});
-	}
 
 	public static getInstance(): WebRTCService {
 		if (!WebRTCService.instance) WebRTCService.instance = new WebRTCService();
@@ -321,11 +300,18 @@ class WebRTCService {
 			const peer = this.pcs.get(userId);
 			if (!peer || peer.connection !== connection) return;
 
-			const txIndex = peer.connection.getTransceivers().indexOf(event.transceiver);
-
 			this.stateUpdate.value++;
 			peer.remoteStream.addTrack(event.track);
-			this.setupTrackListeners(event.track);
+
+			event.track.onmute = () => {
+				this.stateUpdate.value++;
+			};
+			event.track.onunmute = () => {
+				this.stateUpdate.value++;
+			};
+			event.track.onended = () => {
+				this.stateUpdate.value++;
+			};
 
 			if (event.track.kind === 'audio') {
 				this.monitorRemoteAudio(peer, event.track);
@@ -335,6 +321,7 @@ class WebRTCService {
 		connection.onnegotiationneeded = async () => {
 			const peer = this.pcs.get(userId);
 			if (!peer || peer.connection !== connection) return;
+			if (peer.makingOffer) return;
 
 			try {
 				peer.makingOffer = true;
@@ -492,16 +479,11 @@ class WebRTCService {
 			if (!this.localStream) this.localStream = markRaw(new MediaStream());
 
 			const voiceStore = useVoiceStore();
-			const baseAudio: MediaTrackConstraints = deviceId ? { deviceId: deviceId } : {};
-			if (voiceStore.noiseSuppression) {
-				baseAudio.noiseSuppression = true;
-				baseAudio.echoCancellation = true;
-				baseAudio.autoGainControl = true;
-			} else {
-				baseAudio.noiseSuppression = false;
-				baseAudio.echoCancellation = true;
-				baseAudio.autoGainControl = false;
-			}
+			const baseAudio: MediaTrackConstraints = deviceId ? { deviceId: { exact: deviceId } } : {};
+			baseAudio.echoCancellation = true;
+			baseAudio.autoGainControl = false;
+			baseAudio.noiseSuppression = { exact: voiceStore.noiseSuppression };
+			console.log(voiceStore.noiseSuppression);
 			const audioConstraints: MediaTrackConstraints | boolean = Object.keys(baseAudio).length > 0 ? baseAudio : true;
 
 			const constraints = {
@@ -606,8 +588,6 @@ class WebRTCService {
 			this.localTrackIds.set(type, track.id);
 			this.hardwareTracks.set(type, hardwareTrack);
 			this.localStream!.addTrack(track);
-
-			this.setupTrackListeners(track);
 
 			this.pcs.forEach((peer) => {
 				const tx = peer.transceivers.get(type);
@@ -771,7 +751,7 @@ class WebRTCService {
 		this.latencyMs.value = 0;
 		this.inputLevel.value = 0;
 		this.speakingUsers.clear();
-		this.activeTracks.clear();
+
 		this.pendingOffers.clear();
 		this.pendingCandidates.clear();
 
