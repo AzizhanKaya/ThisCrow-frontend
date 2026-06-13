@@ -9,6 +9,7 @@ import Server from '@/views/Server/Server.vue';
 
 import AuthLayout from '@/layouts/Auth.vue';
 import MainLayout from '@/layouts/Main.vue';
+import Landing from '@/views/Landing.vue';
 
 import { ModalView, useModalStore } from '@/stores/modal';
 
@@ -98,6 +99,12 @@ const routes = [
 			{ path: 'login', name: 'login', component: Login },
 			{ path: 'register', name: 'register', component: Register },
 		],
+	},
+	{
+		path: '/download',
+		name: 'download',
+		component: Landing,
+		meta: { layout: 'landing' },
 	},
 ];
 

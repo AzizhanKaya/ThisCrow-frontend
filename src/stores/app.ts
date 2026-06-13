@@ -49,7 +49,9 @@ export const useAppStore = defineStore('app', {
 				await getMe();
 				websocketService.connect();
 			} catch (error) {
-				router.push({ name: 'login' });
+				if (router.currentRoute.value.meta?.requiresAuth) {
+					router.push({ name: 'login' });
+				}
 			}
 		},
 

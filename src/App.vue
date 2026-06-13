@@ -40,7 +40,7 @@
 </script>
 
 <template>
-	<Header></Header>
+	<Header v-if="route.meta.layout !== 'landing'"></Header>
 	<router-view v-slot="{ Component }">
 		<Transition name="fade" mode="out-in">
 			<component :is="Component" :key="route.meta.layout" />
