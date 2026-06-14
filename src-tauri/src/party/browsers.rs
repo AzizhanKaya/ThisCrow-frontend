@@ -78,6 +78,32 @@ impl Browser {
             }
         }
 
+        #[cfg(target_os = "macos")]
+        {
+            let app_names = match self {
+                Browser::Chrome => vec!["Google Chrome.app/Contents/MacOS/Google Chrome"],
+                Browser::Chromium => vec!["Chromium.app/Contents/MacOS/Chromium"],
+                Browser::Brave => vec!["Brave Browser.app/Contents/MacOS/Brave Browser"],
+                Browser::Opera => vec!["Opera.app/Contents/MacOS/Opera"],
+                Browser::Safari => vec![],
+            };
+
+            let home = env::var("HOME").unwrap_or_default();
+            let search_dirs = [
+                "/Applications".to_string(),
+                format!("{}/Applications", home),
+            ];
+
+            for dir in &search_dirs {
+                for app in &app_names {
+                    let full = PathBuf::from(dir).join(app);
+                    if full.exists() {
+                        return Ok(full);
+                    }
+                }
+            }
+        }
+
         Ok(match self {
             Browser::Chrome => which("chrome")
                 .or_else(|_| which("google-chrome"))
