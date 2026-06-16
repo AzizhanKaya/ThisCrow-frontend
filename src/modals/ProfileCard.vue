@@ -77,9 +77,8 @@
 	});
 
 	const hasActivities = computed(() => {
-		const acts = user.activities;
-		if (!acts) return false;
-		return Object.keys(acts).length > 0;
+		if (user.status === Status.Offline || !user.activities) return false;
+		return Object.keys(user.activities).length > 0;
 	});
 
 	const userStatus = computed(() => {

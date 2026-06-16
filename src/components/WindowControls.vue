@@ -1,7 +1,10 @@
 <script setup>
 	import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 	import { Icon } from '@iconify/vue';
+	import { platform } from '@tauri-apps/plugin-os';
 	import { websocketService } from '@/services/websocket';
+
+	const isMacOS = platform() === 'macos';
 
 	const appWindow = await WebviewWindow.getByLabel('app');
 
@@ -17,7 +20,7 @@
 </script>
 
 <template>
-	<div class="window-controls">
+	<div v-if="!isMacOS" class="window-controls">
 		<button @click="minimize" title="Minimize" class="titlebar-button">
 			<Icon icon="mdi:window-minimize" />
 		</button>
@@ -55,7 +58,7 @@
 		color: var(--text);
 	}
 	.titlebar-button.close-btn:hover {
-		background: #e81123;
+		background: #f23343;
 		color: white;
 	}
 </style>

@@ -26,7 +26,6 @@
 				:href="downloads[os].url ?? RELEASES_URL"
 				target="_blank"
 			>
-				<span v-if="os === current" class="badge">Your system</span>
 				<Icon class="os-icon" :icon="downloads[os].icon" />
 				<h3>{{ downloads[os].label }}</h3>
 				<span class="meta">
@@ -84,7 +83,11 @@
 		text-align: center;
 		gap: 10px;
 		cursor: pointer;
-		transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+		transition:
+			transform 0.18s ease,
+			border-color 0.18s ease,
+			box-shadow 0.18s ease,
+			background-color 0.18s ease;
 	}
 	.card:hover {
 		transform: translateY(-6px);
@@ -94,19 +97,11 @@
 	}
 	.card.recommended {
 		border-color: var(--color);
-		box-shadow: 0 0 0 1px var(--color), 0 20px 50px hsla(261, 68%, 6%, 0.5);
+		box-shadow:
+			0 0 0 1px var(--color),
+			0 20px 50px hsla(261, 68%, 6%, 0.5);
 	}
-	.badge {
-		position: absolute;
-		top: 14px;
-		right: 14px;
-		background: var(--color);
-		color: #fff;
-		font-size: 11px;
-		font-weight: 700;
-		padding: 4px 10px;
-		border-radius: 999px;
-	}
+
 	.os-icon {
 		font-size: 56px;
 		color: var(--text);

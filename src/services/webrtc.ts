@@ -24,6 +24,8 @@ interface PeerConnection {
 	makingOffer: boolean;
 	isPolite: boolean;
 	disconnectTimer?: number;
+	failTimer?: number;
+	iceRestartAttempted?: boolean;
 	audioCleanup?: () => void;
 }
 
@@ -108,9 +110,14 @@ class WebRTCService {
 
 	private mapAnswererTransceivers(peer: PeerConnection) {
 		const list = peer.connection.getTransceivers();
+		const expectedKinds = ['audio', 'video', 'video'];
 		TRANSCEIVER_ORDER.forEach((type, idx) => {
 			const tx = list[idx];
 			if (!tx) return;
+			const kind = tx.receiver.track?.kind;
+			if (kind && kind !== expectedKinds[idx]) {
+				console.error(`Transceiver kind mismatch at index ${idx}: expected ${expectedKinds[idx]}, got ${kind}`);
+			}
 			peer.transceivers.set(type, tx);
 			if (tx.direction !== 'stopped' && tx.direction !== 'sendrecv') {
 				try {
@@ -165,6 +172,13 @@ class WebRTCService {
 		}
 
 		try {
+			// Polite peer in a glare: roll back our own offer before applying theirs.
+			// Done explicitly (not relying on the browser's implicit rollback) so it
+			// also works on engines that throw InvalidStateError instead.
+			if (offerCollision && peer.connection.signalingState === 'have-local-offer') {
+				await peer.connection.setLocalDescription({ type: 'rollback' } as RTCLocalSessionDescriptionInit);
+			}
+
 			await peer.connection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
 
 			if (peer.transceivers.size === 0) {
@@ -356,14 +370,21 @@ class WebRTCService {
 					clearTimeout(peer.disconnectTimer);
 					peer.disconnectTimer = undefined;
 				}
-			} else if (state === 'failed' || state === 'closed') {
+				if (peer.failTimer) {
+					clearTimeout(peer.failTimer);
+					peer.failTimer = undefined;
+				}
+				peer.iceRestartAttempted = false;
+			} else if (state === 'closed') {
 				this.handlePeerLost(userId);
+			} else if (state === 'failed') {
+				this.tryRecover(userId, connection);
 			} else if (state === 'disconnected') {
 				if (!peer.disconnectTimer) {
 					peer.disconnectTimer = window.setTimeout(() => {
 						const current = this.pcs.get(userId);
 						if (current && current.connection === connection && connection.connectionState === 'disconnected') {
-							this.handlePeerLost(userId);
+							this.tryRecover(userId, connection);
 						}
 					}, DISCONNECT_TIMEOUT_MS);
 				}
@@ -377,6 +398,67 @@ class WebRTCService {
 			this.onPeerLost?.(userId);
 		} catch (e) {
 			console.error('onPeerLost callback failed', e);
+		}
+	}
+
+	private tryRecover(userId: id, connection: RTCPeerConnection) {
+		const peer = this.pcs.get(userId);
+		if (!peer || peer.connection !== connection) return;
+
+		// First attempt: ICE restart on the EXISTING connection. Unlike a full
+		// teardown+rebuild (which only the higher-id peer can initiate via
+		// connectPeers), an ICE restart can be driven by either peer — perfect
+		// negotiation resolves simultaneous restarts — so the lower-id/polite peer
+		// can recover the link too. The restart offer is an ordinary Offer, so the
+		// pure-relay backend needs no changes.
+		if (!peer.iceRestartAttempted) {
+			peer.iceRestartAttempted = true;
+			try {
+				if (typeof connection.restartIce === 'function') {
+					connection.restartIce();
+				} else {
+					void this.makeRestartOffer(peer);
+				}
+			} catch (e) {
+				console.error('ICE restart failed', e);
+			}
+		}
+
+		// Fallback: if the ICE restart hasn't recovered within the timeout, tear the
+		// connection down and rebuild it (handlePeerLost -> onPeerLost -> connectPeers).
+		if (!peer.failTimer) {
+			peer.failTimer = window.setTimeout(() => {
+				const current = this.pcs.get(userId);
+				if (
+					current &&
+					current.connection === connection &&
+					(connection.connectionState === 'failed' || connection.connectionState === 'disconnected')
+				) {
+					this.handlePeerLost(userId);
+				}
+			}, DISCONNECT_TIMEOUT_MS);
+		}
+	}
+
+	private async makeRestartOffer(peer: PeerConnection) {
+		if (peer.makingOffer) return;
+		const connection = peer.connection;
+		try {
+			peer.makingOffer = true;
+			const offer = await connection.createOffer({ iceRestart: true });
+			if (connection.signalingState !== 'stable') return;
+			await connection.setLocalDescription(offer);
+			websocketService.sendMessage({
+				id: generate_uid(this.me!.id),
+				type: MessageType.Info,
+				from: this.me!.id,
+				to: peer.userId,
+				data: { event: EventType.Offer, payload: offer.sdp! },
+			});
+		} catch (e) {
+			console.error('makeRestartOffer failed', e);
+		} finally {
+			peer.makingOffer = false;
 		}
 	}
 
@@ -482,8 +564,9 @@ class WebRTCService {
 			const baseAudio: MediaTrackConstraints = deviceId ? { deviceId: { exact: deviceId } } : {};
 			baseAudio.echoCancellation = true;
 			baseAudio.autoGainControl = false;
-			baseAudio.noiseSuppression = { exact: voiceStore.noiseSuppression };
-			console.log(voiceStore.noiseSuppression);
+			// Soft preference, not `{ exact: ... }`: a hard constraint makes getUserMedia
+			// throw OverconstrainedError on devices that can't honor the exact value.
+			baseAudio.noiseSuppression = voiceStore.noiseSuppression;
 			const audioConstraints: MediaTrackConstraints | boolean = Object.keys(baseAudio).length > 0 ? baseAudio : true;
 
 			const constraints = {
@@ -499,9 +582,25 @@ class WebRTCService {
 				const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
 				track = stream.getVideoTracks()[0];
 				hardwareTrack = track;
+				if (sessionAtStart !== this.sessionId) {
+					try {
+						hardwareTrack.stop();
+					} catch {}
+					throw new Error('Track acquisition cancelled by disconnect');
+				}
 			} else {
 				const stream = await navigator.mediaDevices.getUserMedia(constraints[type] as any);
 				hardwareTrack = type === MediaType.Audio ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+
+				// Bail out before building any AudioContext/graph/VAD interval: a
+				// disconnect during getUserMedia would otherwise leak a freshly created
+				// AudioContext and a 50ms setInterval that nothing cleans up.
+				if (sessionAtStart !== this.sessionId) {
+					try {
+						hardwareTrack.stop();
+					} catch {}
+					throw new Error('Track acquisition cancelled by disconnect');
+				}
 
 				if (type === MediaType.Audio) {
 					if (!this.audioContext || this.audioContext.state === 'closed') {
@@ -568,6 +667,13 @@ class WebRTCService {
 					hardwareTrack.addEventListener('ended', () => {
 						try {
 							track.stop();
+						} catch {}
+						// track.stop() does NOT dispatch 'ended', so callers that bound
+						// track.onended (voice store: mute-on-mic-loss) would never fire.
+						// The returned track is the WebAudio destination track, not the
+						// hardware track, so forward the hardware's loss explicitly.
+						try {
+							track.dispatchEvent(new Event('ended'));
 						} catch {}
 					});
 				} else {
@@ -709,6 +815,10 @@ class WebRTCService {
 			if (peer.disconnectTimer) {
 				clearTimeout(peer.disconnectTimer);
 				peer.disconnectTimer = undefined;
+			}
+			if (peer.failTimer) {
+				clearTimeout(peer.failTimer);
+				peer.failTimer = undefined;
 			}
 			peer.audioCleanup?.();
 			try {

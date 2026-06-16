@@ -147,11 +147,7 @@
 
 							<label class="toggle-row">
 								<span class="toggle-label">Noise Suppression</span>
-								<div
-									class="toggle-switch"
-									:class="{ on: voiceStore.noiseSuppression }"
-									@click="voiceStore.toggleNoiseSuppression()"
-								>
+								<div class="toggle-switch" :class="{ on: voiceStore.noiseSuppression }" @click="voiceStore.toggleNoiseSuppression()">
 									<div class="toggle-knob"></div>
 								</div>
 							</label>
@@ -275,7 +271,11 @@
 		white-space: nowrap;
 	}
 
-	@container (max-width: 210px) {
+	@container (max-width: 170px) {
+		.voice-info {
+			margin: auto;
+		}
+
 		.connection-text {
 			display: none;
 		}

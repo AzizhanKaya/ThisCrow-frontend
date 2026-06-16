@@ -55,6 +55,7 @@
 	}
 
 	function getUserStatus(user: User): { emoji?: string; text: string } {
+		if (user.status === Status.Offline) return { text: 'Offline' };
 		if (user.activities?.game) return { emoji: '👾', text: user.activities.game.payload.name };
 		if (user.activities?.music) return { emoji: '🎶', text: user.activities.music.payload.title };
 		if (user.activities?.watching) return { emoji: '📺', text: '' };

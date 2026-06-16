@@ -13,12 +13,48 @@ pub use log_filter::install_stderr_filter;
 
 mod party;
 
+#[cfg(target_os = "macos")]
+fn apply_macos_overlay_titlebar(window: &tauri::WebviewWindow) {
+    use cocoa::appkit::{NSWindow, NSWindowStyleMask, NSWindowTitleVisibility};
+    use cocoa::base::{YES, id};
+
+    let ns_window = match window.ns_window() {
+        Ok(handle) => handle as id,
+        Err(e) => {
+            println!("Failed to get NSWindow handle: {}", e);
+            return;
+        }
+    };
+
+    unsafe {
+        let mut style_mask = ns_window.styleMask();
+        style_mask.insert(NSWindowStyleMask::NSFullSizeContentViewWindowMask);
+        ns_window.setStyleMask_(style_mask);
+        ns_window.setTitlebarAppearsTransparent_(YES);
+        ns_window.setTitleVisibility_(NSWindowTitleVisibility::NSWindowTitleHidden);
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
         .setup(|app| {
+            if let Some(win) = app.get_webview_window("app") {
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                if let Err(e) = win.set_decorations(false) {
+                    println!("Failed to disable window decorations: {}", e);
+                }
+
+                #[cfg(target_os = "macos")]
+                apply_macos_overlay_titlebar(&win);
+
+                if let Err(e) = win.show() {
+                    println!("Failed to show main window: {}", e);
+                }
+            }
+
             let handle_update = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
@@ -47,21 +83,14 @@ pub fn run() {
                             .build()
                             .expect("Updater window could not be created");
                         }
-                        Ok(None) => {
-                            println!("Application is already up to date.");
-                            if let Some(ref win) = app_window {
-                                if let Err(e) = win.show() {
-                                    println!("Failed to show main window: {}", e);
-                                }
-                            }
-                        }
+                        Ok(None) => println!("Application is already up to date."),
                         Err(e) => println!("Update check failed: {}", e),
                     },
                     Err(e) => println!("Updater plugin error: {}", e),
                 }
             });
 
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
             {
                 let handle_music = app.handle().clone();
                 tauri::async_runtime::spawn(async move {

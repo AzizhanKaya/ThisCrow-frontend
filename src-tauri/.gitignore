@@ -1,6 +1,6 @@
 .cargo
 /target/
-/gen/schemas
+/gen
 .env
 .vscode
 .cargo

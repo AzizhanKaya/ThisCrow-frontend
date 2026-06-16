@@ -66,7 +66,9 @@
 		overflow: hidden;
 		background: var(--bg-darker);
 		border: 1px solid hsla(0, 0%, 100%, 0.07);
-		box-shadow: 0 30px 70px hsla(0, 0%, 0%, 0.5), 0 0 60px -20px var(--glow);
+		box-shadow:
+			0 30px 70px hsla(0, 0%, 0%, 0.5),
+			0 0 60px -20px var(--glow);
 		aspect-ratio: 16 / 11;
 	}
 

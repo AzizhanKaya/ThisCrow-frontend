@@ -1,34 +1,52 @@
 <script setup lang="ts">
 	import StarryNightBackground from '../components/StarryNightBackground.vue';
+	import Header from '@/components/Header.vue';
+	import ErrorToasts from '@/components/ErrorToasts.vue';
+	import { useAppStore } from '@/stores/app';
+
+	const appStore = useAppStore();
 </script>
 
 <template>
-	<div class="auth-layout">
-		<StarryNightBackground />
-		<div class="card">
-			<h2>ThisCrow</h2>
-			<div class="buttons">
-				<router-link to="/auth/login">Login</router-link>
-				<router-link to="/auth/register">Register</router-link>
+	<div class="auth-root">
+		<Header v-if="appStore.isTauri" />
+		<div class="auth-layout">
+			<StarryNightBackground />
+			<div class="card">
+				<h2>ThisCrow</h2>
+				<div class="buttons">
+					<router-link to="/auth/login">Login</router-link>
+					<router-link to="/auth/register">Register</router-link>
+				</div>
+				<router-view v-slot="{ Component, route }">
+					<Transition name="fade" mode="out-in">
+						<component :is="Component" :key="route.path" />
+					</Transition>
+				</router-view>
 			</div>
-			<router-view v-slot="{ Component, route }">
-				<Transition name="fade" mode="out-in">
-					<component :is="Component" :key="route.path" />
-				</Transition>
-			</router-view>
 		</div>
+		<ErrorToasts />
 	</div>
 </template>
 
 <style scoped>
+	.auth-root {
+		position: absolute;
+		inset: 0;
+	}
+
 	.auth-layout {
 		position: absolute;
 		width: 100%;
-		height: calc(100% - 30px);
+		height: 100%;
 		display: flex;
 		justify-content: center;
 		align-items: center;
 		overflow: hidden;
+	}
+
+	html.tauri .auth-layout {
+		height: calc(100% - 30px);
 	}
 	h2 {
 		padding-bottom: 24px;

@@ -67,8 +67,8 @@
 	});
 
 	const hasActivities = computed(() => {
-		const acts = user.value?.activities;
-		if (!acts) return false;
+		if (user.value?.status === Status.Offline || !user.value?.activities) return false;
+		const acts = user.value.activities;
 		return !!(acts.game || acts.music || acts.watching || acts.streaming);
 	});
 

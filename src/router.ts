@@ -9,7 +9,7 @@ import Server from '@/views/Server/Server.vue';
 
 import AuthLayout from '@/layouts/Auth.vue';
 import MainLayout from '@/layouts/Main.vue';
-import Landing from '@/views/Landing.vue';
+import Landing from '@/layouts/Landing.vue';
 
 import { ModalView, useModalStore } from '@/stores/modal';
 
@@ -122,7 +122,7 @@ import { watch } from 'vue';
 router.beforeEach((to) => {
 	const meStore = useMeStore();
 
-	if (meStore.me == undefined) return;
+	if (meStore.me === undefined) return;
 
 	if (to.meta?.requiresAuth && !meStore.me) {
 		return { name: 'login' };

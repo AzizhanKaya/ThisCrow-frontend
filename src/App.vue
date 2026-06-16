@@ -2,18 +2,9 @@
 	import { onMounted } from 'vue';
 	import { useRouter, useRoute } from 'vue-router';
 	import { useAppStore } from '@/stores/app';
-	import Header from './components/Header.vue';
-	import Modals from './components/Modals.vue';
-	import GlobalVoiceOverlay from './components/Voice/GlobalVoiceOverlay.vue';
-	import ErrorToasts from './components/ErrorToasts.vue';
-	import ContextMenu from './components/ContextMenu.vue';
-	import ProfileCard from './components/ProfileCard.vue';
-	import WatchPartyCard from './components/WatchPartyCard.vue';
 	import { platform } from '@tauri-apps/plugin-os';
-	import { useContextMenuStore } from '@/stores/contextMenu';
 
 	const appStore = useAppStore();
-	const contextMenuStore = useContextMenuStore();
 	const router = useRouter();
 	const route = useRoute();
 
@@ -40,29 +31,11 @@
 </script>
 
 <template>
-	<Header v-if="route.meta.layout !== 'landing'"></Header>
 	<router-view v-slot="{ Component }">
 		<Transition name="fade" mode="out-in">
 			<component :is="Component" :key="route.meta.layout" />
 		</Transition>
 	</router-view>
-	<Modals />
-	<GlobalVoiceOverlay />
-	<ErrorToasts />
-	<ContextMenu
-		:show="contextMenuStore.show"
-		:x="contextMenuStore.x"
-		:y="contextMenuStore.y"
-		:target="contextMenuStore.target"
-		:options="contextMenuStore.options"
-		:submenu-direction="contextMenuStore.submenuDirection"
-		:min-width="contextMenuStore.minWidth"
-		:z-index="contextMenuStore.zIndex"
-		@select="(action, option) => contextMenuStore.onSelect?.(action, option)"
-		@close="contextMenuStore.close()"
-	/>
-	<ProfileCard />
-	<WatchPartyCard />
 </template>
 
 <style>

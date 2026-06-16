@@ -6,5 +6,7 @@
 	<string>ThisCrow görüntülü aramalar için kameranıza erişmek istiyor</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>ThisCrow sesli aramalar için mikrofonunuza erişmek istiyor</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>ThisCrow, müzik aktivitenizi paylaşabilmek için Spotify'da çalan şarkıyı okumak istiyor</string>
 </dict>
 </plist>
