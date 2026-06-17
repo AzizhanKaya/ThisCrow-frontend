@@ -39,11 +39,6 @@
 	const categories = ref<{ title: string | null; channels: Channel[] }[]>([]);
 
 	watch(
-		() => server.value?.permissions,
-		() => console.log(server.value?.permissions)
-	);
-
-	watch(
 		[channels, () => server.value?.permissions],
 		() => {
 			if (isDragging.value) return;

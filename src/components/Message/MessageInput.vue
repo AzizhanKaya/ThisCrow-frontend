@@ -162,6 +162,11 @@
 		window.removeEventListener('drop', onDrop);
 	});
 
+	function extractUrls(text: string): string[] {
+		const urlRegex = /https?:\/\/[^\s]+/gi;
+		return text.match(urlRegex) || [];
+	}
+
 	let sending = false;
 
 	async function onSend() {
@@ -176,8 +181,11 @@
 
 			if (!text && !hasFiles) return;
 
+			const parsedLinks = extractUrls(text);
+			const hasLinks = parsedLinks.length > 0 && (!props.group_id || p.embedLinks);
+
 			let messageData: MessageData =
-				text && !hasFiles
+				text && !hasFiles && !hasLinks
 					? text
 					: {
 							...(text && { text }),
@@ -194,6 +202,7 @@
 									size: f.size,
 								})),
 							}),
+							...(hasLinks && { links: parsedLinks }),
 						};
 
 			if (props.replyTo != null) {

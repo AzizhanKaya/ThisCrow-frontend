@@ -195,6 +195,7 @@ export type MultiData = {
 	images?: string[];
 	videos?: string[];
 	files?: File[];
+	links?: string[];
 };
 
 export type EncryptedData = {
@@ -222,6 +223,7 @@ export interface Message<T = MessageData> {
 	group_id?: id;
 	overwrited?: boolean;
 	reacted?: boolean;
+	error?: string;
 }
 
 export type Reaction = {
@@ -470,7 +472,13 @@ export type Ack =
 			};
 	  }
 	| { ack: AckType.Unsubscribed; payload: undefined }
-	| { ack: AckType.PermissionsChanged; payload: number }
+	| {
+			ack: AckType.PermissionsChanged;
+			payload: {
+				permissions: number;
+				channel_permissions: Record<id, number>;
+			};
+	  }
 	| { ack: AckType.ChannelPermissionsChanged; payload: number }
 	| { ack: AckType.JoinedMember; payload: undefined }
 	| { ack: AckType.LeftMember; payload: undefined }

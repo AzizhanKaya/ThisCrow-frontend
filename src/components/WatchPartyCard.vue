@@ -158,8 +158,8 @@
 			</div>
 
 			<div class="wp-body">
-				<div class="wp-title" :title="party.video === 0 ? 'Home Page' : (party.title || `Video #${party.video}`)">
-					{{ party.video === 0 ? 'Home Page' : (party.title || `Video #${party.video}`) }}
+				<div class="wp-title" :title="party.video === 0 ? 'Home Page' : party.title || `Video #${party.video}`">
+					{{ party.video === 0 ? 'Home Page' : party.title || `Video #${party.video}` }}
 				</div>
 
 				<template v-if="party.video !== 0">

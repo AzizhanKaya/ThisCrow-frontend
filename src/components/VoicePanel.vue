@@ -62,19 +62,18 @@
 					<span class="connection-text" v-if="connectionStatus === 'connected'">Connected</span>
 					<span class="connection-text" v-else-if="connectionStatus === 'connecting'">Connecting...</span>
 					<span class="connection-text" v-else-if="connectionStatus === 'failed'">Failed</span>
-					<span v-if="webrtcService.pcs.size > 0" class="latency-badge">{{ webrtcService.latencyMs.value }}ms</span>
+					<span v-if="voiceStore.voice_channel && userCount > 0" class="voice-user-count">
+						<Icon icon="mdi:account-group" />
+						{{ userCount }}
+					</span>
+					<span class="latency-badge">{{ webrtcService.latencyMs.value || 0 }}ms</span>
 				</div>
 				<div class="voice-meta">
 					<span class="voice-channel-name">
 						{{ voiceStore.voice_channel ? `# ${voiceStore.voice_channel.name}` : `@ ${voiceStore.voice_direct?.name}` }}
 					</span>
-					<span v-if="voiceStore.voice_channel && userCount > 0" class="voice-user-count">
-						<Icon icon="mdi:account-group" />
-						{{ userCount }}
-					</span>
 				</div>
 			</div>
-
 			<div class="device-controls">
 				<div class="device-control" :class="{ active: voiceStore.isMuted }">
 					<button
@@ -245,18 +244,20 @@
 
 	.panel-header {
 		display: flex;
-		align-items: flex-start;
+		align-items: center;
 		justify-content: space-between;
 		gap: 6px;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.voice-info {
 		display: flex;
 		flex-direction: column;
-		gap: 0px;
+		gap: 2px;
 		min-width: 0;
 		flex: 1;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.voice-connection {
@@ -267,17 +268,27 @@
 		font-weight: 700;
 		font-size: 0.85rem;
 		letter-spacing: 0.01em;
-		transition: all 0.3s ease;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		white-space: nowrap;
 	}
 
-	@container (max-width: 170px) {
-		.voice-info {
-			margin: auto;
-		}
+	.connection-text {
+		display: inline-block;
+		max-width: 120px;
+		opacity: 1;
+		transition:
+			max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+			opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+			margin 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+		overflow: hidden;
+		vertical-align: middle;
+	}
 
+	@container (max-width: 210px) {
 		.connection-text {
-			display: none;
+			max-width: 0;
+			opacity: 0;
+			margin-right: -6px;
 		}
 	}
 

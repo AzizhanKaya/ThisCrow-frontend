@@ -58,9 +58,13 @@
 		color: var(--text-secondary);
 		max-width: 460px;
 	}
+
 	.visual {
 		--glow: var(--color);
+		/* Size container so child mocks can size against the real cell width (cqw) */
+		container-type: inline-size;
 	}
+
 	.visual-frame {
 		border-radius: 16px;
 		overflow: hidden;
@@ -69,7 +73,8 @@
 		box-shadow:
 			0 30px 70px hsla(0, 0%, 0%, 0.5),
 			0 0 60px -20px var(--glow);
-		aspect-ratio: 16 / 11;
+		margin-inline: auto;
+		width: max-content;
 	}
 
 	@media (max-width: 850px) {

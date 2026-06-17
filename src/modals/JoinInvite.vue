@@ -46,10 +46,7 @@
 		const invitation = info.value!;
 		try {
 			await joinInvitation(code.value);
-			const maxPosition = [...serverStore.servers.values()].reduce(
-				(max, s) => (s.position > max ? s.position : max),
-				0
-			);
+			const maxPosition = [...serverStore.servers.values()].reduce((max, s) => (s.position > max ? s.position : max), 0);
 			serverStore.servers.set(invitation.group_id, {
 				id: invitation.group_id,
 				name: invitation.group_name,

@@ -186,7 +186,11 @@
 					>
 						<div class="item-left">
 							<div v-if="option.checked !== undefined" class="check-box">
-								<Icon v-if="typeof option.checked === 'function' ? option.checked() : option.checked" icon="mdi:check" class="check-icon" />
+								<Icon
+									v-if="typeof option.checked === 'function' ? option.checked() : option.checked"
+									icon="mdi:check"
+									class="check-icon"
+								/>
 							</div>
 							<div v-if="option.color" class="role-color" :style="{ backgroundColor: option.color }"></div>
 							<Icon v-if="option.icon" :icon="option.icon" class="item-icon" />
@@ -224,7 +228,11 @@
 								>
 									<div class="item-left">
 										<div v-if="child.checked !== undefined" class="check-box">
-											<Icon v-if="typeof child.checked === 'function' ? child.checked() : child.checked" icon="mdi:check" class="check-icon" />
+											<Icon
+												v-if="typeof child.checked === 'function' ? child.checked() : child.checked"
+												icon="mdi:check"
+												class="check-icon"
+											/>
 										</div>
 										<div v-if="child.color" class="role-color" :style="{ backgroundColor: child.color }"></div>
 										<Icon v-if="child.icon" :icon="child.icon" class="item-icon" />

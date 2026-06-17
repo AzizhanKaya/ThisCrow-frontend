@@ -81,7 +81,25 @@ export const useMessageStore = defineStore('message', {
 			const { ack, payload } = message.data;
 			switch (ack) {
 				case AckType.MessageError: {
-					useErrorStore().push(payload as string);
+					const errorMsg = payload as string;
+
+					let found = false;
+					for (const messages of this.messages.values()) {
+						const msg = messages.find((m) => m.id === message.id);
+						if (msg) {
+							msg.error = errorMsg;
+							found = true;
+							break;
+						}
+					}
+					if (!found) {
+						const msg = this.isolatedMessages.get(message.id);
+						if (msg) {
+							msg.error = errorMsg;
+						} else {
+							useErrorStore().push(errorMsg);
+						}
+					}
 					break;
 				}
 				case AckType.Received: {
@@ -219,7 +237,7 @@ export const useMessageStore = defineStore('message', {
 
 			const fetched = await fetchMessage(id);
 			if (!fetched) return undefined;
-			
+
 			this.isolatedMessages.set(id, fetched);
 			return fetched;
 		},

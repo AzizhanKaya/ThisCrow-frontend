@@ -39,11 +39,6 @@
 			{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
 			{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
 			{ label: 'Call', action: 'call', icon: 'mdi:phone' },
-			{ divider: true },
-
-			{ label: 'Add Note', action: 'note', icon: 'mdi:pencil', subtext: 'Sadece sana görünür' },
-			{ label: 'Add Nickname', action: 'nickname', icon: 'mdi:account-edit' },
-			{ label: 'Invite to Server', action: 'invite', icon: 'mdi:account-plus', rightIcon: 'mdi:chevron-right' },
 
 			...(are_friends
 				? [{ divider: true }, { label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' as const }]
@@ -58,7 +53,7 @@
 			e,
 			options: ContextMenuoptions,
 			minWidth: 260,
-			onSelect: (action) => handleContextAction(action, user)
+			onSelect: (action) => handleContextAction(action, user),
 		});
 	}
 

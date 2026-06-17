@@ -49,9 +49,7 @@
 							title: `Leave ${props.server.name}`,
 							text: `Are you sure you want to leave ${props.server.name}? You will need a new invite to rejoin.`,
 							command: async () => {
-								await serverStore
-									.leaveServer(props.server.id)
-									.catch((e) => errorStore.pushFrom(e, 'Failed to leave server'));
+								await serverStore.leaveServer(props.server.id).catch((e) => errorStore.pushFrom(e, 'Failed to leave server'));
 							},
 						});
 						break;

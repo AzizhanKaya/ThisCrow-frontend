@@ -47,17 +47,12 @@
 		router.push({ name: 'user', params: { userId: user.id.toString() } });
 	}
 
-const contextMenuOptions: ContextMenuOption[] = [
+	const contextMenuOptions: ContextMenuOption[] = [
 		{ label: 'Profile', action: 'profile', icon: 'mdi:account' },
 		{ label: 'Send Message', action: 'message', icon: 'mdi:message-text' },
 		{ label: 'Call', action: 'call', icon: 'mdi:phone' },
 		{ divider: true },
-		{ label: 'Add Note', action: 'note', icon: 'mdi:pencil', subtext: 'Sadece sana görünür' },
-		{ label: 'Add Nickname', action: 'nickname', icon: 'mdi:account-edit' },
-		{ label: 'Invite to Server', action: 'invite', icon: 'mdi:account-plus', rightIcon: 'mdi:chevron-right' },
-		{ divider: true },
 		{ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' },
-		{ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' },
 		{ divider: true },
 		{ label: 'Copy Username', action: 'copy_username', icon: 'mdi:content-copy' },
 	];

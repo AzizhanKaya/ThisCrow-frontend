@@ -118,6 +118,28 @@
 		return undefined;
 	});
 
+	const formattedSegments = computed(() => {
+		if (!messageText) return [];
+		const urlRegex = /(https?:\/\/[^\s]+)/gi;
+		const parts = messageText.split(urlRegex);
+		const allowedLinks = multiData?.links || [];
+		return parts.map((part) => {
+			const isMatch = part.match(urlRegex);
+			const isLink = !!(isMatch && allowedLinks.includes(part));
+			if (isLink) {
+				return {
+					text: part,
+					isLink: true,
+					href: part,
+				};
+			}
+			return {
+				text: part,
+				isLink: false,
+			};
+		});
+	});
+
 	const repliedPreview = $(
 		computedAsync(async () => {
 			if (!replyData) {
@@ -435,8 +457,20 @@
 					</div>
 				</div>
 				<div v-else-if="messageText || message?.overwrited" class="text-content">
-					<span v-if="messageText" class="text" :class="{ sent: is_sent_from_snowflake(props.message.id) }">{{ messageText }}</span>
+					<span v-if="messageText" class="text" :class="{ sent: is_sent_from_snowflake(props.message.id) }">
+						<template v-for="(seg, idx) in formattedSegments" :key="idx">
+							<a v-if="seg.isLink" :href="seg.href" target="_blank" rel="noopener noreferrer" class="message-link" draggable="false">{{
+								seg.text
+							}}</a>
+							<template v-else>{{ seg.text }}</template>
+						</template>
+					</span>
 					<span v-if="message?.overwrited" class="edited-indicator">(edited)</span>
+				</div>
+
+				<div v-if="message?.error" class="message-error">
+					<Icon icon="mdi:alert-circle" class="error-icon" />
+					<span class="error-text">{{ message.error }}</span>
 				</div>
 
 				<span class="time">
@@ -729,6 +763,18 @@
 		-webkit-user-select: text;
 		user-select: text;
 		white-space: pre-wrap;
+	}
+
+	.message-link {
+		color: var(--color-lighter, #a78bfa);
+		text-decoration: underline;
+		cursor: pointer;
+		-webkit-user-select: text;
+		user-select: text;
+	}
+
+	.message-link:hover {
+		color: var(--color-light, #8b5cf6);
 	}
 
 	.edited-indicator {
@@ -1043,5 +1089,24 @@
 
 	.hint-link:hover {
 		text-decoration: underline;
+	}
+
+	.message-error {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+		color: var(--error);
+		font-size: 0.85rem;
+		line-height: 1.4;
+	}
+
+	.error-icon {
+		font-size: 1.1rem;
+		flex-shrink: 0;
+	}
+
+	.error-text {
+		font-weight: 500;
 	}
 </style>

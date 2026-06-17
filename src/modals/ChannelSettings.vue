@@ -1,11 +1,12 @@
 <script setup lang="ts">
 	import { ref, computed, onMounted, watch } from 'vue';
 	import { Icon } from '@iconify/vue';
-	import { useModalStore } from '@/stores/modal';
+	import { useModalStore, ModalView } from '@/stores/modal';
 	import { useServerStore } from '@/stores/server';
 	import { Permissions, type OverrideTarget, type id, ChannelType } from '@/types';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { fetchChannelOverrides } from '@/api/permissions';
+	import { can } from '@/utils/perms';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
@@ -16,6 +17,7 @@
 	const server = computed(() => serverStore.getServerById(server_id));
 	const channel = computed(() => server.value?.channels?.get(channel_id));
 	const isVoice = computed(() => channel.value?.type === ChannelType.Voice);
+	const myPerms = can(server, channel);
 
 	const PERMISSION_FLAGS = [
 		{ label: 'View Channel', bit: Permissions.VIEW_CHANNEL, description: 'See the channel in the list', category: 'General' },
@@ -81,8 +83,6 @@
 		return trimmedName !== channel.value.name || trimmedTitle !== (channel.value.title ?? '');
 	});
 
-	type LocalOverride = { allow: number; deny: number };
-	const localOverrides = ref<Map<string, LocalOverride>>(new Map());
 	const selectedKey = ref<string | null>(null);
 
 	function targetKey(t: OverrideTarget): string {
@@ -95,19 +95,13 @@
 		return kind === 'r' ? { role: idNum } : { user: idNum };
 	}
 
-	function seedLocalOverrides() {
-		const map = new Map<string, LocalOverride>();
-		for (const o of channel.value?.permission_overrides ?? []) {
-			map.set(targetKey(o.target), { allow: o.allow, deny: o.deny });
-		}
-		localOverrides.value = map;
-	}
+	const sameTarget = (a: OverrideTarget, b: OverrideTarget): boolean =>
+		('role' in a && 'role' in b && a.role === b.role) || ('user' in a && 'user' in b && a.user === b.user);
 
 	onMounted(async () => {
 		try {
 			const overrides = await fetchChannelOverrides(server_id, channel_id);
 			if (channel.value) channel.value.permission_overrides = overrides;
-			seedLocalOverrides();
 		} catch (err) {
 			console.error('Failed to load channel overrides', err);
 		}
@@ -125,7 +119,7 @@
 			role_id: 0,
 			label: 'everyone',
 			color: '#ffffff',
-			hasOverride: isOverrideActive('r:0'),
+			hasOverride: isOverrideActive({ role: 0 }),
 		});
 		const roles = Array.from(server.value?.roles?.values() ?? []).sort((a, b) => b.position - a.position);
 		for (const r of roles) {
@@ -135,7 +129,7 @@
 				role_id: r.id,
 				label: r.name,
 				color: r.color || 'hsl(0 0% 60%)',
-				hasOverride: isOverrideActive(`r:${r.id}`),
+				hasOverride: isOverrideActive({ role: r.id }),
 			});
 		}
 		const members = Array.from(server.value?.members?.values() ?? []);
@@ -153,7 +147,7 @@
 				label: m.user.name,
 				username: m.user.username,
 				avatar: m.user.avatar,
-				hasOverride: isOverrideActive(`u:${m.user.id}`),
+				hasOverride: isOverrideActive({ user: m.user.id }),
 			});
 		}
 		return list;
@@ -174,14 +168,11 @@
 
 	function selectTarget(row: TargetRow) {
 		selectedKey.value = row.key;
-		if (!localOverrides.value.has(row.key)) {
-			localOverrides.value.set(row.key, { allow: 0, deny: 0 });
-		}
 	}
 
-	function isOverrideActive(key: string): boolean {
-		const local = localOverrides.value.get(key);
-		return local !== undefined && (local.allow !== 0 || local.deny !== 0);
+	function isOverrideActive(target: OverrideTarget): boolean {
+		const o = channel.value?.permission_overrides?.find((x) => sameTarget(x.target, target));
+		return o !== undefined && (o.allow !== 0 || o.deny !== 0);
 	}
 
 	const selectedTarget = computed<TargetRow | null>(() => {
@@ -189,66 +180,44 @@
 		return allTargets.value.find((t) => t.key === selectedKey.value) ?? null;
 	});
 
-	const selectedOverride = computed<LocalOverride | null>(() => {
-		if (!selectedKey.value) return null;
-		return localOverrides.value.get(selectedKey.value) ?? null;
-	});
-
 	type TriState = 'allow' | 'neutral' | 'deny';
 
 	function permState(bit: number): TriState {
-		const o = selectedOverride.value;
+		if (!selectedKey.value) return 'neutral';
+		const target = targetFromKey(selectedKey.value);
+		const o = channel.value?.permission_overrides?.find((x) => sameTarget(x.target, target));
 		if (!o) return 'neutral';
 		if ((o.allow & bit) !== 0) return 'allow';
 		if ((o.deny & bit) !== 0) return 'deny';
 		return 'neutral';
 	}
 
-	function setPermState(bit: number, state: TriState) {
+	async function setPermState(bit: number, state: TriState) {
+		if (!myPerms.manageRoles) return;
 		if (!selectedKey.value) return;
-		const cur = localOverrides.value.get(selectedKey.value);
-		if (!cur) return;
-		let { allow, deny } = cur;
+		const target = targetFromKey(selectedKey.value);
+		const o = channel.value?.permission_overrides?.find((x) => sameTarget(x.target, target));
+		let allow = o?.allow ?? 0;
+		let deny = o?.deny ?? 0;
+
 		allow &= ~bit;
 		deny &= ~bit;
-		if (state === 'allow') allow |= bit;
-		else if (state === 'deny') deny |= bit;
-		localOverrides.value.set(selectedKey.value, { allow, deny });
+
+		if (state === 'allow') {
+			allow |= bit;
+		} else if (state === 'deny') {
+			deny |= bit;
+		}
+
+		if (allow === 0 && deny === 0) {
+			await serverStore.deletePermissionOverride(server_id, channel_id, target);
+		} else {
+			await serverStore.setPermissionOverride(server_id, channel_id, target, allow, deny);
+		}
 	}
 
-	const permissionDiffs = computed(() => {
-		const server_map = new Map<string, LocalOverride>();
-		for (const o of channel.value?.permission_overrides ?? []) {
-			server_map.set(targetKey(o.target), { allow: o.allow, deny: o.deny });
-		}
-
-		const toUpsert: { target: OverrideTarget; allow: number; deny: number }[] = [];
-		const toDelete: OverrideTarget[] = [];
-
-		for (const [key, local] of localOverrides.value) {
-			const target = targetFromKey(key);
-			const srv = server_map.get(key);
-			if (local.allow === 0 && local.deny === 0) {
-				if (srv) toDelete.push(target);
-				continue;
-			}
-			if (!srv || srv.allow !== local.allow || srv.deny !== local.deny) {
-				toUpsert.push({ target, allow: local.allow, deny: local.deny });
-			}
-		}
-
-		for (const [key] of server_map) {
-			if (!localOverrides.value.has(key)) {
-				toDelete.push(targetFromKey(key));
-			}
-		}
-
-		return { toUpsert, toDelete };
-	});
-
 	const pendingCount = computed(() => {
-		const meta = hasMetaChange.value ? 1 : 0;
-		return permissionDiffs.value.toUpsert.length + permissionDiffs.value.toDelete.length + meta;
+		return hasMetaChange.value ? 1 : 0;
 	});
 
 	const isSaving = ref(false);
@@ -262,20 +231,6 @@
 				const newTitle = channelTitle.value.trim();
 				await serverStore.updateChannel(server_id, channel_id, newName, newTitle.length === 0 ? undefined : newTitle);
 			}
-			const { toUpsert, toDelete } = permissionDiffs.value;
-			for (const o of toUpsert) {
-				await serverStore.setPermissionOverride(server_id, channel_id, o.target, o.allow, o.deny);
-			}
-			for (const t of toDelete) {
-				await serverStore.deletePermissionOverride(server_id, channel_id, t);
-			}
-			try {
-				const refreshed = await fetchChannelOverrides(server_id, channel_id);
-				if (channel.value) channel.value.permission_overrides = refreshed;
-				seedLocalOverrides();
-			} catch (err) {
-				console.error('Failed to refresh channel overrides', err);
-			}
 		} finally {
 			isSaving.value = false;
 		}
@@ -283,6 +238,17 @@
 
 	function close() {
 		modalStore.closeModal();
+	}
+
+	function confirmDeleteChannel() {
+		modalStore.openModal(ModalView.CONFIRM, {
+			icon: 'mdi:delete-alert',
+			title: `Delete '${channel.value?.name}'`,
+			text: 'Are you sure you want to delete this channel? This action is irreversible and all messages will be permanently lost.',
+			command: async () => {
+				await serverStore.deleteChannel(server_id, channel_id);
+			},
+		});
 	}
 </script>
 
@@ -395,6 +361,7 @@
 											<button
 												class="tri-btn deny"
 												:class="{ active: permState(p.bit) === 'deny' }"
+												:disabled="!myPerms.manageRoles"
 												@click="setPermState(p.bit, permState(p.bit) === 'deny' ? 'neutral' : 'deny')"
 												:aria-pressed="permState(p.bit) === 'deny'"
 												title="Deny"
@@ -404,6 +371,7 @@
 											<button
 												class="tri-btn neutral"
 												:class="{ active: permState(p.bit) === 'neutral' }"
+												:disabled="!myPerms.manageRoles"
 												@click="setPermState(p.bit, 'neutral')"
 												:aria-pressed="permState(p.bit) === 'neutral'"
 												title="Inherit"
@@ -413,6 +381,7 @@
 											<button
 												class="tri-btn allow"
 												:class="{ active: permState(p.bit) === 'allow' }"
+												:disabled="!myPerms.manageRoles"
 												@click="setPermState(p.bit, permState(p.bit) === 'allow' ? 'neutral' : 'allow')"
 												:aria-pressed="permState(p.bit) === 'allow'"
 												title="Allow"
@@ -431,6 +400,13 @@
 						</div>
 					</div>
 				</div>
+
+				<div class="section-divider"></div>
+
+				<button class="btn-danger delete-channel-btn" @click="confirmDeleteChannel">
+					<Icon icon="mdi:delete" />
+					Delete Channel
+				</button>
 			</div>
 
 			<Transition name="save-bar">
@@ -898,9 +874,14 @@
 		transition: all 0.15s;
 	}
 
-	.tri-btn:hover {
+	.tri-btn:hover:not(:disabled) {
 		color: var(--text);
 		background-color: var(--bg-light);
+	}
+
+	.tri-btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.55;
 	}
 
 	.tri-btn.deny.active {
@@ -972,6 +953,33 @@
 	.btn-primary:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.btn-danger {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 9px 18px;
+		border-radius: 6px;
+		border: 1px solid var(--error, #f23f42);
+		background: transparent;
+		color: var(--error, #f23f42);
+		font-weight: 600;
+		font-size: 0.85rem;
+		font-family: inherit;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: all 0.2s;
+	}
+
+	.btn-danger:hover {
+		background-color: var(--error, #f23f42);
+		color: white;
+	}
+
+	.delete-channel-btn {
+		align-self: flex-start;
+		margin-top: 4px;
 	}
 
 	.spin {

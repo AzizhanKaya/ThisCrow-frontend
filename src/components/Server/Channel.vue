@@ -4,6 +4,7 @@
 	import { webrtcService } from '@/services/webrtc';
 	import { getDefaultAvatar } from '@/utils/avatar';
 	import { useModalStore, ModalView } from '@/stores/modal';
+	import { useContextMenuStore } from '@/stores/contextMenu';
 	import { useProfileCardStore } from '@/stores/profileCard';
 	import { useServerStore } from '@/stores/server';
 	import { useVoiceStore } from '@/stores/voice';
@@ -12,6 +13,7 @@
 	import { computed, onBeforeUnmount } from 'vue';
 
 	const modalStore = useModalStore();
+	const contextMenuStore = useContextMenuStore();
 	const profileCardStore = useProfileCardStore();
 	const serverStore = useServerStore();
 	const voiceStore = useVoiceStore();
@@ -28,11 +30,43 @@
 
 	const emit = defineEmits(['click']);
 
-	function openSettings(e: MouseEvent) {
-		e.stopPropagation();
+	function openChannelSettings() {
 		modalStore.openModal(ModalView.CHANNEL_SETTINGS, {
 			server_id: props.server_id,
 			channel_id: props.channel.id,
+		});
+	}
+
+	function openSettings(e: MouseEvent) {
+		e.stopPropagation();
+		openChannelSettings();
+	}
+
+	function confirmDelete() {
+		modalStore.openModal(ModalView.CONFIRM, {
+			icon: 'mdi:delete-alert',
+			title: `Delete '${props.channel.name}'`,
+			text: 'Are you sure you want to delete this channel? This action is irreversible and all messages will be permanently lost.',
+			command: async () => {
+				await serverStore.deleteChannel(props.server_id, props.channel.id);
+			},
+		});
+	}
+
+	function openContextMenu(e: MouseEvent) {
+		if (!p.manageChannels) return;
+		contextMenuStore.open({
+			e,
+			minWidth: 180,
+			options: [
+				{ label: 'Settings', action: 'settings', icon: 'mdi:cog' },
+				{ divider: true },
+				{ label: 'Delete Channel', action: 'delete', icon: 'mdi:delete', variant: 'danger' },
+			],
+			onSelect: (action) => {
+				if (action === 'settings') openChannelSettings();
+				else if (action === 'delete') confirmDelete();
+			},
 		});
 	}
 
@@ -90,6 +124,7 @@
 			:class="{ active: active, 'no-connect': channel.type === ChannelType.Voice && !p.connect }"
 			:title="channel.type === ChannelType.Voice && !p.connect ? 'You cannot connect to this channel' : ''"
 			@click="emit('click', channel)"
+			@contextmenu.prevent="openContextMenu($event)"
 			@mouseenter="onChannelHover($event)"
 			@mouseleave="onChannelLeave()"
 		>

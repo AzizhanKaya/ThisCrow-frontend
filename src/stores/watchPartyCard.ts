@@ -11,14 +11,7 @@ export const useWatchPartyCardStore = defineStore('watchPartyCard', () => {
 	const channel_id = ref<id | undefined>(undefined);
 	const zIndex = ref<number>(0);
 
-	async function open(params: {
-		x: number;
-		y: number;
-		target: HTMLElement;
-		server_id: id;
-		channel_id: id;
-		zIndex?: number;
-	}) {
+	async function open(params: { x: number; y: number; target: HTMLElement; server_id: id; channel_id: id; zIndex?: number }) {
 		if (show.value && channel_id.value === params.channel_id) return;
 
 		if (show.value) {

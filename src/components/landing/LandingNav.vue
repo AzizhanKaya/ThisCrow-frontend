@@ -53,7 +53,10 @@
 		left: 0;
 		right: 0;
 		z-index: 50;
-		transition: background-color 0.25s ease, box-shadow 0.25s ease, backdrop-filter 0.25s ease;
+		transition:
+			background-color 0.25s ease,
+			box-shadow 0.25s ease,
+			backdrop-filter 0.25s ease;
 	}
 	.nav.scrolled {
 		background: hsla(216, 7%, 7%, 0.7);
@@ -61,11 +64,12 @@
 		box-shadow: 0 1px 0 hsla(0, 0%, 100%, 0.06);
 	}
 	.nav-inner {
-		max-width: 1180px;
+		max-width: 1200px;
 		margin: 0 auto;
 		padding: 16px 24px;
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
 		gap: 24px;
 	}
 	.brand {
@@ -107,7 +111,9 @@
 		font-weight: 700;
 		font-size: 0.9rem;
 		cursor: pointer;
-		transition: transform 0.12s ease, background-color 0.15s ease;
+		transition:
+			transform 0.12s ease,
+			background-color 0.15s ease;
 	}
 	.open-app:hover {
 		transform: translateY(-1px);

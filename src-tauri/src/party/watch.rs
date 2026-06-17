@@ -228,7 +228,7 @@ pub async fn open_party(
                             playing: bool,
                         },
                         Error(String),
-                        Log { text: String },
+                        Log { msg: String },
                     }
 
                     let Ok(msg) = serde_json::from_str::<Message>(payload_str) else {
@@ -237,8 +237,8 @@ pub async fn open_party(
                     };
 
                     match msg {
-                        Message::Log { text } => {
-                            println!("[Watch Party] {}", text);
+                        Message::Log { msg } => {
+                            println!("[Watch Party] {}", msg);
                         }
                         Message::Watch { .. } | Message::HeartBeat { .. } => {
                             if let Err(e) = app.emit("watch_party", msg) {
@@ -273,13 +273,17 @@ pub async fn open_party(
 }
 
 #[tauri::command]
-pub async fn close_party(state: State<'_, WatchState>) -> Result<()> {
+pub async fn close_party(app: AppHandle, state: State<'_, WatchState>) -> Result<()> {
     println!("[Watch Party] close_party");
 
     if let Some(mut session) = state.session.lock().await.take() {
         let _ = session.shutdown.send(());
         session.browser.kill().context("close browser process")?;
         session.browser.wait().context("wait for browser process")?;
+    }
+
+    if let Err(e) = app.emit("watch_party_closed", ()) {
+        println!("[Watch Party] emit fail: {}", e);
     }
     Ok(())
 }

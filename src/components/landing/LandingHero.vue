@@ -27,8 +27,8 @@
 		<div class="hero-copy">
 			<h1>HANG OUT,<br />PLAY &amp; <span>VIBE</span></h1>
 			<p>
-				ThisCrow is the place to talk, watch together, share what you're playing and listen to music with your crew — all in
-				one cozy, lightning-fast app.
+				ThisCrow is the place to talk, watch together, share what you're playing and listen to music with your crew — all in one cozy,
+				lightning-fast app.
 			</p>
 			<div class="cta">
 				<button class="btn btn-primary" @click="download">
@@ -58,13 +58,18 @@
 
 <style scoped>
 	.hero {
-		max-width: 1180px;
+		max-width: 1400px;
 		margin: 0 auto;
-		padding: 140px 24px 80px;
-		display: grid;
-		grid-template-columns: 1fr 1.15fr;
-		gap: 48px;
+		padding: 140px 48px 80px;
+		display: flex;
 		align-items: center;
+		justify-content: center;
+		gap: 56px;
+	}
+	.hero-copy {
+		flex: 1;
+		min-width: 0;
+		max-width: 550px;
 	}
 	.hero-copy h1 {
 		font-size: clamp(2.6rem, 5vw, 4.5rem);
@@ -102,7 +107,10 @@
 		font-weight: 700;
 		font-size: 1rem;
 		cursor: pointer;
-		transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.2s ease,
+			background-color 0.2s ease;
 	}
 	.btn :deep(svg) {
 		font-size: 1.3em;
@@ -126,15 +134,24 @@
 
 	.hero-visual {
 		perspective: 1600px;
+		flex: 1.5;
+		min-width: 0;
+		display: flex;
+		justify-content: flex-end;
 	}
 	.window {
 		border-radius: 12px;
 		overflow: hidden;
-		box-shadow: 0 40px 90px hsla(261, 68%, 8%, 0.7), 0 0 0 1px hsla(0, 0%, 100%, 0.06);
-		transform: rotateY(-7deg) rotateX(3deg);
+		box-shadow:
+			0 40px 90px hsla(261, 68%, 8%, 0.7),
+			0 0 0 1px hsla(0, 0%, 100%, 0.06);
+		transform: rotateY(-10deg) rotateX(5deg);
 		transform-style: preserve-3d;
 		transition: transform 0.5s ease;
-		height: 440px;
+
+		width: 100%;
+		max-width: 780px;
+		aspect-ratio: 760 / 420;
 		display: flex;
 		flex-direction: column;
 		background: var(--bg-dark);
@@ -143,8 +160,8 @@
 		transform: rotateY(0deg) rotateX(0deg);
 	}
 	.title-bar {
-		height: 34px;
-		background: var(--bg-darkest);
+		height: 30px;
+		background: var(--bg-dark);
 		display: flex;
 		align-items: center;
 		gap: 7px;
@@ -167,8 +184,7 @@
 	}
 	.tb-title {
 		margin: 0 auto;
-		font-size: 12px;
-		color: var(--text-subtle);
+		font-size: 14px;
 		font-weight: 600;
 	}
 	.window-body {
@@ -176,9 +192,9 @@
 		min-height: 0;
 	}
 
-	@media (max-width: 900px) {
+	@media (max-width: 1200px) {
 		.hero {
-			grid-template-columns: 1fr;
+			flex-direction: column;
 			padding-top: 110px;
 			text-align: center;
 		}
@@ -191,7 +207,40 @@
 		}
 		.window {
 			transform: none;
-			height: 380px;
+		}
+		.window:hover {
+			transform: none;
+		}
+	}
+
+	@media (max-width: 800px) {
+		.window {
+			zoom: 0.9;
+		}
+	}
+	@media (max-width: 700px) {
+		.window {
+			zoom: 0.8;
+		}
+	}
+	@media (max-width: 600px) {
+		.window {
+			zoom: 0.7;
+		}
+	}
+	@media (max-width: 500px) {
+		.window {
+			zoom: 0.58;
+		}
+	}
+	@media (max-width: 400px) {
+		.window {
+			zoom: 0.46;
+		}
+	}
+	@media (max-width: 350px) {
+		.window {
+			zoom: 0.38;
 		}
 	}
 </style>

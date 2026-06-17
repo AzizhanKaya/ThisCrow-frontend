@@ -58,8 +58,6 @@
 		if (user.status === Status.Offline) return { text: 'Offline' };
 		if (user.activities?.game) return { emoji: '👾', text: user.activities.game.payload.name };
 		if (user.activities?.music) return { emoji: '🎶', text: user.activities.music.payload.title };
-		if (user.activities?.watching) return { emoji: '📺', text: '' };
-		if (user.activities?.streaming) return { emoji: '🔴', text: '' };
 		return { text: user.status };
 	}
 
@@ -131,7 +129,6 @@
 		if (!isSelf.value) {
 			opts.push({ divider: true });
 			opts.push({ label: 'Remove Friend', action: 'unfriend', icon: 'mdi:account-remove', variant: 'danger' });
-			opts.push({ label: 'Block', action: 'block', icon: 'mdi:cancel', variant: 'danger' });
 		}
 
 		return opts;

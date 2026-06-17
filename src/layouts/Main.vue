@@ -69,7 +69,7 @@
 		overflow: auto;
 	}
 
-	html.tauri .main-layout {
+	.main-layout {
 		top: 30px;
 		height: calc(100% - 30px);
 	}

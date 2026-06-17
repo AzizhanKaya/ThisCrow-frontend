@@ -35,7 +35,7 @@ export function summarizeMessageData(data: MessageData, privateKey?: Uint8Array 
 
 		return {
 			text: md.text || '',
-			icons: icons.length > 0 ? icons : undefined
+			icons: icons.length > 0 ? icons : undefined,
 		};
 	}
 

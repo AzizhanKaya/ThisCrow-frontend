@@ -201,15 +201,11 @@ export const useWatchStore = defineStore('watch', {
 		},
 
 		async closeParty() {
-			if (this.browser_open) {
-				this.browser_open = false;
-				try {
-					await invoke('close_party');
-				} catch (e) {
-					console.error('[WatchParty] close_party failed', e);
-				}
+			try {
+				await invoke('close_party');
+			} catch (e) {
+				console.error('[WatchParty] close_party failed', e);
 			}
-			await this.leaveParty();
 		},
 	},
 });

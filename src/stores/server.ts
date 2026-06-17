@@ -120,7 +120,16 @@ export const useServerStore = defineStore('server', {
 						break;
 
 					case AckType.PermissionsChanged: {
-						server.permissions = payload as Permissions;
+						const { permissions, channel_permissions } = payload;
+						server.permissions = permissions as Permissions;
+						if (server.channels && channel_permissions) {
+							for (const [cid, perms] of Object.entries(channel_permissions)) {
+								const channel = server.channels.get(Number(cid));
+								if (channel) {
+									channel.permissions = perms as Permissions;
+								}
+							}
+						}
 						break;
 					}
 
@@ -176,6 +185,13 @@ export const useServerStore = defineStore('server', {
 
 					case AckType.DeletedChannel: {
 						server.channels?.delete(target_id);
+						import('@/router').then((m) => {
+							const router = m.default;
+							const params = router.currentRoute.value.params;
+							if (Number(params.serverId) === server_id && Number(params.channelId) === target_id) {
+								router.push(`/server/${server_id}`);
+							}
+						});
 						break;
 					}
 
@@ -227,12 +243,22 @@ export const useServerStore = defineStore('server', {
 						} else {
 							channel.permission_overrides.push({ target, allow, deny });
 						}
+						channel.permission_overrides = [...channel.permission_overrides];
 						break;
 					}
 
 					case AckType.DeletedPermissionOverride: {
 						const channel = server.channels?.get(target_id);
-						if (channel) channel.permission_overrides = undefined;
+						if (channel && channel.permission_overrides) {
+							const { target } = payload;
+							const sameTarget = (a: OverrideTarget, b: OverrideTarget): boolean =>
+								('role' in a && 'role' in b && a.role === b.role) || ('user' in a && 'user' in b && a.user === b.user);
+							const idx = channel.permission_overrides.findIndex((o) => sameTarget(o.target, target));
+							if (idx >= 0) {
+								channel.permission_overrides.splice(idx, 1);
+								channel.permission_overrides = [...channel.permission_overrides];
+							}
+						}
 						break;
 					}
 
@@ -602,6 +628,19 @@ export const useServerStore = defineStore('server', {
 				group_id: server_id,
 				type: MessageType.InfoGroup,
 				data: { event: EventType.DeleteGroup },
+			};
+			return websocketService.request(message);
+		},
+
+		async deleteChannel(server_id: id, channel_id: id): Promise<any> {
+			const meStore = useMeStore();
+			const message: Message<Event> = {
+				id: generate_uid(meStore.me!.id),
+				from: meStore.me!.id,
+				to: channel_id,
+				group_id: server_id,
+				type: MessageType.InfoGroup,
+				data: { event: EventType.DeleteChannel },
 			};
 			return websocketService.request(message);
 		},

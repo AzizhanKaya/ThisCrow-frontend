@@ -69,25 +69,25 @@
 	<div class="modal-backdrop" @click="close">
 		<div class="modal-card" @click.stop>
 			<header class="modal-header">
-			<h2>Edit Message</h2>
-			<button class="close-btn" @click="close">
-				<Icon icon="mdi:close" />
-			</button>
-		</header>
-		<div class="modal-body">
-			<div class="input-group">
-				<div class="input-wrapper textarea-wrapper">
-					<textarea v-model="newText" rows="4" autofocus @keydown.enter.exact.prevent="save"></textarea>
+				<h2>Edit Message</h2>
+				<button class="close-btn" @click="close">
+					<Icon icon="mdi:close" />
+				</button>
+			</header>
+			<div class="modal-body">
+				<div class="input-group">
+					<div class="input-wrapper textarea-wrapper">
+						<textarea v-model="newText" rows="4" autofocus @keydown.enter.exact.prevent="save"></textarea>
+					</div>
 				</div>
 			</div>
-		</div>
-		<footer class="modal-footer">
-			<button class="btn-secondary" @click="close">Cancel</button>
-			<button class="btn-primary" :disabled="isSaving || !newText.trim()" @click="save">
-				<Icon v-if="isSaving" icon="mdi:loading" class="spin" />
-				<span v-else>Save</span>
-			</button>
-		</footer>
+			<footer class="modal-footer">
+				<button class="btn-secondary" @click="close">Cancel</button>
+				<button class="btn-primary" :disabled="isSaving || !newText.trim()" @click="save">
+					<Icon v-if="isSaving" icon="mdi:loading" class="spin" />
+					<span v-else>Save</span>
+				</button>
+			</footer>
 		</div>
 	</div>
 </template>

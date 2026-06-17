@@ -6,8 +6,8 @@
 	import LandingFeature from '@/components/landing/LandingFeature.vue';
 	import LandingFooter from '@/components/landing/LandingFooter.vue';
 	import WatchPartyMock from '@/components/landing/mocks/WatchPartyMock.vue';
-	import GameMock from '@/components/landing/mocks/GameMock.vue';
-	import MusicMock from '@/components/landing/mocks/MusicMock.vue';
+	import ActivityMock from '@/components/landing/mocks/ActivityMock.vue';
+	import EncryptionMock from '@/components/landing/mocks/EncryptionMock.vue';
 
 	const scrollToDownload = () => {
 		document.getElementById('download')?.scrollIntoView({ behavior: 'smooth' });
@@ -31,30 +31,30 @@
 			<div id="features">
 				<LandingFeature
 					eyebrow="Watch Party"
-					title="Watch together, perfectly in sync"
-					text="Start a watch party and stream movies, shows or clips with your friends. Playback stays in sync for everyone, with live reactions and chat right next to the screen."
+					title="Watch together, in perfect sync"
+					text="Start a watch party and experience video side-by-side with your friends. Playback stays in sync for everyone in the room automatically."
 					accent="hsl(0, 77%, 59%)"
 				>
 					<WatchPartyMock />
 				</LandingFeature>
 
 				<LandingFeature
-					eyebrow="Game Activity"
-					title="See what everyone's playing"
-					text="Your crew's game activity shows up live — what they're playing, how long they've been at it, and a one-tap button to jump in and play together."
+					eyebrow="Live Activity"
+					title="See what everyone's up to"
+					text="Your crew's activity shows up live what they're playing, what they're listening to, and how long they've been at it. Everything updates in real time."
 					reverse
-					accent="hsl(28, 90%, 56%)"
+					accent="hsl(236, 72%, 49%)"
 				>
-					<GameMock />
+					<ActivityMock />
 				</LandingFeature>
 
 				<LandingFeature
-					eyebrow="Music Activity"
-					title="Listen along to the same beat"
-					text="Share what's playing and vibe to the same track at the same time. Friends can listen along in sync, so the whole room moves to one rhythm."
-					accent="hsl(261, 68%, 55%)"
+					eyebrow="End-to-End Encryption"
+					title="Your messages, only your eyes"
+					text="Every message is encrypted before it leaves your device and only decrypted on the recipient's. Not even ThisCrow can read what you send your privacy is non-negotiable."
+					accent="hsl(145, 60%, 45%)"
 				>
-					<MusicMock />
+					<EncryptionMock />
 				</LandingFeature>
 			</div>
 
@@ -78,6 +78,8 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		background: #000;
+		padding: 0;
+		scrollbar-width: none;
 	}
 	.bg-layer {
 		position: fixed;
@@ -114,7 +116,9 @@
 		font-size: 1.05rem;
 		padding: 15px 40px;
 		border-radius: 999px;
-		transition: transform 0.12s ease, background-color 0.15s ease;
+		transition:
+			transform 0.12s ease,
+			background-color 0.15s ease;
 	}
 	.closing .cta:hover {
 		transform: translateY(-2px);

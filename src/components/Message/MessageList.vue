@@ -46,8 +46,8 @@
 	const server = computed(() => (props.group_id ? serverStore.getServerById(props.group_id) : undefined));
 	const channel = computed(() => (props.group_id ? server.value?.channels?.get(props.to) : undefined));
 	const p = can(server, channel);
-	const canRead = computed(() => !props.group_id || p.viewMessages);
-	const canReadHistory = computed(() => !props.group_id || p.readMessageHistory);
+	const canViewMessages = computed(() => !props.group_id || p.viewMessages);
+	const canViewMessagesHistory = computed(() => !props.group_id || p.readMessageHistory);
 	const canManage = computed(() => !!props.group_id && p.manageMessages);
 
 	const privateKey = ref<Uint8Array | null | undefined>(undefined);
@@ -98,6 +98,7 @@
 			e,
 			options,
 			minWidth: 180,
+			zIndex: 400,
 			onSelect: (action) => handleContextSelect(action, message),
 		});
 	};
@@ -308,7 +309,7 @@
 	const onScroll = async () => {
 		const el = scroller.value;
 		if (!el || isLoadingMore.value || !canLoadMore.value || isNavigatingToMessage.value) return;
-		if (!canReadHistory.value) return;
+		if (!canViewMessagesHistory.value) return;
 
 		if (el.scrollTop < 50) {
 			isLoadingMore.value = true;
@@ -337,7 +338,7 @@
 				privateKey.value = null;
 			}
 
-			if (!canRead.value) return;
+			if (!canViewMessages || !canViewMessagesHistory.value) return;
 
 			await messageStore.initChat(newTarget);
 			await scrollToBottom();
@@ -392,12 +393,19 @@
 			<Icon icon="svg-spinners:ring-resize" width="24" height="24" />
 		</div>
 
-		<div v-if="!canRead" class="no-messages">
+		<div v-if="!canViewMessages" class="no-messages">
 			<div class="no-messages-icon">
 				<Icon icon="mdi:eye-off-outline" width="56" height="56" />
 			</div>
 			<h3>No access</h3>
 			<p>You don't have permission to view messages in this channel.</p>
+		</div>
+		<div v-else-if="!canViewMessagesHistory" class="history-restricted-banner">
+			<div class="restricted-icon">
+				<Icon icon="mdi:lock-outline" width="48" height="48" />
+			</div>
+			<h3>History Restricted</h3>
+			<p>You don't have permission to view message history in this channel.</p>
 		</div>
 		<div v-else-if="messages?.length === 0" class="no-messages">
 			<div class="no-messages-icon">
@@ -408,7 +416,7 @@
 		</div>
 
 		<div
-			v-if="canRead && messages && privateKey !== undefined"
+			v-if="canViewMessages && messages && privateKey !== undefined"
 			v-for="(message, index) in messages"
 			:key="message.id.toString()"
 			:data-message-id="message.id.toString()"
@@ -439,14 +447,22 @@
 				<div class="action-btn" title="Reply" @click="handleReply(message)">
 					<Icon icon="mdi:reply" />
 				</div>
-				<template v-if="me.id === message.from">
-					<div v-if="!isCallData(message.data)" class="action-btn" title="Edit" @click="handleOverwrite(message)">
-						<Icon icon="mdi:pencil-outline" />
-					</div>
-					<div class="action-btn action-delete" title="Delete" @click="handleDelete(message)">
-						<Icon icon="mdi:trash-can-outline" />
-					</div>
-				</template>
+				<div
+					v-if="!isCallData(message.data) && me.id === message.from"
+					class="action-btn"
+					title="Edit"
+					@click="handleOverwrite(message)"
+				>
+					<Icon icon="mdi:pencil-outline" />
+				</div>
+				<div
+					v-if="!isCallData(message.data) && (me.id === message.from || canManage)"
+					class="action-btn action-delete"
+					title="Delete"
+					@click="handleDelete(message)"
+				>
+					<Icon icon="mdi:trash-can-outline" />
+				</div>
 			</div>
 		</div>
 	</div>
@@ -595,6 +611,42 @@
 		text-align: center;
 		width: 100%;
 		pointer-events: none;
+	}
+
+	.history-restricted-banner {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		width: 100%;
+		padding: 32px 16px;
+		color: var(--text-muted);
+		margin-bottom: 16px;
+	}
+
+	.restricted-icon {
+		background: var(--bg-dark);
+		border-radius: 50%;
+		padding: 16px;
+		margin-bottom: 16px;
+		color: var(--text-muted);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	}
+
+	.history-restricted-banner h3 {
+		font-size: 1.3rem;
+		color: var(--text);
+		margin: 0 0 8px 0;
+		font-weight: 700;
+	}
+
+	.history-restricted-banner p {
+		font-size: 0.95rem;
+		color: var(--text-muted);
+		max-width: 320px;
+		margin: 0;
+		line-height: 1.5;
 	}
 
 	.no-messages-icon {
