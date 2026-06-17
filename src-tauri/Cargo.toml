@@ -17,10 +17,12 @@ tauri-build = { version = "2.5.3", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.10.1", features = ["macos-private-api", "devtools"] }
+tauri = { version = "2.10.1", features = ["macos-private-api", "tray-icon", "devtools"] }
 tauri-plugin-updater = "2.9"
 tauri-plugin-process = "2.2"
 tauri-plugin-os = "2.3"
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-http = "2.5.9"
 reqwest = { version = "0.13", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 flume = "0.12"

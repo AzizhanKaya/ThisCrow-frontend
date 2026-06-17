@@ -55,7 +55,6 @@
 
 	const handleAction = async (action: string) => {
 		if (action === 'logout') {
-			websocketService.disconnect();
 			await meStore.logOut();
 			router.push({ name: 'login' });
 		}

@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event';
 import { websocketService } from '@/services/websocket';
 import { useFriendStore } from './stores/friend';
 import { useServerStore } from './stores/server';
@@ -39,6 +40,10 @@ export async function initApp() {
 
 	if (appStore.isTauri) {
 		watchStore.init();
+
+		await listen<Status>('tray_set_status', ({ payload }) => {
+			meStore.changeStatus(payload);
+		});
 	}
 
 	await Promise.all([

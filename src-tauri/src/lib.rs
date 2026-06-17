@@ -13,35 +13,71 @@ pub use log_filter::install_stderr_filter;
 
 mod party;
 
-#[cfg(target_os = "macos")]
-fn apply_macos_overlay_titlebar(window: &tauri::WebviewWindow) {
-    use cocoa::appkit::{NSWindow, NSWindowStyleMask, NSWindowTitleVisibility};
-    use cocoa::base::{YES, id};
-
-    let ns_window = match window.ns_window() {
-        Ok(handle) => handle as id,
-        Err(e) => {
-            println!("Failed to get NSWindow handle: {}", e);
-            return;
-        }
-    };
-
-    unsafe {
-        let mut style_mask = ns_window.styleMask();
-        style_mask.insert(NSWindowStyleMask::NSFullSizeContentViewWindowMask);
-        ns_window.setStyleMask_(style_mask);
-        ns_window.setTitlebarAppearsTransparent_(YES);
-        ns_window.setTitleVisibility_(NSWindowTitleVisibility::NSWindowTitleHidden);
-    }
-}
+mod tray;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_http::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "app" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
+            tray::create_tray(app.handle())?;
+
             if let Some(win) = app.get_webview_window("app") {
+                #[cfg(target_os = "linux")]
+                {
+                    use webkit2gtk::{
+                        CookieAcceptPolicy, CookieManagerExt, WebContextExt, WebViewExt,
+                    };
+                    if let Err(e) = win.with_webview(|webview| {
+                        if let Some(cookie_manager) = webview
+                            .inner()
+                            .context()
+                            .and_then(|ctx| ctx.cookie_manager())
+                        {
+                            cookie_manager.set_accept_policy(CookieAcceptPolicy::Always);
+                        }
+                    }) {
+                        println!("Failed to set cookie accept policy: {}", e);
+                    }
+                }
+
+                
+                #[cfg(target_os = "macos")]
+                {
+                    use cocoa::base::{NO, id, nil};
+                    use objc::{msg_send, runtime::BOOL, sel, sel_impl};
+                    if let Err(e) = win.with_webview(|webview| unsafe {
+                        let wk_webview = webview.inner() as id;
+                        let configuration: id = msg_send![wk_webview, configuration];
+                        let data_store: id = msg_send![configuration, websiteDataStore];
+                        if data_store != nil {
+                            let selector = sel!(_setResourceLoadStatisticsEnabled:);
+                            let responds: BOOL = msg_send![data_store, respondsToSelector: selector];
+                            if responds != NO {
+                                let _: () = msg_send![data_store, _setResourceLoadStatisticsEnabled: NO];
+                            } else {
+                                println!("WKWebsiteDataStore does not respond to _setResourceLoadStatisticsEnabled:");
+                            }
+                        }
+                    }) {
+                        println!("Failed to relax macOS cookie policy: {}", e);
+                    }
+                }
+
                 #[cfg(any(target_os = "linux", target_os = "windows"))]
                 if let Err(e) = win.set_decorations(false) {
                     println!("Failed to disable window decorations: {}", e);
@@ -122,8 +158,53 @@ pub fn run() {
             party::watch::close_party,
             party::watch::apply_state,
             activity::game::get_current_game,
-            activity::music::get_current_music
+            activity::music::get_current_music,
+            open_url
         ])
         .run(tauri::generate_context!())
         .expect("Tauri could not start");
+}
+
+#[tauri::command]
+fn open_url(url: String) -> std::result::Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let res = std::process::Command::new("open").arg(&url).spawn();
+
+    #[cfg(target_os = "windows")]
+    let res = std::process::Command::new("cmd")
+        .args(["/c", "start", "", &url])
+        .spawn();
+
+    #[cfg(target_os = "linux")]
+    let res = std::process::Command::new("xdg-open").arg(&url).spawn();
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    let res = Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Unsupported platform",
+    ));
+
+    res.map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_overlay_titlebar(window: &tauri::WebviewWindow) {
+    use cocoa::appkit::{NSWindow, NSWindowStyleMask, NSWindowTitleVisibility};
+    use cocoa::base::{YES, id};
+
+    let ns_window = match window.ns_window() {
+        Ok(handle) => handle as id,
+        Err(e) => {
+            println!("Failed to get NSWindow handle: {}", e);
+            return;
+        }
+    };
+
+    unsafe {
+        let mut style_mask = ns_window.styleMask();
+        style_mask.insert(NSWindowStyleMask::NSFullSizeContentViewWindowMask);
+        ns_window.setStyleMask_(style_mask);
+        ns_window.setTitlebarAppearsTransparent_(YES);
+        ns_window.setTitleVisibility_(NSWindowTitleVisibility::NSWindowTitleHidden);
+    }
 }

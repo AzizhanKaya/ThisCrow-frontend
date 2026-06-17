@@ -58,18 +58,19 @@
 
 <style scoped>
 	.hero {
-		max-width: 1400px;
+		max-width: 1600px;
 		margin: 0 auto;
-		padding: 140px 48px 80px;
+		padding: 140px 20px 80px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 56px;
+		gap: 5%;
 	}
 	.hero-copy {
 		flex: 1;
 		min-width: 0;
 		max-width: 550px;
+		margin-left: 10%;
 	}
 	.hero-copy h1 {
 		font-size: clamp(2.6rem, 5vw, 4.5rem);
@@ -197,6 +198,10 @@
 			flex-direction: column;
 			padding-top: 110px;
 			text-align: center;
+			gap: 56px;
+		}
+		.hero-copy {
+			margin-left: 0px;
 		}
 		.hero-copy p {
 			margin-left: auto;

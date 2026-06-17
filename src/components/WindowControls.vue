@@ -14,7 +14,6 @@
 		appWindow.toggleMaximize();
 	};
 	const closeApp = () => {
-		websocketService.disconnect();
 		appWindow.close();
 	};
 </script>

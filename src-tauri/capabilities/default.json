@@ -35,6 +35,17 @@
 		"core:window:allow-unminimize",
 		"core:window:allow-unmaximize",
 		"updater:default",
-		"process:default"
+		"process:default",
+		"autostart:default",
+		{
+			"identifier": "http:default",
+			"allow": [
+				{ "url": "http://localhost:5173/*" },
+				{ "url": "http://192.168.1.54:5173/*" },
+				{ "url": "https://api.thiscrow.net/*" },
+				{ "url": "https://*.thiscrow.net/*" },
+				{ "url": "https://storage.googleapis.com/*" }
+			]
+		}
 	]
 }

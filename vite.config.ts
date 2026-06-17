@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
 	const wsPort = env.VITE_WS_PORT || '8081';
 	const https = env.VITE_HTTPS === 'true';
 	const protocol = https ? 'https' : 'http';
+	const proxyEnabled = env.VITE_PROXY_ENABLED !== 'false';
 
 	return {
 		plugins: [vue(), ReactivityTransform()],
@@ -24,29 +25,31 @@ export default defineConfig(({ mode }) => {
 		server: {
 			host: true,
 			allowedHosts: true,
-			proxy: {
-				'/api': {
-					target: `${protocol}://${domain}:${apiPort}`,
-					changeOrigin: true,
-					configure: (proxy) => {
-						proxy.on('proxyRes', (proxyRes) => {
-							const setCookie = proxyRes.headers['set-cookie'];
-							if (setCookie) {
-								proxyRes.headers['set-cookie'] = setCookie.map((cookie) => {
-									return cookie
-										.replace(/SameSite=[^;]+/i, 'SameSite=Lax')
-										.replace(/;\s*Secure/i, '')
-										.replace(/;\s*Domain=[^;]+/i, '');
-								});
-							}
-						});
+			...(proxyEnabled && {
+				proxy: {
+					'/api': {
+						target: `${protocol}://${domain}:${apiPort}`,
+						changeOrigin: true,
+						configure: (proxy) => {
+							proxy.on('proxyRes', (proxyRes) => {
+								const setCookie = proxyRes.headers['set-cookie'];
+								if (setCookie) {
+									proxyRes.headers['set-cookie'] = setCookie.map((cookie) => {
+										return cookie
+											.replace(/SameSite=[^;]+/i, 'SameSite=Lax')
+											.replace(/;\s*Secure/i, '')
+											.replace(/;\s*Domain=[^;]+/i, '');
+									});
+								}
+							});
+						},
+					},
+					'/ws': {
+						target: `${https ? 'wss' : 'ws'}://${domain}:${wsPort}`,
+						ws: true,
 					},
 				},
-				'/ws': {
-					target: `${https ? 'wss' : 'ws'}://${domain}:${wsPort}`,
-					ws: true,
-				},
-			},
+			}),
 			watch: {
 				ignored: ['**/src-tauri/**'],
 			},

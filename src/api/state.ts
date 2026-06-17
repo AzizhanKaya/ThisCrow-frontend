@@ -25,3 +25,8 @@ export async function logOut(): Promise<void> {
 
 	return msgFetch<void>(url, { credentials: 'include' });
 }
+
+if (typeof window !== 'undefined') {
+	(window as any).getMe = getMe;
+}
+

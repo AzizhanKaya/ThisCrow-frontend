@@ -12,6 +12,8 @@
 	import { useMessageStore, type ChatTarget } from '@/stores/message';
 	import { useMeStore } from '@/stores/me';
 	import { useProfileCardStore } from '@/stores/profileCard';
+	import { useAppStore } from '@/stores/app';
+	import { invoke } from '@tauri-apps/api/core';
 
 	const props = defineProps({
 		message: {
@@ -56,6 +58,18 @@
 	const messageStore = useMessageStore();
 	const meStore = useMeStore();
 	const profileCardStore = useProfileCardStore();
+	const appStore = useAppStore();
+
+	function openUrl(url: string | undefined) {
+		if (!url) return;
+		if (appStore.isTauri) {
+			invoke('open_url', { url }).catch((err) => {
+				console.error('Failed to open URL in Tauri:', err);
+			});
+		} else {
+			window.open(url, '_blank', 'noopener,noreferrer');
+		}
+	}
 
 	const displayUser = $computed(() => {
 		if (props.user) return props.user;
@@ -420,7 +434,7 @@
 						</div>
 
 						<div class="file-info">
-							<a :href="file.url" target="_blank" rel="noopener noreferrer" class="file-name">
+							<a :href="file.url" @click.prevent="openUrl(file.url)" target="_blank" rel="noopener noreferrer" class="file-name">
 								{{ file.name }}
 							</a>
 							<span class="file-meta">
@@ -431,6 +445,7 @@
 
 						<a
 							:href="file.url"
+							@click.prevent="openUrl(file.url)"
 							target="_blank"
 							rel="noopener noreferrer"
 							download
@@ -459,7 +474,7 @@
 				<div v-else-if="messageText || message?.overwrited" class="text-content">
 					<span v-if="messageText" class="text" :class="{ sent: is_sent_from_snowflake(props.message.id) }">
 						<template v-for="(seg, idx) in formattedSegments" :key="idx">
-							<a v-if="seg.isLink" :href="seg.href" target="_blank" rel="noopener noreferrer" class="message-link" draggable="false">{{
+							<a v-if="seg.isLink" :href="seg.href" @click.prevent="openUrl(seg.href)" target="_blank" rel="noopener noreferrer" class="message-link" draggable="false">{{
 								seg.text
 							}}</a>
 							<template v-else>{{ seg.text }}</template>

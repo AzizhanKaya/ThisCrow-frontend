@@ -8,9 +8,11 @@ const WS_PROTOCOL = HTTPS ? 'wss://' : 'ws://';
 
 export const HOST_URL = PROTOCOL + DOMAIN_ADDRESS;
 
-export const API_URL = import.meta.env.DEV ? '/api' : API_PORT ? HOST_URL + ':' + API_PORT + '/api' : HOST_URL + '/api';
+const PROXY_ENABLED = import.meta.env.VITE_PROXY_ENABLED !== 'false';
 
-export const WS_URL = import.meta.env.DEV
+export const API_URL = (import.meta.env.DEV && PROXY_ENABLED) ? '/api' : API_PORT ? HOST_URL + ':' + API_PORT + '/api' : HOST_URL + '/api';
+
+export const WS_URL = (import.meta.env.DEV && PROXY_ENABLED)
 	? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`
 	: WS_PORT
 		? WS_PROTOCOL + DOMAIN_ADDRESS + ':' + WS_PORT + '/ws'
