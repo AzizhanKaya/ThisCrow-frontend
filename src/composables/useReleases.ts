@@ -24,7 +24,11 @@ interface GithubRelease {
 }
 
 function matchAsset(assets: GithubAsset[], exts: string[]): GithubAsset | undefined {
-	return assets.find((a) => exts.some((ext) => a.name.toLowerCase().endsWith(ext)));
+	for (const ext of exts) {
+		const matched = assets.find((a) => a.name.toLowerCase().endsWith(ext));
+		if (matched) return matched;
+	}
+	return undefined;
 }
 
 export function detectOS(): OS {
@@ -63,7 +67,7 @@ export function useReleases() {
 			const release: GithubRelease = await res.json();
 			version.value = release.tag_name;
 
-			const win = matchAsset(release.assets, ['.exe', '.msi']);
+			const win = matchAsset(release.assets, ['.msi', '.exe']);
 			const mac = matchAsset(release.assets, ['.dmg']);
 			const linux = matchAsset(release.assets, ['.appimage', '.deb', '.rpm']);
 

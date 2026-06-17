@@ -17,6 +17,13 @@ mod tray;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(win) = app.get_webview_window("app") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
@@ -25,14 +32,6 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_http::init())
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "app" {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
-            }
-        })
         .setup(|app| {
             tray::create_tray(app.handle())?;
 
@@ -53,9 +52,22 @@ pub fn run() {
                     }) {
                         println!("Failed to set cookie accept policy: {}", e);
                     }
+
+
+                    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+                        let win_nudge = win.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            if let Ok(size) = win_nudge.inner_size() {
+                                let _ = win_nudge
+                                    .set_size(tauri::PhysicalSize::new(size.width + 1, size.height));
+                                let _ = win_nudge.set_size(size);
+                            }
+                        });
+                    }
+
                 }
 
-                
                 #[cfg(target_os = "macos")]
                 {
                     use cocoa::base::{NO, id, nil};
@@ -86,24 +98,16 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 apply_macos_overlay_titlebar(&win);
 
-                if let Err(e) = win.show() {
-                    println!("Failed to show main window: {}", e);
-                }
+                
             }
 
             let handle_update = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
-                let app_window = handle_update.get_webview_window("app");
-
                 match handle_update.updater() {
                     Ok(updater) => match updater.check().await {
                         Ok(Some(update)) => {
                             println!("Update available: {}", update.version);
-
-                            if let Some(ref win) = app_window {
-                                let _ = win.hide();
-                            }
 
                             let _ = WebviewWindowBuilder::new(
                                 &handle_update,
@@ -124,17 +128,21 @@ pub fn run() {
                     },
                     Err(e) => println!("Updater plugin error: {}", e),
                 }
+
+                if let Some(win) = handle_update.get_webview_window("app") {
+                    if let Err(e) = win.show() {
+                        println!("Failed to show main window: {}", e);
+                    }
+                }
             });
 
-            #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
-            {
-                let handle_music = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = activity::music::monitor_music(handle_music).await {
-                        println!("Music monitoring failed: {:#?}", e);
-                    }
-                });
-            }
+            let handle_music = app.handle().clone();
+
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = activity::music::monitor_music(handle_music).await {
+                    println!("Music monitoring failed: {:#?}", e);
+                }
+            });
 
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {

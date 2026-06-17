@@ -1,7 +1,7 @@
 use tauri::{
+    AppHandle, Emitter, Manager, Runtime,
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, Runtime,
 };
 
 pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
