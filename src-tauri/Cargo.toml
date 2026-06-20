@@ -1,6 +1,6 @@
 [package]
 name = "thiscrow-app"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Azizhan Kaya"]
 license = ""
 repository = ""

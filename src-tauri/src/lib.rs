@@ -57,10 +57,10 @@ pub fn run() {
                     if std::env::var("WAYLAND_DISPLAY").is_ok() {
                         let win_nudge = win.clone();
                         tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                             if let Ok(size) = win_nudge.inner_size() {
                                 let _ = win_nudge
-                                    .set_size(tauri::PhysicalSize::new(size.width + 1, size.height));
+                                    .set_size(tauri::PhysicalSize::new(size.width + 1, size.height + 1));
                                 let _ = win_nudge.set_size(size);
                             }
                         });
