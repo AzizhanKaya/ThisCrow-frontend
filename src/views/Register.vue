@@ -7,6 +7,7 @@
 	import { useErrorStore } from '@/stores/error';
 	import { websocketService } from '@/services/websocket';
 	import { useRouter } from 'vue-router';
+	import { setToken } from '@/utils/token';
 
 	const keyStore = useKeyStore();
 	const errorStore = useErrorStore();
@@ -37,7 +38,8 @@
 
 		try {
 			const keypair = generate_keypair(username + ':' + password);
-			await register(username, name, email, password, keypair.public_key);
+			const res = await register(username, name, email, password, keypair.public_key);
+			if (res?.token) setToken(res.token);
 			keyStore.storeKeys(keypair);
 			websocketService.connect();
 			router.push({ name: 'chats' });

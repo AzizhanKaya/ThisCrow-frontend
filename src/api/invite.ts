@@ -16,7 +16,6 @@ export interface Invitation {
 export async function createInvitation(group_id: id, expires_at: string, max_uses?: number): Promise<Invitation> {
 	return msgFetch<Invitation>(`${API_URL}/invitation/create`, {
 		method: 'POST',
-		credentials: 'include',
 		body: encode({ group_id, expires_at, max_uses: max_uses ?? null }),
 	});
 }
@@ -24,7 +23,6 @@ export async function createInvitation(group_id: id, expires_at: string, max_use
 export async function joinInvitation(code: string): Promise<void> {
 	return msgFetch<void>(`${API_URL}/invitation/join`, {
 		method: 'POST',
-		credentials: 'include',
 		body: encode(code),
 	});
 }
@@ -44,15 +42,12 @@ export interface InvitationInfo {
 export async function getInvitationInfo(code: string): Promise<InvitationInfo> {
 	const params = new URLSearchParams();
 	params.append('code', code);
-	return msgFetch<InvitationInfo>(`${API_URL}/invitation/info?${params.toString()}`, {
-		credentials: 'include',
-	});
+	return msgFetch<InvitationInfo>(`${API_URL}/invitation/info?${params.toString()}`);
 }
 
 export async function getGroupInvitations(group_id: id): Promise<Invitation[]> {
 	return msgFetch<Invitation[]>(`${API_URL}/invitation/list`, {
 		method: 'POST',
-		credentials: 'include',
 		body: encode(group_id),
 	});
 }
@@ -60,7 +55,6 @@ export async function getGroupInvitations(group_id: id): Promise<Invitation[]> {
 export async function deleteInvitation(id: id): Promise<void> {
 	return msgFetch<void>(`${API_URL}/invitation/delete`, {
 		method: 'POST',
-		credentials: 'include',
 		body: encode(id),
 	});
 }

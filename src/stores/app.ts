@@ -6,6 +6,7 @@ import { useMeStore } from './me';
 import initWasm from '@/../pkg/wasm_lib';
 import { isTauri } from '@tauri-apps/api/core';
 import { useModalStore } from './modal';
+import { getToken, setToken } from '@/utils/token';
 
 export const useAppStore = defineStore('app', {
 	state: () => ({
@@ -43,6 +44,20 @@ export const useAppStore = defineStore('app', {
 		async init(router: any) {
 			await initWasm();
 			this.setupConnectionListener(router);
+
+			// Pick up a token handed off via the email-verification redirect (#token=...)
+			const hashMatch = location.hash.match(/token=([^&]+)/);
+			if (hashMatch) {
+				setToken(decodeURIComponent(hashMatch[1]));
+				history.replaceState(null, '', location.pathname + location.search);
+			}
+
+			if (!getToken()) {
+				if (router.currentRoute.value.meta?.requiresAuth) {
+					router.push({ name: 'login' });
+				}
+				return;
+			}
 
 			try {
 				this.loading = true;

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-	import { computed } from 'vue';
+	import { computed, ref, watch } from 'vue';
 	import { Icon } from '@iconify/vue';
 	import { useModalStore } from '@/stores/modal';
 	import { useServerStore } from '@/stores/server';
 	import { useUserStore } from '@/stores/user';
-	import { ChannelType, type id } from '@/types';
+	import { ChannelType, type id, type User } from '@/types';
+	import { fetchGroupDetail, type GroupDetail } from '@/api/info';
 
 	const modalStore = useModalStore();
 	const serverStore = useServerStore();
@@ -13,15 +14,44 @@
 	const server_id = computed<id>(() => modalStore.data?.server_id ?? 0);
 	const server = computed(() => serverStore.getServerById(server_id.value));
 
+	// Only the currently-active server (serverStore.server) holds full data; otherwise fetch it.
+	const subscribed = computed(() => !!serverStore.server && serverStore.server.id === server_id.value);
+
+	const detail = ref<GroupDetail | null>(null);
+	const fetchedOwner = ref<User | null>(null);
+
+	watch(
+		[server_id, subscribed],
+		async ([id, sub]) => {
+			detail.value = null;
+			fetchedOwner.value = null;
+			if (sub || !id) return;
+			const fetched = await fetchGroupDetail(id);
+			if (server_id.value !== id) return;
+			detail.value = fetched;
+			const [resolvedOwner] = await userStore.getUsers([fetched.owner]);
+			if (server_id.value === id) fetchedOwner.value = resolvedOwner ?? null;
+		},
+		{ immediate: true }
+	);
+
+	const name = computed(() => (subscribed.value ? server.value?.name : detail.value?.name));
+	const icon = computed(() => (subscribed.value ? server.value?.icon : detail.value?.icon));
+	const description = computed(() => (subscribed.value ? server.value?.description : detail.value?.description));
+
 	const owner = computed(() => {
+		if (!subscribed.value) return fetchedOwner.value;
 		if (!server.value?.owner || !server.value.members) return null;
-		const member = server.value.members.get(server.value.owner);
-		return member?.user ?? null;
+		return server.value.members.get(server.value.owner)?.user ?? null;
 	});
 
-	const memberCount = computed(() => server.value?.members?.size ?? 0);
+	const memberCount = computed(() => {
+		if (!subscribed.value) return detail.value?.member_count ?? 0;
+		return server.value?.members?.size ?? 0;
+	});
 
 	const onlineCount = computed(() => {
+		if (!subscribed.value) return detail.value?.online_count ?? 0;
 		if (!server.value?.members) return 0;
 		let count = 0;
 		for (const [, member] of server.value.members) {
@@ -31,6 +61,7 @@
 	});
 
 	const textChannelCount = computed(() => {
+		if (!subscribed.value) return detail.value?.text_channel_count ?? 0;
 		if (!server.value?.channels) return 0;
 		let count = 0;
 		for (const [, ch] of server.value.channels) {
@@ -40,6 +71,7 @@
 	});
 
 	const voiceChannelCount = computed(() => {
+		if (!subscribed.value) return detail.value?.voice_channel_count ?? 0;
 		if (!server.value?.channels) return 0;
 		let count = 0;
 		for (const [, ch] of server.value.channels) {
@@ -49,8 +81,8 @@
 	});
 
 	const roles = computed(() => {
-		if (!server.value?.roles) return [];
-		return [...server.value.roles.values()].sort((a, b) => a.position - b.position);
+		const list = subscribed.value ? [...(server.value?.roles?.values() ?? [])] : (detail.value?.roles ?? []);
+		return list.slice().sort((a, b) => a.position - b.position);
 	});
 </script>
 
@@ -59,16 +91,16 @@
 		<div class="modal-container" @click.stop>
 			<div class="server-body">
 				<div class="server-header">
-					<img v-if="server?.icon" :src="server.icon" alt="Server Icon" class="server-icon" />
+					<img v-if="icon" :src="icon" alt="Server Icon" class="server-icon" />
 					<div v-else class="server-icon placeholder-icon">
-						<span>{{ server?.name?.charAt(0)?.toUpperCase() }}</span>
+						<span>{{ name?.charAt(0)?.toUpperCase() }}</span>
 					</div>
 					<button class="close-btn" @click="modalStore.closeModal">
 						<Icon icon="mdi:close" />
 					</button>
 				</div>
-				<h2 class="server-name">{{ server?.name }}</h2>
-				<p v-if="server?.description" class="server-description">{{ server.description }}</p>
+				<h2 class="server-name">{{ name }}</h2>
+				<p v-if="description" class="server-description">{{ description }}</p>
 				<p v-else class="server-description muted">No description set.</p>
 
 				<!-- Stats Grid -->

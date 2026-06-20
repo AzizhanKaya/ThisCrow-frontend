@@ -8,15 +8,11 @@ const WS_PROTOCOL = HTTPS ? 'wss://' : 'ws://';
 
 export const HOST_URL = PROTOCOL + DOMAIN_ADDRESS;
 
-const PROXY_ENABLED = import.meta.env.VITE_PROXY_ENABLED !== 'false';
+export const API_URL = API_PORT ? HOST_URL + ':' + API_PORT + '/api' : HOST_URL + '/api';
 
-export const API_URL = (import.meta.env.DEV && PROXY_ENABLED) ? '/api' : API_PORT ? HOST_URL + ':' + API_PORT + '/api' : HOST_URL + '/api';
-
-export const WS_URL = (import.meta.env.DEV && PROXY_ENABLED)
-	? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`
-	: WS_PORT
-		? WS_PROTOCOL + DOMAIN_ADDRESS + ':' + WS_PORT + '/ws'
-		: WS_PROTOCOL + DOMAIN_ADDRESS + '/ws';
+export const WS_URL = WS_PORT
+	? WS_PROTOCOL + DOMAIN_ADDRESS + ':' + WS_PORT + '/ws'
+	: WS_PROTOCOL + DOMAIN_ADDRESS + '/ws';
 
 const TURN_URLS = import.meta.env.VITE_TURN_URLS as string | undefined;
 const TURN_USERNAME = import.meta.env.VITE_TURN_USERNAME as string | undefined;

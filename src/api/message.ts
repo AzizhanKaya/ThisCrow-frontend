@@ -30,20 +30,17 @@ export async function fetchMessages({
 
 	const url = API_URL + `/message/${group_id ? 'channel' : 'direct'}?${params.toString()}`;
 
-	return msgFetch<Message[]>(url, { credentials: 'include' });
+	return msgFetch<Message[]>(url);
 }
 
 export function fetchMessage(id: snowflake_id): Promise<Message> {
-	return msgFetch<Message>(`${API_URL}/message/${id.toString()}`, {
-		credentials: 'include',
-	});
+	return msgFetch<Message>(`${API_URL}/message/${id.toString()}`);
 }
 
 export function overwriteMessage(message_id: snowflake_id, data: MessageData): Promise<void> {
 	return msgFetch(API_URL + '/message/overwrite', {
 		method: 'POST',
 		body: encode({ message_id, data }),
-		credentials: 'include',
 	});
 }
 
@@ -51,20 +48,16 @@ export function deleteMessage(message_id: snowflake_id): Promise<void> {
 	return msgFetch(API_URL + '/message/delete', {
 		method: 'POST',
 		body: encode(message_id),
-		credentials: 'include',
 	});
 }
 
 export function fetchReactions(message_id: snowflake_id): Promise<Reaction[]> {
-	return msgFetch<Reaction[]>(`${API_URL}/message/${message_id.toString()}/reactions`, {
-		credentials: 'include',
-	});
+	return msgFetch<Reaction[]>(`${API_URL}/message/${message_id.toString()}/reactions`);
 }
 
 export function removeDM(user_id: id): Promise<void> {
 	return msgFetch(API_URL + '/message/remove_dm', {
 		method: 'POST',
 		body: encode(user_id),
-		credentials: 'include',
 	});
 }

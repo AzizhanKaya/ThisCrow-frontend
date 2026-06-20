@@ -7,6 +7,7 @@
 	import { useErrorStore } from '@/stores/error';
 	import { useRouter } from 'vue-router';
 	import { generate_keypair } from '@/../pkg/wasm_lib';
+	import { setToken } from '@/utils/token';
 
 	const keyStore = useKeyStore();
 	const errorStore = useErrorStore();
@@ -22,7 +23,8 @@
 		const user = username.value;
 		const pass = password.value;
 		try {
-			await login(user, pass);
+			const { token } = await login(user, pass);
+			setToken(token);
 			keyStore.storeKeys(generate_keypair(user + ':' + pass));
 			websocketService.connect();
 			router.push({ name: 'chats' });

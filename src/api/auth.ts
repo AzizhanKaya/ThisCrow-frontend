@@ -1,22 +1,26 @@
 import { API_URL } from '@/constants';
 import { msgFetch, encode } from '@/utils/msgpack';
 
-export async function login(username: string, password: string) {
+export async function login(username: string, password: string): Promise<{ token: string }> {
 	const body = encode({ username, password });
 
 	return msgFetch(API_URL + '/auth/login', {
 		method: 'POST',
 		body,
-		credentials: 'include',
 	});
 }
 
-export async function register(username: string, name: string, email: string, password: string, public_key: Uint8Array) {
+export async function register(
+	username: string,
+	name: string,
+	email: string,
+	password: string,
+	public_key: Uint8Array
+): Promise<{ token: string }> {
 	const body = encode({ username, name, email, password, public_key });
 
 	return msgFetch(API_URL + '/auth/register', {
 		method: 'POST',
 		body,
-		credentials: 'include',
 	});
 }

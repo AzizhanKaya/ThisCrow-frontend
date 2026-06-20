@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { EventType, MessageType, type Me, type Message, type Status, type Event } from '@/types';
 import { websocketService } from '@/services/websocket';
-import { logOut } from '@/api/state';
 import { generate_uid } from '@/utils/uid';
+import { clearToken } from '@/utils/token';
 
 export const useMeStore = defineStore('me', {
 	state: () => ({
@@ -14,12 +14,12 @@ export const useMeStore = defineStore('me', {
 			this.me = me;
 		},
 
-		async logOut() {
+		logOut() {
 			this.me = undefined;
 			websocketService.disconnect();
+			clearToken();
 			localStorage.removeItem('private_key');
 			localStorage.removeItem('public_key');
-			await logOut();
 		},
 
 		async changeStatus(status: Status) {

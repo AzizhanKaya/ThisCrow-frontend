@@ -2,6 +2,7 @@ import type { Me, Message, MessageData } from '@/types';
 import { type Ack, AckType, EventType, MessageType } from '@/types';
 import { WS_URL } from '@/constants';
 import { decode, encode } from '@/utils/msgpack';
+import { getToken } from '@/utils/token';
 
 type MessageCallback<T = any> = (message: Message<T>) => void | Promise<void>;
 
@@ -39,9 +40,12 @@ class WebSocketService {
 			this.disconnect();
 		}
 
+		const token = getToken();
+		if (!token) return;
+
 		this.connectionStateHandlers.forEach((h) => h('CONNECTING'));
 
-		this.ws = new WebSocket(this.url);
+		this.ws = new WebSocket(this.url, [token]);
 		this.ws.binaryType = 'arraybuffer';
 
 		this.ws.onopen = () => {

@@ -172,7 +172,6 @@ export function useFiles() {
 			extension_headers: Record<string, string>;
 		}>(`${API_URL}/upload`, {
 			method: 'PUT',
-			credentials: 'include',
 			body: encode({
 				filename: file.name,
 				content_type: file.type || 'application/octet-stream',
@@ -213,7 +212,6 @@ export function useFiles() {
 					extension_headers: Record<string, string>;
 				}>(`${API_URL}/upload`, {
 					method: 'PUT',
-					credentials: 'include',
 					body: encode({
 						filename: file.name,
 						content_type: file.type || 'application/octet-stream',

@@ -12,14 +12,11 @@ export interface BannedUser {
 }
 
 export async function getBans(group_id: id): Promise<BannedUser[]> {
-	return msgFetch<BannedUser[]>(`${API_URL}/group/${group_id}/bans`, {
-		credentials: 'include',
-	});
+	return msgFetch<BannedUser[]>(`${API_URL}/group/${group_id}/bans`);
 }
 
 export async function unbanUser(group_id: id, user_id: id): Promise<void> {
 	return msgFetch<void>(`${API_URL}/group/${group_id}/bans/${user_id}`, {
 		method: 'DELETE',
-		credentials: 'include',
 	});
 }

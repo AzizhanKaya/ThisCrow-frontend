@@ -1,4 +1,5 @@
 import { decode as msgDecode, encode as msgEncode, type EncoderOptions, type DecoderOptions } from '@msgpack/msgpack';
+import { getToken } from '@/utils/token';
 
 export const encode = (value: unknown, options?: EncoderOptions) =>
 	msgEncode(value, {
@@ -16,10 +17,12 @@ export const decode = (buffer: ArrayLike<number> | BufferSource, options?: Decod
 };
 
 export async function msgFetch<T>(url: string, init?: RequestInit): Promise<T> {
+	const token = getToken();
 	const res = await fetch(url, {
 		...init,
 		headers: {
 			Accept: 'application/msgpack',
+			...(token ? { Authorization: token } : {}),
 			...(init?.body ? { 'Content-Type': 'application/msgpack' } : {}),
 			...init?.headers,
 		},
